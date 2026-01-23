@@ -38,13 +38,19 @@
         @media print { .no-print { display: none !important; } }
     </style>
 
-    <!-- Registro do Service Worker -->
+    <!-- Registro do Service Worker Robusto para Prevenir Origin Mismatch -->
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('sw.js')
-            .then(reg => console.log('SmartGestão: PWA Ativo'))
-            .catch(err => console.log('SmartGestão: Falha no SW', err));
+          // Resolve o caminho do sw.js relativo à página atual, não ao domínio pai
+          const swPath = new URL('sw.js', window.location.href).pathname;
+          navigator.serviceWorker.register(swPath, { scope: './' })
+            .then(reg => console.log('SmartGestão: PWA Ativo - Escopo:', reg.scope))
+            .catch(err => {
+              console.error('SmartGestão: Falha no SW:', err);
+              // Fallback simples se o URL dinâmico falhar
+              navigator.serviceWorker.register('./sw.js').catch(() => {});
+            });
         });
       }
     </script>
