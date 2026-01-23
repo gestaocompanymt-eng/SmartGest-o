@@ -1,17 +1,17 @@
 
 {
-  "id": "smartgestao-pwa-v3",
+  "id": "smartgestao-pwa-v4",
   "name": "SmartGestão - Manutenção Condominial",
   "short_name": "SmartGestão",
-  "description": "Plataforma profissional de gestão de manutenção preventiva, corretiva e monitoramento técnico predial para condomínios.",
+  "description": "Plataforma completa para gestão de manutenção preventiva, corretiva e monitoramento técnico predial.",
   "lang": "pt-BR",
   "dir": "ltr",
-  "start_url": "./",
+  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#ffffff",
+  "background_color": "#0f172a",
   "theme_color": "#0f172a",
-  "orientation": "portrait",
+  "orientation": "any",
   "categories": ["business", "productivity", "utilities"],
   "icons": [
     {
@@ -37,20 +37,27 @@
       "sizes": "144x144",
       "type": "image/png",
       "purpose": "any"
-    },
-    {
-      "src": "https://cdn-icons-png.flaticon.com/96/1035/1035688.png",
-      "sizes": "96x96",
-      "type": "image/png",
-      "purpose": "any"
     }
   ],
   "shortcuts": [
     {
       "name": "Nova OS",
       "short_name": "Nova OS",
-      "description": "Abrir novo chamado técnico",
-      "url": "./#/os",
+      "description": "Abrir nova ordem de serviço rapidamente",
+      "url": "./index.html#/os",
+      "icons": [
+        { 
+          "src": "https://cdn-icons-png.flaticon.com/96/1035/1035688.png", 
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Equipamentos",
+      "short_name": "Equips",
+      "description": "Ver inventário de ativos",
+      "url": "./index.html#/equipment",
       "icons": [
         { 
           "src": "https://cdn-icons-png.flaticon.com/96/1035/1035688.png", 
@@ -62,18 +69,18 @@
   ],
   "screenshots": [
     {
-      "src": "https://placehold.co/1280x720/0f172a/white?text=Dashboard+SmartGestao",
+      "src": "https://placehold.co/1280x720/0f172a/white?text=Painel+de+Gestao+SmartGestao",
       "sizes": "1280x720",
       "type": "image/png",
       "form_factor": "wide",
-      "label": "Painel Principal"
+      "label": "Painel de Gestão"
     },
     {
-      "src": "https://placehold.co/720x1280/0f172a/white?text=Mobile+SmartGestao",
+      "src": "https://placehold.co/720x1280/0f172a/white?text=Uso+Mobile+SmartGestao",
       "sizes": "720x1280",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "Uso Mobile"
+      "label": "Aplicativo Mobile"
     }
   ]
 }

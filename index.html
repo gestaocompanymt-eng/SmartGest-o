@@ -7,7 +7,7 @@
     <title>SmartGestão</title>
     
     <!-- Configurações PWA -->
-    <link rel="manifest" href="./manifest.json">
+    <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0f172a">
     <meta name="description" content="Plataforma profissional de gestão de manutenção predial e monitoramento técnico.">
     
@@ -37,6 +37,23 @@
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
         @media print { .no-print { display: none !important; } }
     </style>
+
+    <!-- Registro do Service Worker Robusto (Resolução via Document URL) -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          // Registra o sw.js relativo à página atual, ignorando a origem do módulo JS
+          navigator.serviceWorker.register('sw.js', { scope: './' })
+            .then(function(reg) {
+              console.log('SmartGestão: PWA Ativo - Escopo:', reg.scope);
+            })
+            .catch(function(err) {
+              console.warn('SmartGestão: Falha ao registrar Service Worker:', err);
+            });
+        });
+      }
+    </script>
+
 <script type="importmap">
 {
   "imports": {
