@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'smart-gestao-v23';
+const CACHE_NAME = 'smart-gestao-v24';
 const OFFLINE_ASSETS = [
   '/',
   '/index.html',
@@ -35,8 +35,18 @@ self.addEventListener('activate', (event) => {
 
 // Fetch: Estratégia Network First com Fallback para Cache
 self.addEventListener('fetch', (event) => {
-  // Ignorar requisições de terceiros (Supabase, Google Fonts, etc) para evitar erros de opacidade
-  if (!event.request.url.startsWith(self.location.origin) && !event.request.url.includes('icons8')) {
+  const url = event.request.url;
+  
+  // Permitir cache de recursos essenciais, incluindo dependências do ESM.sh e ícones
+  const isCacheable = 
+    url.startsWith(self.location.origin) || 
+    url.includes('esm.sh') || 
+    url.includes('icons8') || 
+    url.includes('tailwindcss.com') ||
+    url.includes('googleapis.com') ||
+    url.includes('gstatic.com');
+
+  if (!isCacheable || event.request.method !== 'GET') {
     return;
   }
 

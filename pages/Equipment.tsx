@@ -15,7 +15,7 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const handleGeminiAnalysis = async (eq: Equipment) => {
     setAnalyzingId(eq.id);
     const result = await analyzeEquipmentState(eq);
-    setAiAnalysis(prev => ({ ...prev, [eq.id]: result || 'Sem análise' }));
+    setAiAnalysis(prev => ({ ...prev, [eq.id]: result || 'Sem análise disponível.' }));
     setAnalyzingId(null);
   };
 
@@ -58,7 +58,7 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   };
 
   const deleteEquipment = (id: string) => {
-    if (confirm('Tem certeza que deseja excluir este equipamento? Esta ação não pode ser desfeita.')) {
+    if (confirm('Excluir este equipamento permanentemente?')) {
       updateData({
         ...data,
         equipments: data.equipments.filter((e: Equipment) => e.id !== id)
@@ -67,35 +67,35 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="space-y-6 pb-12">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Equipamentos</h1>
-          <p className="text-slate-500">Controle técnico e histórico de ativos.</p>
+          <h1 className="text-2xl font-bold text-slate-900 leading-tight">Equipamentos</h1>
+          <p className="text-sm text-slate-500">Monitoramento técnico e inventário de ativos.</p>
         </div>
         <button 
           onClick={() => { setEditingEq(null); setIsModalOpen(true); }}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 font-medium shadow-sm hover:bg-blue-700"
+          className="w-full md:w-auto bg-blue-600 text-white px-6 py-4 md:py-2 rounded-2xl md:rounded-xl flex items-center justify-center space-x-2 font-bold shadow-lg shadow-blue-500/20 active:scale-95 transition-all"
         >
           <Plus size={20} />
-          <span>Novo Equipamento</span>
+          <span className="uppercase text-xs tracking-widest">Cadastrar Ativo</span>
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
         {data.equipments.map((eq: Equipment) => {
           const condo = data.condos.find((c: Condo) => c.id === eq.condoId);
           const type = data.equipmentTypes.find((t: EquipmentType) => t.id === eq.typeId);
           
           return (
-            <div key={eq.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col group hover:border-blue-300 transition-all">
-              <div className="p-6 flex-1">
+            <div key={eq.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col group hover:border-blue-400 transition-all">
+              <div className="p-5 flex-1">
                 <div className="flex justify-between items-start mb-4">
-                  <span className="px-2 py-1 bg-slate-100 text-slate-600 text-[10px] font-bold uppercase rounded-md">
-                    {type?.name || 'Tipo'}
+                  <span className="px-2 py-1 bg-slate-100 text-slate-500 text-[9px] font-black uppercase tracking-widest rounded-md">
+                    {type?.name || 'Inespecífico'}
                   </span>
                   <div className="flex items-center space-x-2">
-                    <div className={`flex items-center space-x-1 px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
+                    <div className={`flex items-center space-x-1.5 px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${
                       eq.electricalState === 'Bom' ? 'bg-emerald-50 text-emerald-600' :
                       eq.electricalState === 'Regular' ? 'bg-amber-50 text-amber-600' : 'bg-red-50 text-red-600'
                     }`}>
@@ -103,166 +103,168 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                       <span>{eq.electricalState}</span>
                     </div>
                     {isAdmin && (
-                      <div className="flex opacity-0 group-hover:opacity-100 transition-opacity">
-                         <button onClick={() => { setEditingEq(eq); setIsModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-blue-600">
-                           <Edit2 size={14} />
+                      <div className="flex md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                         <button onClick={() => { setEditingEq(eq); setIsModalOpen(true); }} className="p-2 text-slate-400 hover:text-blue-600 active:bg-blue-50 rounded-lg">
+                           <Edit2 size={16} />
                          </button>
-                         <button onClick={() => deleteEquipment(eq.id)} className="p-1.5 text-slate-400 hover:text-red-600">
-                           <Trash2 size={14} />
+                         <button onClick={() => deleteEquipment(eq.id)} className="p-2 text-slate-400 hover:text-red-600 active:bg-red-50 rounded-lg">
+                           <Trash2 size={16} />
                          </button>
                       </div>
                     )}
                   </div>
                 </div>
                 
-                <h3 className="font-bold text-slate-900 text-lg leading-tight mb-1">{eq.manufacturer} - {eq.model}</h3>
-                <p className="text-xs text-slate-500 mb-4 font-medium uppercase">{condo?.name || 'Não vinculado'}</p>
+                <h3 className="font-bold text-slate-900 text-lg leading-tight mb-1">{eq.manufacturer}</h3>
+                <p className="text-xs font-medium text-slate-600 mb-1">{eq.model}</p>
+                <p className="text-[10px] text-blue-600 font-black uppercase tracking-widest mb-4 truncate">{condo?.name || 'SEM CONDOMÍNIO'}</p>
 
-                <div className="grid grid-cols-2 gap-3 mb-6">
-                  <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">Corrente</p>
-                    <div className="flex items-center text-slate-700">
-                      <Zap size={14} className="mr-1 text-blue-500" />
-                      <span className="text-sm font-semibold">{eq.measuredCurrent}A</span>
-                      <span className="text-[10px] text-slate-400 ml-1">/ {eq.nominalCurrent}A</span>
+                <div className="grid grid-cols-2 gap-3 mb-5">
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                    <p className="text-[8px] text-slate-400 font-black uppercase tracking-[0.15em] mb-1">Medição</p>
+                    <div className="flex items-center text-slate-800">
+                      <Zap size={14} className="mr-1.5 text-blue-500" />
+                      <span className="text-sm font-black">{eq.measuredCurrent}</span>
+                      <span className="text-[10px] text-slate-400 ml-1 font-bold">/ {eq.nominalCurrent}A</span>
                     </div>
                   </div>
-                  <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">Temperatura</p>
-                    <div className="flex items-center text-slate-700">
-                      <Thermometer size={14} className="mr-1 text-orange-500" />
-                      <span className="text-sm font-semibold">{eq.temperature}°C</span>
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                    <p className="text-[8px] text-slate-400 font-black uppercase tracking-[0.15em] mb-1">Status Térmico</p>
+                    <div className="flex items-center text-slate-800">
+                      <Thermometer size={14} className="mr-1.5 text-orange-500" />
+                      <span className="text-sm font-black">{eq.temperature}°C</span>
                     </div>
                   </div>
                 </div>
 
                 {aiAnalysis[eq.id] ? (
-                  <div className="bg-blue-50 p-3 rounded-lg text-xs text-blue-700 mb-4 border border-blue-100 italic relative">
-                    <Sparkles size={12} className="absolute -top-1.5 -right-1.5 text-blue-500 animate-pulse" />
+                  <div className="bg-blue-600 p-4 rounded-xl text-[11px] text-white mb-4 shadow-lg shadow-blue-500/20 leading-relaxed italic relative">
+                    <Sparkles size={12} className="absolute top-2 right-2 text-blue-200 animate-pulse" />
                     {aiAnalysis[eq.id]}
                   </div>
                 ) : (
                   <button 
                     disabled={analyzingId === eq.id}
                     onClick={() => handleGeminiAnalysis(eq)}
-                    className="w-full py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center space-x-2 mb-4 disabled:opacity-50"
+                    className="w-full py-3 bg-gradient-to-br from-slate-800 to-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-[0.15em] flex items-center justify-center space-x-2 mb-4 active:scale-95 transition-all disabled:opacity-50"
                   >
                     {analyzingId === eq.id ? (
-                      <span className="animate-pulse">Analisando...</span>
+                      <span className="animate-pulse">PROCESSANDO DADOS TÉCNICOS...</span>
                     ) : (
                       <>
-                        <Sparkles size={14} />
-                        <span>Análise Técnica Inteligente</span>
+                        <Sparkles size={14} className="text-blue-400" />
+                        <span>Diagnóstico Inteligente IA</span>
                       </>
                     )}
                   </button>
                 )}
 
-                <p className="text-xs text-slate-600 line-clamp-2 italic">"{eq.observations}"</p>
+                <p className="text-xs text-slate-500 line-clamp-2 italic font-medium">"{eq.observations || 'Nenhuma observação registrada.'}"</p>
               </div>
-              <div className="bg-slate-50 px-6 py-3 border-t border-slate-100 flex justify-between items-center">
-                <div className="flex items-center text-slate-400 text-[10px] font-bold uppercase">
-                  <AlertCircle size={14} className="mr-1" />
+              <div className="bg-slate-50/80 px-5 py-3.5 border-t border-slate-100 flex justify-between items-center">
+                <div className="flex items-center text-[9px] font-black uppercase tracking-widest">
+                  <AlertCircle size={14} className="mr-1.5 text-slate-400" />
                   Ruído: <span className={eq.noise === 'Normal' ? 'text-emerald-600 ml-1' : 'text-red-500 ml-1'}>{eq.noise}</span>
                 </div>
-                <button className="text-blue-600 text-xs font-bold hover:underline uppercase">DETALHES</button>
+                <button className="text-blue-600 text-[10px] font-black hover:underline uppercase tracking-widest">Histórico</button>
               </div>
             </div>
           );
         })}
         {data.equipments.length === 0 && (
-          <div className="col-span-full py-20 bg-white border border-dashed rounded-xl flex flex-col items-center">
-            <Layers size={48} className="text-slate-200 mb-4" />
-            <p className="text-slate-500">Nenhum equipamento cadastrado ainda.</p>
+          <div className="col-span-full py-20 bg-white border-2 border-dashed border-slate-200 rounded-3xl flex flex-col items-center">
+            <Layers size={50} className="text-slate-200 mb-4" />
+            <p className="text-slate-400 font-bold">Nenhum equipamento cadastrado.</p>
           </div>
         )}
       </div>
 
+      {/* Cadastro Modal - Mobile Full Screen */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-2xl w-full max-w-2xl my-8 overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-              <h2 className="text-xl font-bold text-slate-900">{editingEq ? 'Editar Equipamento' : 'Novo Equipamento'}</h2>
-              <button onClick={() => { setIsModalOpen(false); setEditingEq(null); }} className="text-slate-400 hover:text-slate-600">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white md:rounded-2xl w-full h-full md:h-auto md:max-h-[95vh] md:max-w-2xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-300 flex flex-col">
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10 shrink-0">
+              <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">{editingEq ? 'Editar Equipamento' : 'Novo Equipamento'}</h2>
+              <button onClick={() => { setIsModalOpen(false); setEditingEq(null); }} className="p-2.5 bg-slate-50 text-slate-400 hover:text-slate-600 rounded-xl">
                 <X size={24} />
               </button>
             </div>
-            <form onSubmit={handleSubmit} className="p-6 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-sm font-semibold text-slate-700">Condomínio</label>
-                  <select required name="condoId" defaultValue={editingEq?.condoId} className="w-full p-2 border border-slate-200 rounded-lg">
-                    <option value="">Selecione...</option>
+            <form onSubmit={handleSubmit} className="p-5 md:p-8 space-y-6 overflow-y-auto flex-1 scroll-touch">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Condomínio Vinculado</label>
+                  <select required name="condoId" defaultValue={editingEq?.condoId} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700">
+                    <option value="">Selecione um cliente...</option>
                     {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-sm font-semibold text-slate-700">Tipo</label>
-                  <select required name="typeId" defaultValue={editingEq?.typeId} className="w-full p-2 border border-slate-200 rounded-lg">
-                    <option value="">Selecione...</option>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Categoria do Ativo</label>
+                  <select required name="typeId" defaultValue={editingEq?.typeId} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700">
+                    <option value="">Selecione um tipo...</option>
                     {data.equipmentTypes.map((t: EquipmentType) => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-sm font-semibold text-slate-700">Fabricante</label>
-                  <input required name="manufacturer" defaultValue={editingEq?.manufacturer} className="w-full p-2 border border-slate-200 rounded-lg" />
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Fabricante</label>
+                  <input required name="manufacturer" defaultValue={editingEq?.manufacturer} placeholder="Ex: WEG, Schneider" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none font-medium" />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-sm font-semibold text-slate-700">Modelo</label>
-                  <input required name="model" defaultValue={editingEq?.model} className="w-full p-2 border border-slate-200 rounded-lg" />
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Modelo / Identificação</label>
+                  <input required name="model" defaultValue={editingEq?.model} placeholder="Ex: W22 High Efficiency" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none font-medium" />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="space-y-1">
-                  <label className="text-sm font-semibold text-slate-700">Potência</label>
-                  <input required name="power" defaultValue={editingEq?.power} placeholder="Ex: 5CV" className="w-full p-2 border border-slate-200 rounded-lg" />
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Potência</label>
+                  <input required name="power" defaultValue={editingEq?.power} placeholder="Ex: 5CV" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium" />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-sm font-semibold text-slate-700">Tensão</label>
-                  <input required name="voltage" defaultValue={editingEq?.voltage} placeholder="220V" className="w-full p-2 border border-slate-200 rounded-lg" />
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Tensão</label>
+                  <input required name="voltage" defaultValue={editingEq?.voltage} placeholder="220V/380V" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium" />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-sm font-semibold text-slate-700">Corr. Nom. (A)</label>
-                  <input required type="number" step="0.1" name="nominalCurrent" defaultValue={editingEq?.nominalCurrent} className="w-full p-2 border border-slate-200 rounded-lg" />
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Corr. Nom.</label>
+                  <input required type="number" step="0.1" name="nominalCurrent" defaultValue={editingEq?.nominalCurrent} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-sm font-semibold text-slate-700">Corr. Med. (A)</label>
-                  <input required type="number" step="0.1" name="measuredCurrent" defaultValue={editingEq?.measuredCurrent} className="w-full p-2 border border-slate-200 rounded-lg" />
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Corr. Med.</label>
+                  <input required type="number" step="0.1" name="measuredCurrent" defaultValue={editingEq?.measuredCurrent} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-1">
-                  <label className="text-sm font-semibold text-slate-700">Temp. Trabalho (°C)</label>
-                  <input required type="number" name="temperature" defaultValue={editingEq?.temperature} className="w-full p-2 border border-slate-200 rounded-lg" />
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Temperatura (°C)</label>
+                  <input required type="number" name="temperature" defaultValue={editingEq?.temperature} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-sm font-semibold text-slate-700">Ruído</label>
-                  <select required name="noise" defaultValue={editingEq?.noise} className="w-full p-2 border border-slate-200 rounded-lg bg-white">
-                    <option value="Normal">Normal</option>
-                    <option value="Anormal">Anormal</option>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Status de Ruído</label>
+                  <select required name="noise" defaultValue={editingEq?.noise} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold">
+                    <option value="Normal">Operação Normal</option>
+                    <option value="Anormal">Operação Anormal</option>
                   </select>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-sm font-semibold text-slate-700">Estado Elétrico</label>
-                  <select required name="electricalState" defaultValue={editingEq?.electricalState} className="w-full p-2 border border-slate-200 rounded-lg bg-white">
-                    <option value="Bom">Bom</option>
-                    <option value="Regular">Regular</option>
-                    <option value="Crítico">Crítico</option>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Estado Crítico</label>
+                  <select required name="electricalState" defaultValue={editingEq?.electricalState} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold">
+                    <option value="Bom">Bom (Verde)</option>
+                    <option value="Regular">Regular (Amarelo)</option>
+                    <option value="Crítico">Crítico (Vermelho)</option>
                   </select>
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-slate-700">Localização / Observações</label>
-                <textarea name="observations" defaultValue={editingEq?.observations} rows={3} className="w-full p-2 border border-slate-200 rounded-lg"></textarea>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Localização e Notas</label>
+                <textarea name="observations" defaultValue={editingEq?.observations} rows={4} placeholder="Especifique onde o equipamento está instalado e outros detalhes relevantes..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none"></textarea>
               </div>
 
-              <div className="pt-4 flex space-x-3">
-                <button type="button" onClick={() => { setIsModalOpen(false); setEditingEq(null); }} className="flex-1 py-3 border border-slate-200 rounded-xl font-bold text-slate-600">CANCELAR</button>
-                <button type="submit" className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-500/20">
-                  {editingEq ? 'ATUALIZAR' : 'SALVAR EQUIPAMENTO'}
+              <div className="pt-6 flex flex-col-reverse md:flex-row gap-4 shrink-0">
+                <button type="button" onClick={() => { setIsModalOpen(false); setEditingEq(null); }} className="w-full px-6 py-4 border-2 border-slate-100 text-slate-500 font-black rounded-xl uppercase text-xs">Descartar</button>
+                <button type="submit" className="w-full px-6 py-4 bg-blue-600 text-white font-black rounded-xl uppercase text-xs tracking-widest shadow-xl shadow-blue-500/20 active:scale-95 transition-all">
+                  {editingEq ? 'Salvar Alterações' : 'Cadastrar Equipamento'}
                 </button>
               </div>
             </form>
