@@ -15,7 +15,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="SmartGestão">
-    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/192/1035/1035688.png">
+    <link rel="apple-touch-icon" href="https://img.icons8.com/fluency/192/maintenance.png">
 
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -38,24 +38,17 @@
         @media print { .no-print { display: none !important; } }
     </style>
 
-    <!-- Registro do Service Worker: Minimalista e Robusto -->
+    <!-- Registro do Service Worker: Padrão de Produção -->
     <script>
-      // O registro deve ser feito usando um caminho relativo puro. 
-      // Em sandboxes, caminhos absolutos baseados em window.location.origin 
-      // podem falhar se houver redirecionamentos ou frames que mascaram a origem real.
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', function() {
-          // Usar o caminho relativo sem o prefixo './' ou '/' é a forma mais segura
-          // para o navegador resolver a URL contra a base correta do documento atual.
+          // O registro deve apontar para a raiz para garantir o maior escopo possível.
           navigator.serviceWorker.register('sw.js')
             .then(function(reg) {
-              console.log('SmartGestão: Service Worker ativo no escopo:', reg.scope);
+              console.log('SmartGestão: PWA Service Worker ativo.');
             })
             .catch(function(err) {
-              // Em ambientes de desenvolvimento/sandbox muito restritos (como iframes sem allow-same-origin), 
-              // o SW pode ser bloqueado por política de segurança do navegador.
-              // O app continuará funcionando via cache normal e armazenamento local (localStorage).
-              console.warn('SmartGestão: Service Worker não pôde ser registrado neste ambiente de preview:', err.message);
+              console.warn('SmartGestão: Falha ao registrar Service Worker (comum em sandboxes):', err);
             });
         });
       }

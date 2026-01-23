@@ -1,35 +1,31 @@
 
-const CACHE_NAME = 'smart-gestao-pwa-v22';
-const OFFLINE_URL = 'index.html';
-
-const ASSETS_TO_CACHE = [
-  './',
-  'index.html',
-  'manifest.json',
+const CACHE_NAME = 'smart-gestao-v23';
+const OFFLINE_ASSETS = [
+  '/',
+  '/index.html',
+  '/manifest.json',
   'https://cdn.tailwindcss.com',
-  'https://cdn-icons-png.flaticon.com/192/1035/1035688.png',
-  'https://cdn-icons-png.flaticon.com/512/1035/1035688.png'
+  'https://img.icons8.com/fluency/192/maintenance.png',
+  'https://img.icons8.com/fluency/512/maintenance.png'
 ];
 
+// Instalação: Cacheia arquivos fundamentais
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('SW: Pre-cacheando ativos fundamentais');
-      return cache.addAll(ASSETS_TO_CACHE);
+      return cache.addAll(OFFLINE_ASSETS);
     })
   );
   self.skipWaiting();
 });
 
+// Ativação: Limpa caches antigos
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
         keys.map((key) => {
-          if (key !== CACHE_NAME) {
-            console.log('SW: Removendo cache antigo', key);
-            return caches.delete(key);
-          }
+          if (key !== CACHE_NAME) return caches.delete(key);
         })
       );
     })
@@ -37,24 +33,35 @@ self.addEventListener('activate', (event) => {
   return self.clients.claim();
 });
 
+// Fetch: Estratégia Network First com Fallback para Cache
 self.addEventListener('fetch', (event) => {
-  // Ignorar requisições de API para evitar conflitos de CORS no Service Worker
-  if (event.request.url.includes('supabase.co') || event.request.url.includes('google')) {
-    return;
-  }
-
-  if (event.request.mode === 'navigate') {
-    event.respondWith(
-      fetch(event.request).catch(() => {
-        return caches.match(OFFLINE_URL) || caches.match('./');
-      })
-    );
+  // Ignorar requisições de terceiros (Supabase, Google Fonts, etc) para evitar erros de opacidade
+  if (!event.request.url.startsWith(self.location.origin) && !event.request.url.includes('icons8')) {
     return;
   }
 
   event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request).catch(() => null);
-    })
+    fetch(event.request)
+      .then((response) => {
+        // Se a rede responder, atualiza o cache e retorna
+        if (response && response.status === 200) {
+          const responseToCache = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
+        }
+        return response;
+      })
+      .catch(() => {
+        // Se a rede falhar, tenta o cache
+        return caches.match(event.request).then((cachedResponse) => {
+          if (cachedResponse) return cachedResponse;
+          // Se for uma navegação e não tiver cache, retorna a página inicial
+          if (event.request.mode === 'navigate') {
+            return caches.match('/');
+          }
+          return null;
+        });
+      })
   );
 });
