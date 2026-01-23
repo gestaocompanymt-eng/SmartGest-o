@@ -38,18 +38,13 @@
         @media print { .no-print { display: none !important; } }
     </style>
 
-    <!-- Registro do Service Worker Robusto (Resolução via Document URL) -->
+    <!-- Registro do Service Worker -->
     <script>
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function() {
-          // Registra o sw.js relativo à página atual, ignorando a origem do módulo JS
-          navigator.serviceWorker.register('sw.js', { scope: './' })
-            .then(function(reg) {
-              console.log('SmartGestão: PWA Ativo - Escopo:', reg.scope);
-            })
-            .catch(function(err) {
-              console.warn('SmartGestão: Falha ao registrar Service Worker:', err);
-            });
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('sw.js')
+            .then(reg => console.log('SmartGestão: PWA Ativo'))
+            .catch(err => console.log('SmartGestão: Falha no SW', err));
         });
       }
     </script>
