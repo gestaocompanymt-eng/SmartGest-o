@@ -3,15 +3,23 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
-// Registrar Service Worker de forma explícita para o diretório raiz
+/**
+ * Registro do Service Worker para suporte a PWA (Progressive Web App).
+ * 
+ * NOTA DE SEGURANÇA: Utilizamos o caminho relativo './sw.js'. 
+ * Isso instrui o navegador a resolver o script na mesma origem em que o site está sendo servido,
+ * prevenindo erros de "Origin Mismatch" (DOMException) que ocorrem quando se tenta
+ * registrar um worker de um domínio diferente (ex: cross-origin do editor vs preview).
+ */
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js', { scope: '/' })
-      .then(reg => {
-        console.log('SmartGestão: PWA Ativo - Escopo:', reg.scope);
+    navigator.serviceWorker.register('./sw.js')
+      .then(registration => {
+        console.log('SmartGestão: PWA Ativado com sucesso. Escopo:', registration.scope);
       })
-      .catch(err => {
-        console.error('SmartGestão: Erro ao registrar PWA:', err);
+      .catch(error => {
+        // Logamos o erro detalhado para fins de diagnóstico
+        console.warn('SmartGestão: O registro do PWA falhou ou foi bloqueado pelo ambiente:', error);
       });
   });
 }

@@ -1,20 +1,22 @@
 
-const CACHE_NAME = 'smartgestao-cache-v2';
-const OFFLINE_URL = '/index.html';
+const CACHE_NAME = 'smartgestao-cache-v7';
+const OFFLINE_URL = 'index.html';
 
-const ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  'https://cdn.tailwindcss.com',
-  'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap'
+const ASSETS_TO_CACHE = [
+  './',
+  'index.html',
+  'manifest.json',
+  'https://cdn.tailwindcss.com'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('Cache aberto');
-      return cache.addAll(ASSETS);
+      console.log('SW: Cacheando ativos base');
+      // Tentativa de cachear um por um para evitar falha total se um recurso falhar
+      return Promise.allSettled(
+        ASSETS_TO_CACHE.map(url => cache.add(url))
+      );
     })
   );
   self.skipWaiting();
@@ -22,34 +24,32 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
+    caches.keys().then((keys) => {
       return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
-            return caches.delete(cacheName);
+        keys.map((key) => {
+          if (key !== CACHE_NAME) {
+            console.log('SW: Removendo cache obsoleto:', key);
+            return caches.delete(key);
           }
         })
       );
     })
   );
-  self.clients.claim();
+  return self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
-  // Apenas lidar com requisições GET
-  if (event.request.method !== 'GET') return;
-
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-      return fetch(event.request).catch(() => {
-        // Se falhar e for uma navegação de página, retorna o index.html
-        if (event.request.mode === 'navigate') {
-          return caches.match(OFFLINE_URL);
-        }
-      });
-    })
-  );
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request).catch(() => {
+        return caches.match(OFFLINE_URL);
+      })
+    );
+  } else {
+    event.respondWith(
+      caches.match(event.request).then((response) => {
+        return response || fetch(event.request).catch(() => null);
+      })
+    );
+  }
 });
