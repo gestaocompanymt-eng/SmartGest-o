@@ -34,14 +34,20 @@ import Login from './pages/Login';
 
 const AppContent: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
-  const [data, setData] = useState<AppData>(getStore());
+  const [data, setData] = useState<AppData | null>(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isSyncing, setIsSyncing] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Inicialização do estado
+  useEffect(() => {
+    const initialData = getStore();
+    setData(initialData);
+  }, []);
+
   const fetchFromSupabase = useCallback(async () => {
-    if (!navigator.onLine) return;
+    if (!navigator.onLine || !supabase) return;
     
     setIsSyncing(true);
     try {
@@ -64,6 +70,7 @@ const AppContent: React.FC = () => {
       ]);
 
       setData(prev => {
+        if (!prev) return prev;
         const newData: AppData = {
           ...prev,
           condos: condos && condos.length > 0 ? condos : prev.condos,
@@ -85,7 +92,9 @@ const AppContent: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    fetchFromSupabase();
+    if (data) {
+      fetchFromSupabase();
+    }
     
     const handleOnline = () => {
       setIsOnline(true);
@@ -100,15 +109,14 @@ const AppContent: React.FC = () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [fetchFromSupabase]);
+  }, [fetchFromSupabase, !!data]);
 
   const updateData = async (newData: AppData) => {
     setData(newData);
     saveStore(newData);
 
-    if (navigator.onLine) {
+    if (navigator.onLine && supabase) {
       try {
-        // Upsert sincronizado para todas as tabelas
         await Promise.all([
           newData.condos.length > 0 && supabase.from('condos').upsert(newData.condos),
           newData.equipments.length > 0 && supabase.from('equipments').upsert(newData.equipments),
@@ -125,11 +133,20 @@ const AppContent: React.FC = () => {
   };
 
   const handleLogout = () => {
+    if (!data) return;
     const newData = { ...data, currentUser: null };
     setData(newData);
     saveStore(newData);
     navigate('/login');
   };
+
+  if (!data) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white font-bold">
+        INICIALIZANDO SISTEMA...
+      </div>
+    );
+  }
 
   if (!data.currentUser && location.pathname !== '/login') {
     return <Login onLogin={(user) => {
@@ -196,7 +213,7 @@ const AppContent: React.FC = () => {
         <div className="absolute bottom-0 w-full p-4 bg-slate-900 border-t border-slate-800">
           <div className="flex items-center space-x-3 mb-4 px-2">
             <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center font-bold text-white">
-              {data.currentUser?.name.charAt(0)}
+              {data.currentUser?.name.charAt(0) || 'U'}
             </div>
             <div className="overflow-hidden">
               <p className="text-sm font-semibold truncate">{data.currentUser?.name}</p>

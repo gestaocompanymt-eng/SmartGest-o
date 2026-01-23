@@ -1,13 +1,24 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { Equipment } from "./types";
+
+// Função auxiliar para obter a chave de forma segura
+const getApiKey = () => {
+  try {
+    return typeof process !== 'undefined' ? process.env.API_KEY : '';
+  } catch (e) {
+    return '';
+  }
+};
 
 /**
  * Analisa os dados técnicos de um equipamento para identificar riscos.
- * Utiliza o modelo gemini-3-pro-preview para raciocínio técnico avançado.
  */
 export const analyzeEquipmentState = async (equipment: Equipment) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = getApiKey();
+  if (!apiKey) return "Análise indisponível: API Key não configurada.";
+
+  const ai = new GoogleGenAI({ apiKey });
   const prompt = `Analise os seguintes dados técnicos de um equipamento de condomínio e forneça um breve parecer técnico (máx 3 frases):
     Tipo: ${equipment.typeId}
     Corrente Nominal: ${equipment.nominalCurrent}A
@@ -22,9 +33,6 @@ export const analyzeEquipmentState = async (equipment: Equipment) => {
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
       contents: prompt,
-      config: {
-        thinkingConfig: { thinkingBudget: 0 }
-      }
     });
     return response.text;
   } catch (error) {
@@ -37,7 +45,10 @@ export const analyzeEquipmentState = async (equipment: Equipment) => {
  * Gera um resumo executivo do status técnico de um condomínio.
  */
 export const generateTechnicalSummary = async (condoName: string, recentOS: any[]) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = getApiKey();
+  if (!apiKey) return "Resumo indisponível.";
+
+  const ai = new GoogleGenAI({ apiKey });
   const prompt = `Resuma o status técnico do condomínio ${condoName} baseado nas últimas ordens de serviço:
     ${JSON.stringify(recentOS)}
     Escreva um parágrafo executivo para o síndico destacando a saúde dos sistemas.`;
