@@ -2,6 +2,10 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Equipment } from "./types";
 
+/**
+ * Analisa os dados técnicos de um equipamento para identificar riscos.
+ * Utiliza o modelo gemini-3-pro-preview para raciocínio técnico avançado.
+ */
 export const analyzeEquipmentState = async (equipment: Equipment) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const prompt = `Analise os seguintes dados técnicos de um equipamento de condomínio e forneça um breve parecer técnico (máx 3 frases):
@@ -16,7 +20,7 @@ export const analyzeEquipmentState = async (equipment: Equipment) => {
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3-pro-preview',
       contents: prompt,
       config: {
         thinkingConfig: { thinkingBudget: 0 }
@@ -29,6 +33,9 @@ export const analyzeEquipmentState = async (equipment: Equipment) => {
   }
 };
 
+/**
+ * Gera um resumo executivo do status técnico de um condomínio.
+ */
 export const generateTechnicalSummary = async (condoName: string, recentOS: any[]) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const prompt = `Resuma o status técnico do condomínio ${condoName} baseado nas últimas ordens de serviço:

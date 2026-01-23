@@ -1,10 +1,12 @@
 
 import React, { useState } from 'react';
-import { UserPlus, User, Mail, Shield, Plus, Settings2, Trash2, Save } from 'lucide-react';
-import { UserRole, EquipmentType, SystemType } from '../types';
+import { UserPlus, User, Mail, Shield, Plus, Settings2, Trash2, Edit2, X, Key, CheckCircle2, Save } from 'lucide-react';
+import { UserRole, EquipmentType, User as UserType } from '../types';
 
 const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
   const [newTypeName, setNewTypeName] = useState('');
+  const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserType | null>(null);
 
   const addEquipmentType = () => {
     if (!newTypeName) return;
@@ -18,6 +20,45 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
 
   const removeEquipmentType = (id: string) => {
     updateData({ ...data, equipmentTypes: data.equipmentTypes.filter((t: any) => t.id !== id) });
+  };
+
+  const handleUserSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const userData: UserType = {
+      id: editingUser?.id || Math.random().toString(36).substr(2, 9),
+      name: formData.get('name') as string,
+      email: formData.get('email') as string,
+      role: formData.get('role') as UserRole,
+      password: formData.get('password') as string,
+    };
+
+    if (editingUser) {
+      updateData({
+        ...data,
+        users: data.users.map((u: UserType) => u.id === editingUser.id ? userData : u)
+      });
+    } else {
+      updateData({
+        ...data,
+        users: [...data.users, userData]
+      });
+    }
+    setIsUserModalOpen(false);
+    setEditingUser(null);
+  };
+
+  const deleteUser = (id: string) => {
+    if (data.users.length <= 1) {
+      alert("Não é possível remover o único usuário do sistema.");
+      return;
+    }
+    if (confirm('Tem certeza que deseja remover este usuário?')) {
+      updateData({
+        ...data,
+        users: data.users.filter((u: UserType) => u.id !== id)
+      });
+    }
   };
 
   return (
@@ -34,12 +75,15 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
             <h3 className="font-bold text-slate-800 flex items-center">
               <User size={20} className="mr-2 text-blue-500" /> Equipe Técnica
             </h3>
-            <button className="text-xs font-bold text-blue-600 flex items-center hover:underline">
+            <button 
+              onClick={() => { setEditingUser(null); setIsUserModalOpen(true); }}
+              className="text-xs font-bold text-blue-600 flex items-center hover:underline"
+            >
               <UserPlus size={16} className="mr-1" /> ADICIONAR TÉCNICO
             </button>
           </div>
           <div className="divide-y divide-slate-100">
-            {data.users.map((user: any) => (
+            {data.users.map((user: UserType) => (
               <div key={user.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
                 <div className="flex items-center space-x-3">
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white ${
@@ -48,16 +92,32 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                     {user.name.charAt(0)}
                   </div>
                   <div>
-                    <p className="font-bold text-slate-900 text-sm">{user.name}</p>
+                    <div className="flex items-center space-x-2">
+                      <p className="font-bold text-slate-900 text-sm">{user.name}</p>
+                      <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${
+                        user.role === UserRole.ADMIN ? 'bg-slate-100 text-slate-600' : 'bg-blue-100 text-blue-700'
+                      }`}>
+                        {user.role}
+                      </span>
+                    </div>
                     <p className="text-xs text-slate-400 flex items-center">
                       <Mail size={12} className="mr-1" /> {user.email}
                     </p>
                   </div>
                 </div>
-                <div className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${
-                  user.role === UserRole.ADMIN ? 'bg-slate-100 text-slate-600' : 'bg-blue-100 text-blue-700'
-                }`}>
-                  {user.role}
+                <div className="flex space-x-1">
+                  <button 
+                    onClick={() => { setEditingUser(user); setIsUserModalOpen(true); }}
+                    className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                  >
+                    <Edit2 size={16} />
+                  </button>
+                  <button 
+                    onClick={() => deleteUser(user.id)}
+                    className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  >
+                    <Trash2 size={16} />
+                  </button>
                 </div>
               </div>
             ))}
@@ -101,18 +161,15 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                 </div>
               ))}
             </div>
-            <p className="text-[10px] text-slate-400 italic font-medium">
-              * O administrador pode criar novos tipos para expandir o formulário de cadastro dinamicamente.
-            </p>
           </div>
         </div>
 
-        {/* System Settings & Data Control */}
+        {/* Data Control Section */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 col-span-full">
            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
               <div>
-                <h3 className="font-bold text-slate-800">Controle de Dados & Backup</h3>
-                <p className="text-sm text-slate-500">Sincronização offline e exportação de relatórios gerenciais.</p>
+                <h3 className="font-bold text-slate-800">Controle de Dados & Segurança</h3>
+                <p className="text-sm text-slate-500">Sincronização em tempo real com Supabase.</p>
               </div>
               <div className="flex space-x-3">
                  <button className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors">
@@ -126,30 +183,81 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
            
            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100">
-                 <p className="text-xs font-bold text-emerald-700 uppercase mb-1">Status do Servidor</p>
-                 <p className="text-sm font-semibold text-emerald-600 flex items-center">
+                 <p className="text-xs font-bold text-emerald-700 uppercase mb-1 text-center md:text-left">Status do Servidor</p>
+                 <p className="text-sm font-semibold text-emerald-600 flex items-center justify-center md:justify-start">
                     <CheckCircle2 size={14} className="mr-1" /> OPERACIONAL
                  </p>
               </div>
               <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
-                 <p className="text-xs font-bold text-blue-700 uppercase mb-1">Último Backup</p>
-                 <p className="text-sm font-semibold text-blue-600">HOJE ÀS 14:30</p>
+                 <p className="text-xs font-bold text-blue-700 uppercase mb-1 text-center md:text-left">Supabase Sync</p>
+                 <p className="text-sm font-semibold text-blue-600 text-center md:text-left uppercase">Ativo</p>
               </div>
-              <div className="p-4 bg-amber-50 rounded-xl border border-amber-100">
-                 <p className="text-xs font-bold text-amber-700 uppercase mb-1">Armazenamento Local</p>
-                 <p className="text-sm font-semibold text-amber-600">1.2 MB / 10 MB</p>
+              <div className="p-4 bg-amber-50 rounded-xl border border-amber-100 text-center md:text-left">
+                 <p className="text-xs font-bold text-amber-700 uppercase mb-1">Cache Local</p>
+                 <p className="text-sm font-semibold text-amber-600">Sincronizado</p>
               </div>
            </div>
         </div>
       </div>
+
+      {/* User Management Modal */}
+      {isUserModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+              <h2 className="text-xl font-bold text-slate-900">{editingUser ? 'Editar Usuário' : 'Novo Técnico/Admin'}</h2>
+              <button onClick={() => setIsUserModalOpen(false)} className="p-1 text-slate-400 hover:text-slate-600">
+                <X size={24} />
+              </button>
+            </div>
+            <form onSubmit={handleUserSubmit} className="p-6 space-y-4">
+              <div className="space-y-1">
+                <label className="text-sm font-semibold text-slate-700">Nome Completo</label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                  <input required name="name" defaultValue={editingUser?.name} placeholder="Ex: João Silva" className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none" />
+                </div>
+              </div>
+              
+              <div className="space-y-1">
+                <label className="text-sm font-semibold text-slate-700">Login / E-mail</label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                  <input required name="email" defaultValue={editingUser?.email} placeholder="Ex: joao@empresa.com" className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none" />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-semibold text-slate-700">Senha</label>
+                <div className="relative">
+                  <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                  <input required name="password" type="text" defaultValue={editingUser?.password} placeholder="••••••••" className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none" />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-semibold text-slate-700">Papel / Acesso</label>
+                <div className="relative">
+                  <Shield className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                  <select name="role" defaultValue={editingUser?.role || UserRole.TECHNICIAN} className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none appearance-none bg-white">
+                    <option value={UserRole.ADMIN}>Administrador (Acesso Total)</option>
+                    <option value={UserRole.TECHNICIAN}>Técnico (Apenas Operacional)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="pt-4 flex space-x-3">
+                <button type="button" onClick={() => setIsUserModalOpen(false)} className="flex-1 px-4 py-2 border border-slate-200 text-slate-600 font-semibold rounded-lg hover:bg-slate-50">Cancelar</button>
+                <button type="submit" className="flex-1 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 flex items-center justify-center">
+                  <Save size={18} className="mr-2" /> Salvar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
-
-const CheckCircle2 = ({ size, className }: { size: number, className: string }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/>
-  </svg>
-);
 
 export default AdminSettings;

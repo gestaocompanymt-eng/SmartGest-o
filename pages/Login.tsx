@@ -17,19 +17,19 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
     const user = data.users.find(u => u.email.toLowerCase() === email.toLowerCase());
     
     if (user) {
-      // Validação específica para o admin conforme solicitado
-      if (user.email.toLowerCase() === 'admin') {
-        if (password === '123') {
+      // Se o usuário tem senha cadastrada, valida. Se não (técnicos antigos), permite qualquer uma para compatibilidade
+      if (user.password) {
+        if (password === user.password) {
           onLogin(user);
         } else {
-          setError('Senha incorreta para o perfil de administrador.');
+          setError('Senha incorreta.');
         }
       } else {
-        // Para outros usuários (técnicos), permite acesso direto nesta versão demo
+        // Fallback para usuários sem senha (tecnicos antigos na demo)
         onLogin(user);
       }
     } else {
-      setError('Usuário não encontrado. Tente "admin"');
+      setError('Usuário não encontrado.');
     }
   };
 
@@ -103,7 +103,7 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
                  <Sparkles size={16} />
               </div>
               <p className="text-[10px] text-blue-700 font-medium leading-relaxed">
-                Utilize o usuário <span className="font-bold">admin</span> e senha <span className="font-bold">123</span> para testar.
+                Configure os acessos de sua equipe no menu Administração após o login.
               </p>
            </div>
         </div>

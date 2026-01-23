@@ -4,16 +4,14 @@ import { INITIAL_EQUIPMENT_TYPES, INITIAL_SYSTEM_TYPES } from './constants';
 
 const STORAGE_KEY = 'smart_gestao_data';
 
-// AppData interface has been moved to types.ts to be shared across components
-
 const initialData: AppData = {
   condos: [],
   equipments: [],
   systems: [],
   serviceOrders: [],
   users: [
-    { id: 'admin1', name: 'Admin Principal', role: UserRole.ADMIN, email: 'admin' },
-    { id: 'tech1', name: 'Carlos Técnico', role: UserRole.TECHNICIAN, email: 'carlos@smartgestao.com' }
+    { id: 'admin1', name: 'Admin Principal', role: UserRole.ADMIN, email: 'admin', password: '123' },
+    { id: 'tech1', name: 'Carlos Técnico', role: UserRole.TECHNICIAN, email: 'carlos@smartgestao.com', password: '123' }
   ],
   equipmentTypes: INITIAL_EQUIPMENT_TYPES,
   systemTypes: INITIAL_SYSTEM_TYPES,

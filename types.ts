@@ -92,6 +92,7 @@ export interface User {
   name: string;
   role: UserRole;
   email: string;
+  password?: string;
 }
 
 // AppData interface centralizing the application state structure
