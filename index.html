@@ -38,18 +38,24 @@
         @media print { .no-print { display: none !important; } }
     </style>
 
-    <!-- Registro do Service Worker Robusto para Prevenir Origin Mismatch -->
+    <!-- Registro do Service Worker: Minimalista e Robusto -->
     <script>
+      // O registro deve ser feito usando um caminho relativo puro. 
+      // Em sandboxes, caminhos absolutos baseados em window.location.origin 
+      // podem falhar se houver redirecionamentos ou frames que mascaram a origem real.
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          // Resolve o caminho do sw.js relativo à página atual, não ao domínio pai
-          const swPath = new URL('sw.js', window.location.href).pathname;
-          navigator.serviceWorker.register(swPath, { scope: './' })
-            .then(reg => console.log('SmartGestão: PWA Ativo - Escopo:', reg.scope))
-            .catch(err => {
-              console.error('SmartGestão: Falha no SW:', err);
-              // Fallback simples se o URL dinâmico falhar
-              navigator.serviceWorker.register('./sw.js').catch(() => {});
+        window.addEventListener('load', function() {
+          // Usar o caminho relativo sem o prefixo './' ou '/' é a forma mais segura
+          // para o navegador resolver a URL contra a base correta do documento atual.
+          navigator.serviceWorker.register('sw.js')
+            .then(function(reg) {
+              console.log('SmartGestão: Service Worker ativo no escopo:', reg.scope);
+            })
+            .catch(function(err) {
+              // Em ambientes de desenvolvimento/sandbox muito restritos (como iframes sem allow-same-origin), 
+              // o SW pode ser bloqueado por política de segurança do navegador.
+              // O app continuará funcionando via cache normal e armazenamento local (localStorage).
+              console.warn('SmartGestão: Service Worker não pôde ser registrado neste ambiente de preview:', err.message);
             });
         });
       }

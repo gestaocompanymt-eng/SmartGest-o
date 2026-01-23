@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'smart-gestao-pwa-v20';
+const CACHE_NAME = 'smart-gestao-pwa-v22';
 const OFFLINE_URL = 'index.html';
 
 const ASSETS_TO_CACHE = [
@@ -14,7 +14,7 @@ const ASSETS_TO_CACHE = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('SW: Pre-caching fundamental assets');
+      console.log('SW: Pre-cacheando ativos fundamentais');
       return cache.addAll(ASSETS_TO_CACHE);
     })
   );
@@ -27,7 +27,7 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         keys.map((key) => {
           if (key !== CACHE_NAME) {
-            console.log('SW: Removing old cache', key);
+            console.log('SW: Removendo cache antigo', key);
             return caches.delete(key);
           }
         })
