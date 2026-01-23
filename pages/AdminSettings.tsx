@@ -163,41 +163,6 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
             </div>
           </div>
         </div>
-
-        {/* Data Control Section */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 col-span-full">
-           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-              <div>
-                <h3 className="font-bold text-slate-800">Controle de Dados & Segurança</h3>
-                <p className="text-sm text-slate-500">Sincronização em tempo real com Supabase.</p>
-              </div>
-              <div className="flex space-x-3">
-                 <button className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors">
-                   EXPORTAR DB (JSON)
-                 </button>
-                 <button className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-bold hover:bg-slate-800 transition-colors shadow-md">
-                   SINCRONIZAR AGORA
-                 </button>
-              </div>
-           </div>
-           
-           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100">
-                 <p className="text-xs font-bold text-emerald-700 uppercase mb-1 text-center md:text-left">Status do Servidor</p>
-                 <p className="text-sm font-semibold text-emerald-600 flex items-center justify-center md:justify-start">
-                    <CheckCircle2 size={14} className="mr-1" /> OPERACIONAL
-                 </p>
-              </div>
-              <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
-                 <p className="text-xs font-bold text-blue-700 uppercase mb-1 text-center md:text-left">Supabase Sync</p>
-                 <p className="text-sm font-semibold text-blue-600 text-center md:text-left uppercase">Ativo</p>
-              </div>
-              <div className="p-4 bg-amber-50 rounded-xl border border-amber-100 text-center md:text-left">
-                 <p className="text-xs font-bold text-amber-700 uppercase mb-1">Cache Local</p>
-                 <p className="text-sm font-semibold text-amber-600">Sincronizado</p>
-              </div>
-           </div>
-        </div>
       </div>
 
       {/* User Management Modal */}

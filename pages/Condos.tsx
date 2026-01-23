@@ -1,12 +1,20 @@
 
 import React, { useState } from 'react';
-import { Plus, Search, Building2, MapPin, User, Calendar, MoreVertical, Edit2, Trash2, X } from 'lucide-react';
-import { Condo, ContractType } from '../types';
+import { 
+  Plus, Search, Building2, MapPin, User, Calendar, 
+  Edit2, Trash2, X, FileText, Printer, Sparkles, 
+  Activity, CheckCircle2, AlertTriangle, Download
+} from 'lucide-react';
+import { Condo, ContractType, Equipment, ServiceOrder, OSStatus } from '../types';
+import { generateTechnicalSummary } from '../geminiService';
 
 const Condos: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [reportCondo, setReportCondo] = useState<Condo | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingCondo, setEditingCondo] = useState<Condo | null>(null);
+  const [aiSummary, setAiSummary] = useState<string>('');
+  const [loadingSummary, setLoadingSummary] = useState(false);
 
   const filteredCondos = data.condos.filter((c: Condo) => 
     c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -47,6 +55,17 @@ const Condos: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, u
         condos: data.condos.filter((c: Condo) => c.id !== id)
       });
     }
+  };
+
+  const handleOpenReport = async (condo: Condo) => {
+    setReportCondo(condo);
+    setAiSummary('');
+    setLoadingSummary(true);
+    
+    const recentOS = data.serviceOrders.filter((os: ServiceOrder) => os.condoId === condo.id).slice(0, 5);
+    const summary = await generateTechnicalSummary(condo.name, recentOS);
+    setAiSummary(summary || 'Resumo indisponível.');
+    setLoadingSummary(false);
   };
 
   return (
@@ -114,12 +133,20 @@ const Condos: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, u
             <div className={`px-6 py-3 border-t flex justify-between items-center ${
               condo.contractType === ContractType.CONTINUOUS ? 'bg-emerald-50 border-emerald-100' : 'bg-slate-50 border-slate-100'
             }`}>
-              <span className={`text-xs font-bold uppercase tracking-wider ${
+              <span className={`text-[10px] font-bold uppercase tracking-wider ${
                 condo.contractType === ContractType.CONTINUOUS ? 'text-emerald-700' : 'text-slate-600'
               }`}>
                 {condo.contractType}
               </span>
-              <button className="text-blue-600 text-xs font-bold hover:underline">VER ATIVOS</button>
+              <div className="flex space-x-3">
+                 <button 
+                  onClick={() => handleOpenReport(condo)}
+                  className="text-slate-600 text-[10px] font-bold hover:text-blue-600 uppercase flex items-center"
+                 >
+                   <FileText size={12} className="mr-1" /> Relatório
+                 </button>
+                 <button className="text-blue-600 text-[10px] font-bold hover:underline uppercase">Ativos</button>
+              </div>
             </div>
           </div>
         ))}
@@ -130,6 +157,149 @@ const Condos: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, u
           </div>
         )}
       </div>
+
+      {/* Report Modal */}
+      {reportCondo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl w-full max-w-4xl my-8 overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <div className="flex items-center space-x-3">
+                <div className="bg-slate-900 p-2 rounded-lg text-white">
+                  <FileText size={20} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900 leading-none">Relatório Técnico Mensal</h2>
+                  <p className="text-xs text-slate-500 mt-1 font-medium">{reportCondo.name} • {new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</p>
+                </div>
+              </div>
+              <div className="flex space-x-2 no-print">
+                <button onClick={() => window.print()} className="p-2 text-slate-600 hover:bg-slate-200 rounded-lg transition-colors border">
+                  <Printer size={20} />
+                </button>
+                <button onClick={() => setReportCondo(null)} className="p-2 text-slate-400 hover:text-slate-600">
+                  <X size={24} />
+                </button>
+              </div>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-8 space-y-8" id="printable-report">
+              {/* Header Info */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Responsável</p>
+                  <p className="text-sm font-bold text-slate-800">{reportCondo.manager}</p>
+                </div>
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Contrato</p>
+                  <p className="text-sm font-bold text-slate-800">{reportCondo.contractType}</p>
+                </div>
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Vigência desde</p>
+                  <p className="text-sm font-bold text-slate-800">{new Date(reportCondo.startDate).toLocaleDateString()}</p>
+                </div>
+              </div>
+
+              {/* Technical Summary AI */}
+              <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
+                <Sparkles className="absolute top-4 right-4 opacity-20" size={40} />
+                <h3 className="text-lg font-bold mb-4 flex items-center">
+                  <Activity size={20} className="mr-2" /> Parecer do Especialista (IA)
+                </h3>
+                {loadingSummary ? (
+                   <div className="animate-pulse space-y-2">
+                     <div className="h-4 bg-white/20 rounded w-3/4"></div>
+                     <div className="h-4 bg-white/20 rounded w-5/6"></div>
+                   </div>
+                ) : (
+                  <p className="text-sm leading-relaxed text-blue-50 font-medium">
+                    {aiSummary}
+                  </p>
+                )}
+              </div>
+
+              {/* Stats & Totals */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                 <div className="border border-slate-200 rounded-2xl p-5 flex items-center space-x-4">
+                    <div className="bg-blue-100 p-3 rounded-xl text-blue-600">
+                      <Download size={24} />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-slate-900">
+                        {data.equipments.filter((e: Equipment) => e.condoId === reportCondo.id).length}
+                      </p>
+                      <p className="text-xs font-bold text-slate-400 uppercase">Ativos Cadastrados</p>
+                    </div>
+                 </div>
+                 <div className="border border-slate-200 rounded-2xl p-5 flex items-center space-x-4">
+                    <div className="bg-emerald-100 p-3 rounded-xl text-emerald-600">
+                      <CheckCircle2 size={24} />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-slate-900">
+                        {data.serviceOrders.filter((os: ServiceOrder) => os.condoId === reportCondo.id && os.status === OSStatus.COMPLETED).length}
+                      </p>
+                      <p className="text-xs font-bold text-slate-400 uppercase">OS Concluídas</p>
+                    </div>
+                 </div>
+                 <div className="border border-slate-200 rounded-2xl p-5 flex items-center space-x-4">
+                    <div className="bg-red-100 p-3 rounded-xl text-red-600">
+                      <AlertTriangle size={24} />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-slate-900">
+                        {data.equipments.filter((e: Equipment) => e.condoId === reportCondo.id && e.electricalState === 'Crítico').length}
+                      </p>
+                      <p className="text-xs font-bold text-slate-400 uppercase">Pontos Críticos</p>
+                    </div>
+                 </div>
+              </div>
+
+              {/* Equipment Table */}
+              <div className="space-y-4">
+                <h3 className="font-bold text-slate-900 flex items-center">
+                   <Activity size={18} className="mr-2 text-blue-600" /> Inventário de Ativos
+                </h3>
+                <div className="border rounded-xl overflow-hidden">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-[10px]">
+                      <tr>
+                        <th className="px-4 py-3">Equipamento</th>
+                        <th className="px-4 py-3 text-center">Saúde</th>
+                        <th className="px-4 py-3 text-center">Temp.</th>
+                        <th className="px-4 py-3 text-center">Corr. (A)</th>
+                        <th className="px-4 py-3">Localização</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {data.equipments.filter((e: Equipment) => e.condoId === reportCondo.id).map((eq: Equipment) => (
+                        <tr key={eq.id} className="hover:bg-slate-50">
+                          <td className="px-4 py-3 font-semibold text-slate-700">{eq.manufacturer} - {eq.model}</td>
+                          <td className="px-4 py-3 text-center">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                              eq.electricalState === 'Bom' ? 'bg-emerald-100 text-emerald-700' :
+                              eq.electricalState === 'Regular' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+                            }`}>
+                              {eq.electricalState}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-center text-slate-600">{eq.temperature}°C</td>
+                          <td className="px-4 py-3 text-center text-slate-600">{eq.measuredCurrent} / {eq.nominalCurrent}</td>
+                          <td className="px-4 py-3 text-slate-500">{eq.location}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-6 bg-slate-50 border-t flex justify-between items-center text-[10px] text-slate-400 font-bold uppercase">
+              <div>SmartGestão v2.4.0 • Gerado em {new Date().toLocaleString()}</div>
+              <div>Página 1 de 1</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
@@ -175,6 +345,17 @@ const Condos: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, u
           </div>
         </div>
       )}
+
+      <style>{`
+        @media print {
+          .no-print { display: none !important; }
+          body { background: white !important; }
+          #printable-report { height: auto !important; overflow: visible !important; }
+          .fixed { position: static !important; background: white !important; }
+          .max-h-\\[90vh\\] { max-height: none !important; }
+          .shadow-2xl { shadow: none !important; }
+        }
+      `}</style>
     </div>
   );
 };
