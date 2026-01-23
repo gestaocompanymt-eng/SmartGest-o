@@ -20,7 +20,8 @@ import {
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
-import { UserRole, User } from './types';
+import { UserRole, User, AppData } from './types';
+import { supabase } from './supabase';
 
 // Pages
 import Dashboard from './pages/Dashboard';
@@ -33,35 +34,108 @@ import Login from './pages/Login';
 
 const AppContent: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
-  const [data, setData] = useState(getStore());
+  const [data, setData] = useState<AppData>(getStore());
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isSyncing, setIsSyncing] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
+  const fetchFromSupabase = useCallback(async () => {
+    if (!navigator.onLine) return;
+    
+    setIsSyncing(true);
+    try {
+      const [
+        { data: condos },
+        { data: equipments },
+        { data: systems },
+        { data: serviceOrders },
+        { data: users },
+        { data: equipmentTypes },
+        { data: systemTypes }
+      ] = await Promise.all([
+        supabase.from('condos').select('*'),
+        supabase.from('equipments').select('*'),
+        supabase.from('systems').select('*'),
+        supabase.from('service_orders').select('*'),
+        supabase.from('users').select('*'),
+        supabase.from('equipment_types').select('*'),
+        supabase.from('system_types').select('*')
+      ]);
+
+      setData(prev => {
+        const newData: AppData = {
+          ...prev,
+          condos: condos && condos.length > 0 ? condos : prev.condos,
+          equipments: equipments && equipments.length > 0 ? equipments : prev.equipments,
+          systems: systems && systems.length > 0 ? systems : prev.systems,
+          serviceOrders: serviceOrders && serviceOrders.length > 0 ? serviceOrders : prev.serviceOrders,
+          users: users && users.length > 0 ? users : prev.users,
+          equipmentTypes: equipmentTypes && equipmentTypes.length > 0 ? equipmentTypes : prev.equipmentTypes,
+          systemTypes: systemTypes && systemTypes.length > 0 ? systemTypes : prev.systemTypes,
+        };
+        saveStore(newData);
+        return newData;
+      });
+    } catch (error) {
+      console.error('Erro ao sincronizar com Supabase:', error);
+    } finally {
+      setIsSyncing(false);
+    }
+  }, []);
+
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
+    fetchFromSupabase();
+    
+    const handleOnline = () => {
+      setIsOnline(true);
+      fetchFromSupabase();
+    };
     const handleOffline = () => setIsOnline(false);
+    
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [fetchFromSupabase]);
 
-  const updateData = (newData: any) => {
+  const updateData = async (newData: AppData) => {
     setData(newData);
     saveStore(newData);
+
+    if (navigator.onLine) {
+      try {
+        // Upsert sincronizado para todas as tabelas
+        await Promise.all([
+          newData.condos.length > 0 && supabase.from('condos').upsert(newData.condos),
+          newData.equipments.length > 0 && supabase.from('equipments').upsert(newData.equipments),
+          newData.systems.length > 0 && supabase.from('systems').upsert(newData.systems),
+          newData.serviceOrders.length > 0 && supabase.from('service_orders').upsert(newData.serviceOrders),
+          newData.users.length > 0 && supabase.from('users').upsert(newData.users),
+          newData.equipmentTypes.length > 0 && supabase.from('equipment_types').upsert(newData.equipmentTypes),
+          newData.systemTypes.length > 0 && supabase.from('system_types').upsert(newData.systemTypes)
+        ].filter(Boolean));
+      } catch (error) {
+        console.error('Erro ao fazer push para Supabase:', error);
+      }
+    }
   };
 
   const handleLogout = () => {
-    updateData({ ...data, currentUser: null });
+    const newData = { ...data, currentUser: null };
+    setData(newData);
+    saveStore(newData);
     navigate('/login');
   };
 
   if (!data.currentUser && location.pathname !== '/login') {
     return <Login onLogin={(user) => {
-      updateData({ ...data, currentUser: user });
+      const newData = { ...data, currentUser: user };
+      setData(newData);
+      saveStore(newData);
       navigate('/');
     }} />;
   }
@@ -142,8 +216,9 @@ const AppContent: React.FC = () => {
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0">
         <header className="bg-white border-b border-slate-200 h-16 hidden md:flex items-center justify-between px-8 sticky top-0 z-30">
-          <div className="flex items-center space-x-2 text-slate-400">
-            <span className="text-sm font-medium">Área do {data.currentUser?.role === 'ADMIN' ? 'Administrador' : 'Técnico'}</span>
+          <div className="flex items-center space-x-4">
+            <span className="text-sm font-medium text-slate-400">Área do {data.currentUser?.role === 'ADMIN' ? 'Administrador' : 'Técnico'}</span>
+            {isSyncing && <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded-full animate-pulse font-bold">SINCRONIZANDO...</span>}
           </div>
           <div className="flex items-center space-x-6">
              <div className="flex items-center space-x-2 text-xs font-medium">
@@ -172,7 +247,11 @@ const AppContent: React.FC = () => {
             <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} />} />
             <Route path="/os" element={<ServiceOrders data={data} updateData={updateData} />} />
             <Route path="/admin" element={<AdminSettings data={data} updateData={updateData} />} />
-            <Route path="/login" element={<Login onLogin={(user) => updateData({ ...data, currentUser: user })} />} />
+            <Route path="/login" element={<Login onLogin={(user) => {
+              const newData = { ...data, currentUser: user };
+              setData(newData);
+              saveStore(newData);
+            }} />} />
           </Routes>
         </div>
       </main>
