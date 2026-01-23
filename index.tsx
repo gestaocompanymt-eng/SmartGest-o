@@ -3,12 +3,16 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
-// Registrar Service Worker para PWA
+// Registrar Service Worker de forma explícita para o diretório raiz
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js')
-      .then(reg => console.log('Service Worker registrado!', reg))
-      .catch(err => console.log('Falha ao registrar Service Worker:', err));
+    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+      .then(reg => {
+        console.log('SmartGestão: PWA Ativo - Escopo:', reg.scope);
+      })
+      .catch(err => {
+        console.error('SmartGestão: Erro ao registrar PWA:', err);
+      });
   });
 }
 
