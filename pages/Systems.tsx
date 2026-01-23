@@ -1,29 +1,49 @@
 
 import React, { useState } from 'react';
-import { Plus, Settings, Monitor, Activity, ShieldAlert, Cpu } from 'lucide-react';
-import { System, SystemType, Condo, Equipment } from '../types';
+import { Plus, Settings, Monitor, Activity, Edit2, Trash2, X, Cpu } from 'lucide-react';
+import { System, SystemType, Condo, UserRole } from '../types';
 
 const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingSys, setEditingSys] = useState<System | null>(null);
+
+  const isAdmin = data.currentUser?.role === UserRole.ADMIN;
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    const newSys: System = {
-      id: Math.random().toString(36).substr(2, 9),
+    const sysData: System = {
+      id: editingSys?.id || Math.random().toString(36).substr(2, 9),
       condoId: formData.get('condoId') as string,
       typeId: formData.get('typeId') as string,
       name: formData.get('name') as string,
-      equipmentIds: [], // Would typically pick from a multi-select
+      equipmentIds: editingSys?.equipmentIds || [], 
       parameters: formData.get('parameters') as string,
       observations: formData.get('observations') as string,
     };
 
-    updateData({
-      ...data,
-      systems: [...data.systems, newSys]
-    });
+    if (editingSys) {
+      updateData({
+        ...data,
+        systems: data.systems.map((s: System) => s.id === editingSys.id ? sysData : s)
+      });
+    } else {
+      updateData({
+        ...data,
+        systems: [...data.systems, sysData]
+      });
+    }
     setIsModalOpen(false);
+    setEditingSys(null);
+  };
+
+  const deleteSystem = (id: string) => {
+    if (confirm('Deseja realmente excluir este sistema?')) {
+      updateData({
+        ...data,
+        systems: data.systems.filter((s: System) => s.id !== id)
+      });
+    }
   };
 
   return (
@@ -33,7 +53,7 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
           <h1 className="text-2xl font-bold text-slate-900">Sistemas</h1>
           <p className="text-slate-500">Conjuntos de equipamentos e parâmetros de automação.</p>
         </div>
-        <button onClick={() => setIsModalOpen(true)} className="bg-slate-900 text-white px-4 py-2 rounded-lg flex items-center space-x-2 font-medium hover:bg-slate-800 transition-colors">
+        <button onClick={() => { setEditingSys(null); setIsModalOpen(true); }} className="bg-slate-900 text-white px-4 py-2 rounded-lg flex items-center space-x-2 font-medium hover:bg-slate-800 transition-colors">
           <Plus size={20} />
           <span>Novo Sistema</span>
         </button>
@@ -45,26 +65,38 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
           const type = data.systemTypes.find((t: SystemType) => t.id === sys.typeId);
           
           return (
-            <div key={sys.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col md:flex-row">
+            <div key={sys.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col md:flex-row group">
               <div className="md:w-1/3 bg-slate-900 p-8 flex flex-col items-center justify-center text-white space-y-4">
                 <div className="p-4 bg-blue-500 rounded-2xl shadow-lg shadow-blue-500/40">
                   <Monitor size={32} />
                 </div>
                 <div className="text-center">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400 mb-1">Status do Sistema</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400 mb-1">Status</p>
                   <div className="flex items-center justify-center space-x-1.5 text-emerald-400">
                     <Activity size={14} className="animate-pulse" />
-                    <span className="text-sm font-bold uppercase">Operacional</span>
+                    <span className="text-sm font-bold uppercase">Ativo</span>
                   </div>
                 </div>
               </div>
               <div className="flex-1 p-6 flex flex-col">
-                <div className="mb-4">
-                  <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
-                    {type?.name || 'Sistema'}
-                  </span>
-                  <h3 className="text-xl font-bold text-slate-900">{sys.name}</h3>
-                  <p className="text-xs font-semibold text-blue-600 uppercase">{condo?.name}</p>
+                <div className="flex justify-between items-start mb-4">
+                   <div>
+                    <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+                      {type?.name || 'Sistema'}
+                    </span>
+                    <h3 className="text-xl font-bold text-slate-900">{sys.name}</h3>
+                    <p className="text-xs font-semibold text-blue-600 uppercase">{condo?.name}</p>
+                   </div>
+                   {isAdmin && (
+                     <div className="flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => { setEditingSys(sys); setIsModalOpen(true); }} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
+                          <Edit2 size={16} />
+                        </button>
+                        <button onClick={() => deleteSystem(sys.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
+                          <Trash2 size={16} />
+                        </button>
+                     </div>
+                   )}
                 </div>
 
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 mb-4">
@@ -76,13 +108,13 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
 
                 <div className="mt-auto pt-4 border-t border-slate-100 flex justify-between items-center">
                   <div className="flex -space-x-2">
-                    {[1, 2, 3].map(i => (
-                      <div key={i} className="w-8 h-8 rounded-full bg-slate-200 border-2 border-white flex items-center justify-center text-[10px] font-bold text-slate-500">
-                        EQ
+                    {[1, 2].map(i => (
+                      <div key={i} className="w-8 h-8 rounded-full bg-slate-200 border-2 border-white flex items-center justify-center text-[10px] font-bold text-slate-500 uppercase">
+                        Eq
                       </div>
                     ))}
                   </div>
-                  <button className="text-xs font-bold text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors">GERENCIAR</button>
+                  <button className="text-xs font-bold text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors uppercase">GERENCIAR</button>
                 </div>
               </div>
             </div>
@@ -98,36 +130,41 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl">
+          <div className="bg-white rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
             <div className="p-6 border-b flex justify-between items-center">
-              <h2 className="text-xl font-bold">Novo Sistema</h2>
+              <h2 className="text-xl font-bold">{editingSys ? 'Editar Sistema' : 'Novo Sistema'}</h2>
+              <button onClick={() => { setIsModalOpen(false); setEditingSys(null); }} className="text-slate-400 hover:text-slate-600">
+                <X size={24} />
+              </button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div className="space-y-1">
                 <label className="text-sm font-semibold">Condomínio</label>
-                <select required name="condoId" className="w-full p-2 border border-slate-200 rounded-lg">
+                <select required name="condoId" defaultValue={editingSys?.condoId} className="w-full p-2 border border-slate-200 rounded-lg">
                   <option value="">Selecione...</option>
                   {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-semibold">Tipo de Sistema</label>
-                <select required name="typeId" className="w-full p-2 border border-slate-200 rounded-lg">
+                <select required name="typeId" defaultValue={editingSys?.typeId} className="w-full p-2 border border-slate-200 rounded-lg">
                   <option value="">Selecione...</option>
                   {data.systemTypes.map((t: SystemType) => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-semibold">Nome do Sistema</label>
-                <input required name="name" placeholder="Ex: Central de Água Quente - Bloco A" className="w-full p-2 border border-slate-200 rounded-lg" />
+                <input required name="name" defaultValue={editingSys?.name} placeholder="Ex: Central de Água Quente - Bloco A" className="w-full p-2 border border-slate-200 rounded-lg" />
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-semibold">Parâmetros de Controle</label>
-                <textarea name="parameters" rows={2} placeholder="Ex: Temp. Setpoint: 45°C, Pressão: 2.5 bar" className="w-full p-2 border border-slate-200 rounded-lg"></textarea>
+                <textarea name="parameters" defaultValue={editingSys?.parameters} rows={2} placeholder="Ex: Temp. Setpoint: 45°C, Pressão: 2.5 bar" className="w-full p-2 border border-slate-200 rounded-lg"></textarea>
               </div>
               <div className="pt-4 flex space-x-3">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-2 border rounded-lg font-bold">CANCELAR</button>
-                <button type="submit" className="flex-1 py-2 bg-slate-900 text-white rounded-lg font-bold">SALVAR</button>
+                <button type="button" onClick={() => { setIsModalOpen(false); setEditingSys(null); }} className="flex-1 py-2 border rounded-lg font-bold">CANCELAR</button>
+                <button type="submit" className="flex-1 py-2 bg-slate-900 text-white rounded-lg font-bold">
+                  {editingSys ? 'ATUALIZAR' : 'SALVAR'}
+                </button>
               </div>
             </form>
           </div>

@@ -1,11 +1,14 @@
 
 import React, { useState } from 'react';
-import { Plus, Filter, FileText, CheckCircle2, Clock, AlertCircle, Share2, Camera, User } from 'lucide-react';
-import { OSType, OSStatus, ServiceOrder, Condo, Equipment, System } from '../types';
+import { Plus, Filter, FileText, CheckCircle2, Clock, AlertCircle, Share2, Edit2, Trash2, X, User as UserIcon } from 'lucide-react';
+import { OSType, OSStatus, ServiceOrder, Condo, Equipment, UserRole } from '../types';
 
 const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingOS, setEditingOS] = useState<ServiceOrder | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
+
+  const isAdmin = data.currentUser?.role === UserRole.ADMIN;
 
   const filteredOS = data.serviceOrders.filter((os: ServiceOrder) => 
     filterStatus === 'all' ? true : os.status === filterStatus
@@ -14,26 +17,44 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    const newOS: ServiceOrder = {
-      id: `OS-${Math.floor(Math.random() * 10000)}`,
+    const osData: ServiceOrder = {
+      id: editingOS?.id || `OS-${Math.floor(Math.random() * 10000)}`,
       type: formData.get('type') as OSType,
-      status: OSStatus.OPEN,
+      status: editingOS?.status || OSStatus.OPEN,
       condoId: formData.get('condoId') as string,
       equipmentId: formData.get('equipmentId') as string || undefined,
       problemDescription: formData.get('description') as string,
-      actionsPerformed: '',
-      partsReplaced: [],
-      photosBefore: [],
-      photosAfter: [],
-      technicianId: data.currentUser?.id || 'unknown',
-      createdAt: new Date().toISOString(),
+      actionsPerformed: editingOS?.actionsPerformed || '',
+      partsReplaced: editingOS?.partsReplaced || [],
+      photosBefore: editingOS?.photosBefore || [],
+      photosAfter: editingOS?.photosAfter || [],
+      technicianId: editingOS?.technicianId || data.currentUser?.id || 'unknown',
+      createdAt: editingOS?.createdAt || new Date().toISOString(),
+      completedAt: editingOS?.completedAt,
     };
 
-    updateData({
-      ...data,
-      serviceOrders: [newOS, ...data.serviceOrders]
-    });
+    if (editingOS) {
+      updateData({
+        ...data,
+        serviceOrders: data.serviceOrders.map((os: ServiceOrder) => os.id === editingOS.id ? osData : os)
+      });
+    } else {
+      updateData({
+        ...data,
+        serviceOrders: [osData, ...data.serviceOrders]
+      });
+    }
     setIsModalOpen(false);
+    setEditingOS(null);
+  };
+
+  const deleteOS = (id: string) => {
+    if (confirm('Deseja realmente excluir esta Ordem de Serviço permanentemente?')) {
+      updateData({
+        ...data,
+        serviceOrders: data.serviceOrders.filter((os: ServiceOrder) => os.id !== id)
+      });
+    }
   };
 
   const updateOSStatus = (id: string, newStatus: OSStatus) => {
@@ -73,7 +94,7 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
             </select>
             <Filter size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
           </div>
-          <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 font-medium shadow-sm hover:bg-blue-700">
+          <button onClick={() => { setEditingOS(null); setIsModalOpen(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 font-medium shadow-sm hover:bg-blue-700">
             <Plus size={20} />
             <span>Nova OS</span>
           </button>
@@ -87,9 +108,9 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
           const equipment = os.equipmentId ? data.equipments.find((e: Equipment) => e.id === os.equipmentId) : null;
           
           return (
-            <div key={os.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden hover:border-blue-300 transition-colors">
+            <div key={os.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden hover:border-blue-300 transition-colors group">
               <div className="p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                <div className="flex items-start space-x-4">
+                <div className="flex items-start space-x-4 flex-1">
                   <div className={`p-3 rounded-xl ${
                     os.type === OSType.PREVENTIVE ? 'bg-blue-50 text-blue-600' : 
                     os.type === OSType.CORRECTIVE ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-600'
@@ -117,7 +138,7 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                     <span className="text-sm font-bold text-slate-700">{os.status}</span>
                   </div>
                   <div className="flex items-center text-xs text-slate-400 font-medium">
-                    <User size={12} className="mr-1" /> {tech?.name || 'Sistema'} • {new Date(os.createdAt).toLocaleDateString()}
+                    <UserIcon size={12} className="mr-1" /> {tech?.name || 'Sistema'} • {new Date(os.createdAt).toLocaleDateString()}
                   </div>
                 </div>
 
@@ -125,7 +146,7 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                   {os.status === OSStatus.OPEN && (
                     <button 
                       onClick={() => updateOSStatus(os.id, OSStatus.IN_PROGRESS)}
-                      className="flex-1 md:flex-none px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-lg hover:bg-slate-800"
+                      className="flex-1 md:flex-none px-4 py-2 bg-slate-900 text-white text-[10px] font-bold rounded-lg hover:bg-slate-800 uppercase tracking-wider"
                     >
                       INICIAR
                     </button>
@@ -133,10 +154,26 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                   {os.status === OSStatus.IN_PROGRESS && (
                     <button 
                       onClick={() => updateOSStatus(os.id, OSStatus.COMPLETED)}
-                      className="flex-1 md:flex-none px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700"
+                      className="flex-1 md:flex-none px-4 py-2 bg-emerald-600 text-white text-[10px] font-bold rounded-lg hover:bg-emerald-700 uppercase tracking-wider"
                     >
                       FINALIZAR
                     </button>
+                  )}
+                  {isAdmin && (
+                    <>
+                      <button 
+                        onClick={() => { setEditingOS(os); setIsModalOpen(true); }}
+                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
+                      >
+                        <Edit2 size={18} />
+                      </button>
+                      <button 
+                        onClick={() => deleteOS(os.id)}
+                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </>
                   )}
                   <button className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
                     <Share2 size={18} />
@@ -149,51 +186,50 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
         {filteredOS.length === 0 && (
           <div className="py-20 text-center bg-white border border-dashed rounded-xl">
             <FileText size={48} className="mx-auto text-slate-200 mb-4" />
-            <p className="text-slate-500">Nenhuma ordem de serviço encontrada com este filtro.</p>
+            <p className="text-slate-500">Nenhuma ordem de serviço encontrada.</p>
           </div>
         )}
       </div>
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-2xl w-full max-w-lg my-8 overflow-hidden shadow-2xl">
+          <div className="bg-white rounded-2xl w-full max-w-lg my-8 overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
             <div className="p-6 border-b flex justify-between items-center">
-              <h2 className="text-xl font-bold">Abertura de Chamado</h2>
+              <h2 className="text-xl font-bold">{editingOS ? 'Editar Chamado' : 'Abertura de Chamado'}</h2>
+              <button onClick={() => { setIsModalOpen(false); setEditingOS(null); }} className="text-slate-400 hover:text-slate-600">
+                <X size={24} />
+              </button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
                <div className="space-y-1">
-                <label className="text-sm font-semibold">Tipo de Manutenção</label>
-                <select required name="type" className="w-full p-2 border rounded-lg bg-white">
+                <label className="text-sm font-semibold text-slate-700">Tipo de Manutenção</label>
+                <select required name="type" defaultValue={editingOS?.type} className="w-full p-2 border border-slate-200 rounded-lg bg-white">
                   {Object.values(OSType).map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-semibold">Condomínio</label>
-                <select required name="condoId" className="w-full p-2 border rounded-lg bg-white">
+                <label className="text-sm font-semibold text-slate-700">Condomínio</label>
+                <select required name="condoId" defaultValue={editingOS?.condoId} className="w-full p-2 border border-slate-200 rounded-lg bg-white">
                   <option value="">Selecione...</option>
                   {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-semibold">Equipamento (Opcional)</label>
-                <select name="equipmentId" className="w-full p-2 border rounded-lg bg-white">
+                <label className="text-sm font-semibold text-slate-700">Equipamento (Opcional)</label>
+                <select name="equipmentId" defaultValue={editingOS?.equipmentId} className="w-full p-2 border border-slate-200 rounded-lg bg-white">
                   <option value="">Nenhum / Geral</option>
                   {data.equipments.map((e: Equipment) => <option key={e.id} value={e.id}>{e.manufacturer} - {e.model}</option>)}
                 </select>
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-semibold">Descrição do Problema / Solicitação</label>
-                <textarea required name="description" rows={3} className="w-full p-2 border rounded-lg"></textarea>
-              </div>
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 border-dashed flex flex-col items-center">
-                <Camera size={24} className="text-slate-400 mb-1" />
-                <span className="text-xs text-slate-500 font-medium">Anexar Fotos (Antes)</span>
-                <input type="file" multiple className="hidden" id="photo-upload" />
-                <label htmlFor="photo-upload" className="mt-2 text-xs font-bold text-blue-600 cursor-pointer">SELECIONAR ARQUIVOS</label>
+                <label className="text-sm font-semibold text-slate-700">Descrição do Problema / Solicitação</label>
+                <textarea required name="description" defaultValue={editingOS?.problemDescription} rows={3} className="w-full p-2 border border-slate-200 rounded-lg"></textarea>
               </div>
               <div className="pt-4 flex space-x-3">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-2 border rounded-lg font-bold">CANCELAR</button>
-                <button type="submit" className="flex-1 py-2 bg-blue-600 text-white rounded-lg font-bold shadow-lg shadow-blue-500/20">ABRIR ORDEM</button>
+                <button type="button" onClick={() => { setIsModalOpen(false); setEditingOS(null); }} className="flex-1 py-2 border border-slate-200 rounded-lg font-bold text-slate-600">CANCELAR</button>
+                <button type="submit" className="flex-1 py-2 bg-blue-600 text-white rounded-lg font-bold shadow-lg shadow-blue-500/20">
+                   {editingOS ? 'ATUALIZAR' : 'ABRIR ORDEM'}
+                </button>
               </div>
             </form>
           </div>
