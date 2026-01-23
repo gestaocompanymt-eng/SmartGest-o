@@ -1,0 +1,8 @@
+{
+  "name": "Copy of SmartGestão - Manutenção Condominial",
+  "description": "Plataforma completa para gestão de manutenção preventiva, corretiva e monitoramento técnico de sistemas prediais.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ]
+}
