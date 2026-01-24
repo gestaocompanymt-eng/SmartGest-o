@@ -76,7 +76,7 @@ export interface ServiceOrder {
   status: OSStatus;
   condoId: string;
   equipmentId?: string;
-  systemId?: string;
+  systemId?: string; // Novo campo para vínculo com sistemas
   problemDescription: string;
   actionsPerformed: string;
   partsReplaced: string[];
@@ -95,7 +95,6 @@ export interface User {
   password?: string;
 }
 
-// AppData interface centralizing the application state structure
 export interface AppData {
   condos: Condo[];
   equipments: Equipment[];

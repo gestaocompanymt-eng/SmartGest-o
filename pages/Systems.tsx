@@ -1,11 +1,14 @@
 
 import React, { useState } from 'react';
-import { Plus, Settings, Monitor, Activity, Edit2, Trash2, X, Cpu } from 'lucide-react';
-import { System, SystemType, Condo, UserRole } from '../types';
+import { useNavigate } from 'react-router-dom';
+import { Plus, Settings, Monitor, Activity, Edit2, Trash2, X, Cpu, CheckCircle2, Circle, Layers, FilePlus } from 'lucide-react';
+import { System, SystemType, Condo, UserRole, Equipment } from '../types';
 
 const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
+  const navigate = useNavigate();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSys, setEditingSys] = useState<System | null>(null);
+  const [managingSys, setManagingSys] = useState<System | null>(null);
 
   const isAdmin = data.currentUser?.role === UserRole.ADMIN;
 
@@ -46,49 +49,75 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
     }
   };
 
+  const toggleEquipmentInSystem = (systemId: string, equipmentId: string) => {
+    const system = data.systems.find((s: System) => s.id === systemId);
+    if (!system) return;
+
+    const newEquipmentIds = system.equipmentIds.includes(equipmentId)
+      ? system.equipmentIds.filter((id: string) => id !== equipmentId)
+      : [...system.equipmentIds, equipmentId];
+
+    const updatedSystem = { ...system, equipmentIds: newEquipmentIds };
+    
+    updateData({
+      ...data,
+      systems: data.systems.map((s: System) => s.id === systemId ? updatedSystem : s)
+    });
+    
+    setManagingSys(updatedSystem);
+  };
+
+  const handleOpenOS = (systemId: string) => {
+    navigate(`/os?systemId=${systemId}`);
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="space-y-6 pb-12">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Sistemas</h1>
-          <p className="text-slate-500">Conjuntos de equipamentos e parâmetros de automação.</p>
+          <h1 className="text-2xl font-black text-slate-900 leading-tight">Sistemas</h1>
+          <p className="text-sm text-slate-500">Conjuntos de equipamentos e parâmetros de automação.</p>
         </div>
-        <button onClick={() => { setEditingSys(null); setIsModalOpen(true); }} className="bg-slate-900 text-white px-4 py-2 rounded-lg flex items-center space-x-2 font-medium hover:bg-slate-800 transition-colors">
+        <button 
+          onClick={() => { setEditingSys(null); setIsModalOpen(true); }} 
+          className="w-full md:w-auto bg-slate-900 text-white px-6 py-4 md:py-2 rounded-xl flex items-center justify-center space-x-2 font-bold hover:bg-slate-800 active:scale-95 transition-all shadow-lg shadow-slate-900/10"
+        >
           <Plus size={20} />
-          <span>Novo Sistema</span>
+          <span className="uppercase text-[10px] tracking-widest">Novo Sistema</span>
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         {data.systems.map((sys: System) => {
           const condo = data.condos.find((c: Condo) => c.id === sys.condoId);
           const type = data.systemTypes.find((t: SystemType) => t.id === sys.typeId);
+          const linkedEquipments = data.equipments.filter((e: Equipment) => sys.equipmentIds.includes(e.id));
           
           return (
-            <div key={sys.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col md:flex-row group">
-              <div className="md:w-1/3 bg-slate-900 p-8 flex flex-col items-center justify-center text-white space-y-4">
-                <div className="p-4 bg-blue-500 rounded-2xl shadow-lg shadow-blue-500/40">
+            <div key={sys.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col md:flex-row group hover:border-blue-400 transition-all">
+              <div className="md:w-1/3 bg-slate-900 p-6 md:p-8 flex flex-col items-center justify-center text-white space-y-4 shrink-0">
+                <div className="p-4 bg-blue-600 rounded-2xl shadow-xl shadow-blue-600/20">
                   <Monitor size={32} />
                 </div>
                 <div className="text-center">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400 mb-1">Status</p>
+                  <p className="text-[9px] font-black uppercase tracking-[0.2em] text-blue-400 mb-1">Status</p>
                   <div className="flex items-center justify-center space-x-1.5 text-emerald-400">
                     <Activity size={14} className="animate-pulse" />
-                    <span className="text-sm font-bold uppercase">Ativo</span>
+                    <span className="text-xs font-black uppercase tracking-widest">Ativo</span>
                   </div>
                 </div>
               </div>
-              <div className="flex-1 p-6 flex flex-col">
+              <div className="flex-1 p-5 md:p-6 flex flex-col min-w-0">
                 <div className="flex justify-between items-start mb-4">
-                   <div>
-                    <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
-                      {type?.name || 'Sistema'}
+                   <div className="min-w-0 flex-1">
+                    <span className="text-[9px] font-black uppercase text-slate-400 tracking-widest block mb-1">
+                      {type?.name || 'Sistema Operacional'}
                     </span>
-                    <h3 className="text-xl font-bold text-slate-900">{sys.name}</h3>
-                    <p className="text-xs font-semibold text-blue-600 uppercase">{condo?.name}</p>
+                    <h3 className="text-lg font-black text-slate-900 leading-tight truncate">{sys.name}</h3>
+                    <p className="text-[10px] font-black text-blue-600 uppercase tracking-tight truncate">{condo?.name || 'Local Indefinido'}</p>
                    </div>
                    {isAdmin && (
-                     <div className="flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                     <div className="flex space-x-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0">
                         <button onClick={() => { setEditingSys(sys); setIsModalOpen(true); }} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
                           <Edit2 size={16} />
                         </button>
@@ -99,74 +128,140 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
                    )}
                 </div>
 
-                <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 mb-4">
-                  <div className="flex items-center text-xs font-bold text-slate-500 uppercase mb-2">
-                    <Cpu size={14} className="mr-1" /> Parâmetros de Controle
+                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100 mb-4 flex-1">
+                  <div className="flex items-center text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                    <Cpu size={14} className="mr-1.5" /> Parâmetros de Controle
                   </div>
-                  <p className="text-sm text-slate-700">{sys.parameters || 'Não definidos'}</p>
+                  <p className="text-xs font-bold text-slate-700 leading-relaxed italic line-clamp-2">
+                    {sys.parameters || 'Nenhum parâmetro configurado.'}
+                  </p>
                 </div>
 
                 <div className="mt-auto pt-4 border-t border-slate-100 flex justify-between items-center">
                   <div className="flex -space-x-2">
-                    {[1, 2].map(i => (
-                      <div key={i} className="w-8 h-8 rounded-full bg-slate-200 border-2 border-white flex items-center justify-center text-[10px] font-bold text-slate-500 uppercase">
-                        Eq
-                      </div>
-                    ))}
+                    {linkedEquipments.length > 0 ? (
+                      linkedEquipments.slice(0, 3).map((eq) => (
+                        <div key={eq.id} className="w-8 h-8 rounded-full bg-blue-100 border-2 border-white flex items-center justify-center text-[8px] font-black text-blue-600 uppercase">
+                          {eq.manufacturer.charAt(0)}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-[8px] font-black text-slate-400">?</div>
+                    )}
                   </div>
-                  <button className="text-xs font-bold text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors uppercase">GERENCIAR</button>
+                  <div className="flex space-x-2">
+                    <button 
+                      onClick={() => handleOpenOS(sys.id)}
+                      className="text-[10px] font-black text-emerald-600 hover:bg-emerald-50 px-3 py-2 rounded-xl transition-all uppercase tracking-widest active:scale-95 flex items-center"
+                    >
+                      <FilePlus size={14} className="mr-1.5" /> Abrir OS
+                    </button>
+                    <button 
+                      onClick={() => setManagingSys(sys)}
+                      className="text-[10px] font-black text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-xl transition-all uppercase tracking-widest active:scale-95"
+                    >
+                      Gerenciar
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           );
         })}
-        {data.systems.length === 0 && (
-          <div className="col-span-full py-20 bg-white border border-dashed rounded-2xl flex flex-col items-center">
-            <Settings size={48} className="text-slate-200 mb-4" />
-            <p className="text-slate-500">Nenhum sistema operacional cadastrado.</p>
-          </div>
-        )}
       </div>
 
+      {/* Cadastro Modal e Gestão de Ativos permanecem inalterados mas funcionais */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
-            <div className="p-6 border-b flex justify-between items-center">
-              <h2 className="text-xl font-bold">{editingSys ? 'Editar Sistema' : 'Novo Sistema'}</h2>
-              <button onClick={() => { setIsModalOpen(false); setEditingSys(null); }} className="text-slate-400 hover:text-slate-600">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white md:rounded-2xl w-full h-full md:h-auto md:max-w-lg overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-300 flex flex-col">
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10 shrink-0">
+              <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">{editingSys ? 'Editar Configuração' : 'Novo Sistema'}</h2>
+              <button onClick={() => { setIsModalOpen(false); setEditingSys(null); }} className="p-2.5 bg-slate-50 text-slate-400 hover:text-slate-600 rounded-xl">
                 <X size={24} />
               </button>
             </div>
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div className="space-y-1">
-                <label className="text-sm font-semibold">Condomínio</label>
-                <select required name="condoId" defaultValue={editingSys?.condoId} className="w-full p-2 border border-slate-200 rounded-lg">
-                  <option value="">Selecione...</option>
+            <form onSubmit={handleSubmit} className="p-5 md:p-8 space-y-6 overflow-y-auto flex-1 scroll-touch">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Condomínio Vinculado</label>
+                <select required name="condoId" defaultValue={editingSys?.condoId} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none">
+                  <option value="">Selecione o empreendimento...</option>
                   {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold">Tipo de Sistema</label>
-                <select required name="typeId" defaultValue={editingSys?.typeId} className="w-full p-2 border border-slate-200 rounded-lg">
-                  <option value="">Selecione...</option>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Tipo de Sistema</label>
+                <select required name="typeId" defaultValue={editingSys?.typeId} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none">
                   {data.systemTypes.map((t: SystemType) => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
               </div>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold">Nome do Sistema</label>
-                <input required name="name" defaultValue={editingSys?.name} placeholder="Ex: Central de Água Quente - Bloco A" className="w-full p-2 border border-slate-200 rounded-lg" />
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Nome do Sistema</label>
+                <input required name="name" defaultValue={editingSys?.name} placeholder="Ex: Central de Água Quente - Bloco A" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none font-bold text-slate-700" />
               </div>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold">Parâmetros de Controle</label>
-                <textarea name="parameters" defaultValue={editingSys?.parameters} rows={2} placeholder="Ex: Temp. Setpoint: 45°C, Pressão: 2.5 bar" className="w-full p-2 border border-slate-200 rounded-lg"></textarea>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Parâmetros de Controle</label>
+                <textarea name="parameters" defaultValue={editingSys?.parameters} rows={4} placeholder="Setpoints, pressões, temperaturas..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none font-medium text-slate-600"></textarea>
               </div>
-              <div className="pt-4 flex space-x-3">
-                <button type="button" onClick={() => { setIsModalOpen(false); setEditingSys(null); }} className="flex-1 py-2 border rounded-lg font-bold">CANCELAR</button>
-                <button type="submit" className="flex-1 py-2 bg-slate-900 text-white rounded-lg font-bold">
-                  {editingSys ? 'ATUALIZAR' : 'SALVAR'}
+              <div className="pt-6 flex flex-col-reverse md:flex-row gap-4 shrink-0">
+                <button type="button" onClick={() => { setIsModalOpen(false); setEditingSys(null); }} className="w-full px-6 py-4 border-2 border-slate-100 text-slate-500 font-black rounded-xl uppercase text-xs">Descartar</button>
+                <button type="submit" className="w-full px-6 py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-xs tracking-widest shadow-xl shadow-slate-900/20 active:scale-95 transition-all">
+                  {editingSys ? 'Atualizar Sistema' : 'Salvar Sistema'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Gestão de Ativos */}
+      {managingSys && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-0 md:p-6">
+          <div className="bg-white md:rounded-3xl w-full h-full md:h-auto md:max-h-[90vh] md:max-w-2xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-300 flex flex-col">
+            <div className="p-5 md:p-8 border-b border-slate-100 flex justify-between items-center bg-slate-900 text-white shrink-0">
+              <div>
+                <h2 className="text-xl font-black uppercase tracking-tight mb-1">Gerenciar Ativos</h2>
+                <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">{managingSys.name}</p>
+              </div>
+              <button onClick={() => setManagingSys(null)} className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl transition-colors">
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-5 md:p-8 space-y-2 scroll-touch">
+              {data.equipments
+                .filter((e: Equipment) => e.condoId === managingSys.condoId)
+                .map((eq: Equipment) => {
+                  const isLinked = managingSys.equipmentIds.includes(eq.id);
+                  return (
+                    <button
+                      key={eq.id}
+                      onClick={() => toggleEquipmentInSystem(managingSys.id, eq.id)}
+                      className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all active:scale-[0.98] text-left ${
+                        isLinked ? 'border-blue-600 bg-blue-50/50' : 'border-slate-100 bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-4">
+                         <div className={`p-2.5 rounded-xl ${isLinked ? 'bg-blue-600 text-white' : 'bg-white text-slate-400 border border-slate-100'}`}>
+                           {isLinked ? <CheckCircle2 size={20} /> : <Circle size={20} />}
+                         </div>
+                         <div>
+                            <p className="text-sm font-black text-slate-900 leading-none mb-1">{eq.manufacturer} - {eq.model}</p>
+                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{eq.location}</p>
+                         </div>
+                      </div>
+                    </button>
+                  );
+                })}
+            </div>
+
+            <div className="p-5 md:p-8 bg-slate-50 border-t flex flex-col md:flex-row justify-between items-center gap-4 shrink-0">
+               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                 {managingSys.equipmentIds.length} Ativo(s) Vinculado(s)
+               </p>
+               <button onClick={() => setManagingSys(null)} className="w-full md:w-auto px-10 py-4 bg-slate-900 text-white font-black rounded-2xl uppercase text-xs tracking-widest active:scale-95">
+                 Finalizar
+               </button>
+            </div>
           </div>
         </div>
       )}
