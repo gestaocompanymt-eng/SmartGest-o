@@ -18,9 +18,9 @@ import {
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
-import { UserRole, AppData } from './types';
+import { UserRole, AppData, ServiceOrder } from './types';
 import { supabase, isSupabaseActive } from './supabase';
-import { requestNotificationPermission } from './notificationService';
+import { requestNotificationPermission, sendLocalNotification } from './notificationService';
 
 // Pages
 import Dashboard from './pages/Dashboard';
@@ -40,17 +40,58 @@ const AppContent: React.FC = () => {
   
   const navigate = useNavigate();
   const location = useLocation();
+  const prevOrdersRef = useRef<ServiceOrder[]>([]);
+  const isFirstLoad = useRef(true);
 
   // 1. Carregamento Inicial do LocalStorage
   useEffect(() => {
     const localData = getStore();
     setData(localData);
+    prevOrdersRef.current = localData.serviceOrders;
     if ("Notification" in window && Notification.permission === 'default') {
       requestNotificationPermission();
     }
   }, []);
 
-  // 2. Sincronização: Busca do Supabase (Cloud -> Local)
+  // 2. Monitoramento de Mudanças para Notificações
+  useEffect(() => {
+    if (!data || isFirstLoad.current) {
+      if (data) isFirstLoad.current = false;
+      return;
+    }
+
+    const currentOrders = data.serviceOrders;
+    const prevOrders = prevOrdersRef.current;
+
+    // Detectar Novas Ordens de Serviço
+    const newOrders = currentOrders.filter(
+      curr => !prevOrders.some(prev => prev.id === curr.id)
+    );
+
+    newOrders.forEach(os => {
+      const condo = data.condos.find(c => c.id === os.condoId);
+      sendLocalNotification(
+        'Nova Ordem de Serviço 🛠️',
+        `A OS ${os.id} foi aberta para o condomínio ${condo?.name || 'Não identificado'}.`
+      );
+    });
+
+    // Detectar Mudanças de Status
+    currentOrders.forEach(curr => {
+      const prev = prevOrders.find(p => p.id === curr.id);
+      if (prev && prev.status !== curr.status) {
+        const condo = data.condos.find(c => c.id === curr.condoId);
+        sendLocalNotification(
+          'Status Atualizado 🔄',
+          `A OS ${curr.id} (${condo?.name}) mudou para: ${curr.status}.`
+        );
+      }
+    });
+
+    prevOrdersRef.current = currentOrders;
+  }, [data?.serviceOrders]);
+
+  // 3. Sincronização: Busca do Supabase (Cloud -> Local)
   const syncWithCloud = useCallback(async (currentLocalData: AppData) => {
     if (!navigator.onLine || !isSupabaseActive) return;
     
@@ -66,18 +107,15 @@ const AppContent: React.FC = () => {
         supabase.from('system_types').select('*')
       ]);
 
-      // Verificar se o banco na nuvem está vazio (primeiro acesso)
       const cloudIsEmpty = (!resCondos.data?.length && !resOS.data?.length && !resEquips.data?.length);
       const localHasData = (currentLocalData.condos.length > 0 || currentLocalData.serviceOrders.length > 0);
 
       if (cloudIsEmpty && localHasData) {
-        console.info("SmartGestão: Cloud vazia detectada. Iniciando upload de dados locais...");
         await pushToCloud(currentLocalData);
         setIsSyncing(false);
         return;
       }
 
-      // Mesclar dados (Nuvem ganha de dados locais em caso de conflito)
       const syncedData: AppData = {
         ...currentLocalData,
         condos: resCondos.data || currentLocalData.condos,
@@ -100,12 +138,11 @@ const AppContent: React.FC = () => {
     }
   }, []);
 
-  // 3. Push para Cloud (Local -> Cloud)
+  // 4. Push para Cloud (Local -> Cloud)
   const pushToCloud = async (newData: AppData) => {
     if (!isSupabaseActive || !navigator.onLine) return;
     
     try {
-      // Usamos Promise.all para performance, garantindo que enviamos apenas se houver dados
       await Promise.all([
         newData.condos.length > 0 && supabase.from('condos').upsert(newData.condos),
         newData.users.length > 0 && supabase.from('users').upsert(newData.users),
@@ -120,7 +157,6 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // 4. Efeitos de Monitoramento de Rede e Realtime
   useEffect(() => {
     if (data) syncWithCloud(data);
     
@@ -139,7 +175,6 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     if (!isSupabaseActive || !isOnline) return;
 
-    // Escuta mudanças globais em qualquer tabela
     const channel = supabase.channel('db-changes-global')
       .on('postgres_changes', { event: '*', schema: 'public' }, () => {
         if(data) syncWithCloud(data);
@@ -151,14 +186,10 @@ const AppContent: React.FC = () => {
     return () => { supabase.removeChannel(channel); };
   }, [isOnline, syncWithCloud, !!data]);
 
-  // 5. Função de Atualização de Dados (Interface das Páginas)
   const updateData = async (newData: AppData) => {
-    // 1. Atualiza UI imediatamente (Otimista)
     setData(newData);
-    // 2. Salva no cache local (PWA Offline Support)
     saveStore(newData);
     
-    // 3. Sincroniza com Cloud se estiver online
     if (navigator.onLine && isSupabaseActive) {
       setIsSyncing(true);
       await pushToCloud(newData);
@@ -204,7 +235,6 @@ const AppContent: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row overflow-x-hidden">
-      {/* Mobile Header */}
       <div className="md:hidden bg-slate-900 text-white p-4 flex justify-between items-center sticky top-0 z-50 shadow-lg h-16">
         <div className="flex items-center space-x-3">
           <div className="bg-blue-600 p-1.5 rounded-lg">
