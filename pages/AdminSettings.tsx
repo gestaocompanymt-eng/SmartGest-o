@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { 
   UserPlus, User, Mail, Shield, Plus, Settings2, Trash2, Edit2, X, Key, 
   CheckCircle2, Save, FileSearch, Calendar, Building2, Wrench, Settings, 
-  Download, Printer, FileText, UserCheck, LayoutList
+  Download, Printer, FileText, UserCheck, LayoutList, RotateCcw, AlertCircle
 } from 'lucide-react';
 import { UserRole, EquipmentType, User as UserType, ServiceOrder, Condo, System, Equipment, OSStatus } from '../types';
 
@@ -25,7 +25,10 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   // Lógica de Filtragem de Relatórios
   const filteredOrders = useMemo(() => {
     return data.serviceOrders.filter((os: ServiceOrder) => {
-      const osDate = new Date(os.createdAt).toISOString().split('T')[0];
+      // Garante que a data da OS seja comparável (YYYY-MM-DD)
+      const osDateObj = new Date(os.createdAt);
+      if (isNaN(osDateObj.getTime())) return false;
+      const osDate = osDateObj.toISOString().split('T')[0];
       
       const matchDate = (!reportStartDate || osDate >= reportStartDate) && 
                         (!reportEndDate || osDate <= reportEndDate);
@@ -48,6 +51,15 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     if (selectedCondoId === 'all') return [];
     return data.equipments.filter((e: Equipment) => e.condoId === selectedCondoId);
   }, [data.equipments, selectedCondoId]);
+
+  const clearFilters = () => {
+    setReportStartDate('');
+    setReportEndDate('');
+    setSelectedCondoId('all');
+    setSelectedTechId('all');
+    setSelectedSystemId('all');
+    setSelectedEquipId('all');
+  };
 
   const addEquipmentType = () => {
     if (!newTypeName) return;
@@ -109,6 +121,13 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
           <h1 className="text-2xl font-black text-slate-900 leading-tight">Painel de Controle</h1>
           <p className="text-sm text-slate-500">Gestão operacional, equipe e relatórios de auditoria.</p>
         </div>
+        <button 
+          onClick={clearFilters}
+          className="flex items-center space-x-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95"
+        >
+          <RotateCcw size={14} />
+          <span>Limpar Filtros</span>
+        </button>
       </div>
 
       {/* SEÇÃO DE RELATÓRIOS E AUDITORIA */}
@@ -222,9 +241,8 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
               </div>
             </div>
             <button 
-              disabled={filteredOrders.length === 0}
               onClick={() => setIsReportViewOpen(true)}
-              className="w-full md:w-auto px-8 py-3 bg-blue-600 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-lg shadow-blue-500/20 hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center disabled:opacity-50 disabled:grayscale"
+              className="w-full md:w-auto px-8 py-3 bg-blue-600 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-lg shadow-blue-500/20 hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center"
             >
               <Printer size={16} className="mr-2" /> Gerar Relatório Consolidado
             </button>
@@ -391,59 +409,67 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                 <h2 className="text-xs font-black text-slate-900 uppercase tracking-[0.2em] flex items-center">
                   <LayoutList size={16} className="mr-2 text-blue-600" /> Detalhamento de Ocorrências
                 </h2>
-                <div className="divide-y divide-slate-100 border rounded-3xl overflow-hidden bg-white shadow-sm">
-                  {filteredOrders.map((os: ServiceOrder) => {
-                    const condo = data.condos.find((c: any) => c.id === os.condoId);
-                    const tech = data.users.find((u: any) => u.id === os.technicianId);
-                    const sys = os.systemId ? data.systems.find((s: any) => s.id === os.systemId) : null;
-                    const eq = os.equipmentId ? data.equipments.find((e: any) => e.id === os.equipmentId) : null;
+                
+                {filteredOrders.length > 0 ? (
+                  <div className="divide-y divide-slate-100 border rounded-3xl overflow-hidden bg-white shadow-sm">
+                    {filteredOrders.map((os: ServiceOrder) => {
+                      const condo = data.condos.find((c: any) => c.id === os.condoId);
+                      const tech = data.users.find((u: any) => u.id === os.technicianId);
+                      const sys = os.systemId ? data.systems.find((s: any) => s.id === os.systemId) : null;
+                      const eq = os.equipmentId ? data.equipments.find((e: any) => e.id === os.equipmentId) : null;
 
-                    return (
-                      <div key={os.id} className="p-6 space-y-4 hover:bg-slate-50/50 transition-colors">
-                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                          <div className="flex items-center space-x-3">
-                            <span className="text-xs font-black text-slate-900 bg-slate-100 px-3 py-1 rounded-lg border border-slate-200">{os.id}</span>
-                            <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-lg ${
-                              os.type === 'Preventiva' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'
-                            }`}>{os.type}</span>
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-tight">{new Date(os.createdAt).toLocaleDateString()}</span>
+                      return (
+                        <div key={os.id} className="p-6 space-y-4 hover:bg-slate-50/50 transition-colors">
+                          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                            <div className="flex items-center space-x-3">
+                              <span className="text-xs font-black text-slate-900 bg-slate-100 px-3 py-1 rounded-lg border border-slate-200">{os.id}</span>
+                              <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-1 rounded-lg ${
+                                os.type === 'Preventiva' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'
+                              }`}>{os.type}</span>
+                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-tight">{new Date(os.createdAt).toLocaleDateString()}</span>
+                            </div>
+                            <div className="flex items-center text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                              <User size={12} className="mr-1.5" /> Resp: {tech?.name || 'Não identificado'}
+                            </div>
                           </div>
-                          <div className="flex items-center text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                            <User size={12} className="mr-1.5" /> Resp: {tech?.name || 'Não identificado'}
-                          </div>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                           <div className="space-y-3">
-                              <div>
-                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Local / Objeto</p>
-                                <p className="text-xs font-bold text-slate-800">
-                                  {condo?.name} {sys ? `• Sistema: ${sys.name}` : ''} {eq ? `• Ativo: ${eq.manufacturer} ${eq.model}` : ''}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Descrição</p>
-                                <p className="text-xs text-slate-600 leading-relaxed italic">{os.problemDescription}</p>
-                              </div>
-                           </div>
-                           <div className="space-y-3">
-                              <div>
-                                <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest mb-1">Ações e Diagnóstico</p>
-                                <p className="text-xs text-emerald-900 bg-emerald-50 p-3 rounded-xl border border-emerald-100 font-medium">{os.actionsPerformed || 'Atendimento em andamento...'}</p>
-                              </div>
-                              {os.photosAfter && os.photosAfter.length > 0 && (
-                                <div className="flex gap-2">
-                                  {os.photosAfter.slice(0, 3).map((img, idx) => (
-                                    <img key={idx} src={img} className="w-12 h-12 rounded-lg object-cover border border-slate-200" alt="Evidência" />
-                                  ))}
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-3">
+                                <div>
+                                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Local / Objeto</p>
+                                  <p className="text-xs font-bold text-slate-800">
+                                    {condo?.name} {sys ? `• Sistema: ${sys.name}` : ''} {eq ? `• Ativo: ${eq.manufacturer} ${eq.model}` : ''}
+                                  </p>
                                 </div>
-                              )}
-                           </div>
+                                <div>
+                                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Descrição</p>
+                                  <p className="text-xs text-slate-600 leading-relaxed italic">{os.problemDescription}</p>
+                                </div>
+                            </div>
+                            <div className="space-y-3">
+                                <div>
+                                  <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest mb-1">Ações e Diagnóstico</p>
+                                  <p className="text-xs text-emerald-900 bg-emerald-50 p-3 rounded-xl border border-emerald-100 font-medium">{os.actionsPerformed || 'Atendimento em andamento...'}</p>
+                                </div>
+                                {os.photosAfter && os.photosAfter.length > 0 && (
+                                  <div className="flex gap-2">
+                                    {os.photosAfter.slice(0, 3).map((img, idx) => (
+                                      <img key={idx} src={img} className="w-12 h-12 rounded-lg object-cover border border-slate-200" alt="Evidência" />
+                                    ))}
+                                  </div>
+                                )}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="py-20 text-center border-2 border-dashed border-slate-100 rounded-3xl bg-slate-50 flex flex-col items-center">
+                    <AlertCircle size={48} className="text-slate-200 mb-4" />
+                    <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest">Nenhuma Ordem de Serviço encontrada para os filtros aplicados.</p>
+                  </div>
+                )}
               </div>
             </div>
 
