@@ -1,11 +1,13 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   UserPlus, User, Mail, Shield, Plus, Settings2, Trash2, Edit2, X, Key, 
   CheckCircle2, Save, FileSearch, Calendar, Building2, Wrench, Settings, 
-  Download, Printer, FileText, UserCheck, LayoutList, RotateCcw, AlertCircle
+  Download, Printer, FileText, UserCheck, LayoutList, RotateCcw, AlertCircle,
+  Bell, BellRing, Smartphone, Info
 } from 'lucide-react';
-import { UserRole, EquipmentType, User as UserType, ServiceOrder, Condo, System, Equipment, OSStatus } from '../types';
+import { UserRole, User as UserType, ServiceOrder, Condo, System, Equipment } from '../types';
+import { requestNotificationPermission, sendLocalNotification, checkNotificationSupport } from '../notificationService';
 
 const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
   // Estados para Gestão de Usuários
@@ -21,10 +23,12 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const [selectedEquipId, setSelectedEquipId] = useState('all');
   const [isReportViewOpen, setIsReportViewOpen] = useState(false);
 
+  // Estados de Notificação
+  const [notifStatus, setNotifStatus] = useState(checkNotificationSupport());
+
   // Lógica de Filtragem de Relatórios
   const filteredOrders = useMemo(() => {
     return data.serviceOrders.filter((os: ServiceOrder) => {
-      // Garante que a data da OS seja comparável (YYYY-MM-DD)
       const osDateObj = new Date(os.createdAt);
       if (isNaN(osDateObj.getTime())) return false;
       const osDate = osDateObj.toISOString().split('T')[0];
@@ -40,7 +44,6 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     });
   }, [data.serviceOrders, reportStartDate, reportEndDate, selectedCondoId, selectedTechId, selectedSystemId, selectedEquipId]);
 
-  // Auxiliares para os filtros dinâmicos
   const availableSystems = useMemo(() => {
     if (selectedCondoId === 'all') return [];
     return data.systems.filter((s: System) => s.condoId === selectedCondoId);
@@ -58,6 +61,18 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     setSelectedTechId('all');
     setSelectedSystemId('all');
     setSelectedEquipId('all');
+  };
+
+  const handleEnableNotifications = async () => {
+    const granted = await requestNotificationPermission();
+    setNotifStatus(checkNotificationSupport());
+    if (granted) {
+      sendLocalNotification("Notificações Ativas! ✅", "Você agora receberá alertas de novas OS e mudanças de status.");
+    }
+  };
+
+  const sendTestNotification = () => {
+    sendLocalNotification("Teste de Sistema 🛠️", "Esta é uma notificação de teste do SmartGestão para validar seu celular.");
   };
 
   const handleUserSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -104,7 +119,7 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-900 leading-tight">Painel de Controle</h1>
-          <p className="text-sm text-slate-500">Gestão operacional, equipe e relatórios de auditoria.</p>
+          <p className="text-sm text-slate-500">Gestão operacional, equipe e notificações.</p>
         </div>
         <button 
           onClick={clearFilters}
@@ -113,6 +128,68 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
           <RotateCcw size={14} />
           <span>Limpar Filtros</span>
         </button>
+      </div>
+
+      {/* SEÇÃO DE NOTIFICAÇÕES - NOVO */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="p-6 border-b border-slate-100 bg-slate-50/50">
+          <h3 className="font-black text-slate-900 flex items-center uppercase tracking-widest text-xs">
+            <Bell size={18} className="mr-2 text-blue-600" /> Configurações de Notificação
+          </h3>
+        </div>
+        <div className="p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+            <div className="space-y-4">
+              <div className="flex items-center space-x-3">
+                <div className={`p-3 rounded-2xl ${notifStatus.permission === 'granted' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
+                  {notifStatus.permission === 'granted' ? <BellRing size={24} /> : <Bell size={24} />}
+                </div>
+                <div>
+                  <p className="text-sm font-black text-slate-900 uppercase tracking-tight">Status das Notificações</p>
+                  <p className="text-xs font-bold text-slate-500 uppercase">
+                    {notifStatus.permission === 'granted' ? 'Permitidas neste dispositivo' : 
+                     notifStatus.permission === 'denied' ? 'Bloqueadas pelo navegador' : 'Aguardando autorização'}
+                  </p>
+                </div>
+              </div>
+
+              {!notifStatus.isPWA && (
+                <div className="bg-blue-50 border border-blue-100 p-4 rounded-2xl flex items-start space-x-3">
+                  <Smartphone size={20} className="text-blue-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-black text-blue-900 uppercase tracking-widest">Dica para iPhone/Android</p>
+                    <p className="text-[11px] text-blue-700 font-medium leading-relaxed">
+                      Para receber notificações com o app fechado, clique no botão de "Compartilhar" do navegador e selecione <b>"Adicionar à Tela de Início"</b>.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              {notifStatus.permission !== 'granted' ? (
+                <button 
+                  onClick={handleEnableNotifications}
+                  className="flex-1 px-6 py-4 bg-blue-600 text-white font-black rounded-2xl text-[10px] uppercase tracking-widest shadow-lg shadow-blue-500/20 active:scale-95 transition-all"
+                >
+                  Ativar Notificações
+                </button>
+              ) : (
+                <button 
+                  onClick={sendTestNotification}
+                  className="flex-1 px-6 py-4 bg-emerald-600 text-white font-black rounded-2xl text-[10px] uppercase tracking-widest shadow-lg shadow-emerald-500/20 active:scale-95 transition-all"
+                >
+                  Enviar Notificação de Teste
+                </button>
+              )}
+              <div className="hidden sm:block w-px bg-slate-100 h-10 self-center"></div>
+              <div className="flex-1 flex items-center space-x-2 text-slate-400">
+                <Info size={16} />
+                <span className="text-[9px] font-black uppercase tracking-widest leading-tight">As notificações são locais e dependem da sincronização em tempo real.</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* SEÇÃO DE RELATÓRIOS E AUDITORIA */}
@@ -124,7 +201,6 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
         </div>
         <div className="p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-            {/* Filtro de Datas */}
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center">
                 <Calendar size={12} className="mr-1" /> Período Inicial
@@ -148,7 +224,6 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
               />
             </div>
 
-            {/* Filtro de Condomínio */}
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center">
                 <Building2 size={12} className="mr-1" /> Selecionar Condomínio
@@ -167,7 +242,6 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
               </select>
             </div>
 
-            {/* Filtro de Técnico */}
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center">
                 <UserCheck size={12} className="mr-1" /> Filtrar por Técnico
@@ -182,7 +256,6 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
               </select>
             </div>
 
-            {/* Filtro de Sistema (Dinâmico) */}
             <div className="space-y-2">
               <label className={`text-[10px] font-black uppercase tracking-widest flex items-center ${selectedCondoId === 'all' ? 'text-slate-300' : 'text-slate-400'}`}>
                 <Settings size={12} className="mr-1" /> Filtrar por Sistema
@@ -198,7 +271,6 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
               </select>
             </div>
 
-            {/* Filtro de Equipamento (Dinâmico) */}
             <div className="space-y-2">
               <label className={`text-[10px] font-black uppercase tracking-widest flex items-center ${selectedCondoId === 'all' ? 'text-slate-300' : 'text-slate-400'}`}>
                 <Wrench size={12} className="mr-1" /> Filtrar por Equipamento
@@ -236,7 +308,6 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
       </div>
 
       <div className="grid grid-cols-1 gap-8">
-        {/* User Management - Now Full Width */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="p-6 border-b border-slate-100 flex justify-between items-center">
             <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-xs">
