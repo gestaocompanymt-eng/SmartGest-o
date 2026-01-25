@@ -20,7 +20,7 @@ import {
 import { getStore, saveStore } from './store';
 import { UserRole, AppData, ServiceOrder } from './types';
 import { supabase, isSupabaseActive } from './supabase';
-import { sendLocalNotification } from './notificationService';
+import { requestNotificationPermission, sendLocalNotification } from './notificationService';
 
 // Pages
 import Dashboard from './pages/Dashboard';
@@ -48,15 +48,15 @@ const AppContent: React.FC = () => {
     const localData = getStore();
     setData(localData);
     prevOrdersRef.current = localData.serviceOrders;
+    if ("Notification" in window && Notification.permission === 'default') {
+      requestNotificationPermission();
+    }
   }, []);
 
   // 2. Monitoramento de Mudanças para Notificações
   useEffect(() => {
     if (!data || isFirstLoad.current) {
-      if (data) {
-        prevOrdersRef.current = data.serviceOrders;
-        isFirstLoad.current = false;
-      }
+      if (data) isFirstLoad.current = false;
       return;
     }
 
@@ -88,7 +88,7 @@ const AppContent: React.FC = () => {
       }
     });
 
-    prevOrdersRef.current = [...currentOrders];
+    prevOrdersRef.current = currentOrders;
   }, [data?.serviceOrders]);
 
   // 3. Sincronização: Busca do Supabase (Cloud -> Local)
