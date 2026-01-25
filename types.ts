@@ -1,7 +1,8 @@
 
 export enum UserRole {
   ADMIN = 'ADMIN',
-  TECHNICIAN = 'TECHNICIAN'
+  TECHNICIAN = 'TECHNICIAN',
+  CONDO_USER = 'CONDO_USER'
 }
 
 export enum ContractType {
@@ -37,35 +38,35 @@ export interface Condo {
   name: string;
   address: string;
   manager: string;
-  contractType: ContractType;
-  startDate: string;
+  contract_type: ContractType;
+  start_date: string;
 }
 
 export interface Equipment {
   id: string;
-  condoId: string;
-  typeId: string;
+  condo_id: string;
+  type_id: string;
   manufacturer: string;
   model: string;
   power: string;
   voltage: string;
-  nominalCurrent: number;
-  measuredCurrent: number;
+  nominal_current: number;
+  measured_current: number;
   temperature: number;
   noise: 'Normal' | 'Anormal';
-  electricalState: 'Bom' | 'Regular' | 'Crítico';
+  electrical_state: 'Bom' | 'Regular' | 'Crítico';
   location: string;
   observations: string;
   photos: string[];
-  lastMaintenance: string;
+  last_maintenance: string;
 }
 
 export interface System {
   id: string;
-  condoId: string;
-  typeId: string;
+  condo_id: string;
+  type_id: string;
   name: string;
-  equipmentIds: string[];
+  equipment_ids: string[];
   parameters: string;
   observations: string;
 }
@@ -74,17 +75,19 @@ export interface ServiceOrder {
   id: string;
   type: OSType;
   status: OSStatus;
-  condoId: string;
-  equipmentId?: string;
-  systemId?: string; // Novo campo para vínculo com sistemas
-  problemDescription: string;
-  actionsPerformed: string;
-  partsReplaced: string[];
-  photosBefore: string[];
-  photosAfter: string[];
-  technicianId: string;
-  createdAt: string;
-  completedAt?: string;
+  condo_id: string;
+  equipment_id?: string;
+  system_id?: string; 
+  problem_description: string;
+  actions_performed: string;
+  parts_replaced: string[];
+  photos_before: string[];
+  photos_after: string[];
+  technician_id: string;
+  created_at: string;
+  completed_at?: string;
+  service_value?: number;
+  material_value?: number;
 }
 
 export interface User {
@@ -93,6 +96,7 @@ export interface User {
   role: UserRole;
   email: string;
   password?: string;
+  condo_id?: string;
 }
 
 export interface AppData {

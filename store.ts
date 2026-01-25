@@ -1,5 +1,5 @@
 
-import { Condo, Equipment, System, ServiceOrder, User, EquipmentType, SystemType, AppData, UserRole } from './types';
+import { AppData, UserRole } from './types';
 import { INITIAL_EQUIPMENT_TYPES, INITIAL_SYSTEM_TYPES } from './constants';
 
 const STORAGE_KEY = 'smart_gestao_data';

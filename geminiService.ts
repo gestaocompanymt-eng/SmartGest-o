@@ -8,13 +8,14 @@ import { Equipment } from "./types";
 export const analyzeEquipmentState = async (equipment: Equipment) => {
   // Fix: Direct initialization using process.env.API_KEY as per the required coding guidelines
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  // Fix: Property names updated to match the Equipment interface (snake_case)
   const prompt = `Analise os seguintes dados técnicos de um equipamento de condomínio e forneça um breve parecer técnico (máx 3 frases):
-    Tipo: ${equipment.typeId}
-    Corrente Nominal: ${equipment.nominalCurrent}A
-    Corrente Medida: ${equipment.measuredCurrent}A
+    Tipo: ${equipment.type_id}
+    Corrente Nominal: ${equipment.nominal_current}A
+    Corrente Medida: ${equipment.measured_current}A
     Temperatura: ${equipment.temperature}°C
     Ruído: ${equipment.noise}
-    Estado Elétrico: ${equipment.electricalState}
+    Estado Elétrico: ${equipment.electrical_state}
     
     Identifique riscos potenciais de quebra ou necessidade de manutenção imediata.`;
 

@@ -10,7 +10,15 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<Record<string, string>>({});
 
-  const isAdmin = data.currentUser?.role === UserRole.ADMIN;
+  const user = data.currentUser;
+  const isAdmin = user?.role === UserRole.ADMIN;
+  const isTech = user?.role === UserRole.TECHNICIAN;
+  const isCondo = user?.role === UserRole.CONDO_USER;
+
+  // Fix: Updated condoId to condo_id and user?.condoId to user?.condo_id
+  const filteredEquipments = isCondo
+    ? data.equipments.filter((e: Equipment) => e.condo_id === user?.condo_id)
+    : data.equipments;
 
   const handleGeminiAnalysis = async (eq: Equipment) => {
     setAnalyzingId(eq.id);
@@ -22,23 +30,24 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+    // Fix: Map formData to correct snake_case properties on Equipment interface
     const eqData: Equipment = {
       id: editingEq?.id || Math.random().toString(36).substr(2, 9),
-      condoId: formData.get('condoId') as string,
-      typeId: formData.get('typeId') as string,
+      condo_id: formData.get('condoId') as string,
+      type_id: formData.get('typeId') as string,
       manufacturer: formData.get('manufacturer') as string,
       model: formData.get('model') as string,
       power: formData.get('power') as string,
       voltage: formData.get('voltage') as string,
-      nominalCurrent: Number(formData.get('nominalCurrent')),
-      measuredCurrent: Number(formData.get('measuredCurrent')),
+      nominal_current: Number(formData.get('nominalCurrent')),
+      measured_current: Number(formData.get('measuredCurrent')),
       temperature: Number(formData.get('temperature')),
       noise: formData.get('noise') as any,
-      electricalState: formData.get('electricalState') as any,
+      electrical_state: formData.get('electricalState') as any,
       location: formData.get('location') as string,
       observations: formData.get('observations') as string,
       photos: editingEq?.photos || [],
-      lastMaintenance: editingEq?.lastMaintenance || new Date().toISOString(),
+      last_maintenance: editingEq?.last_maintenance || new Date().toISOString(),
     };
 
     if (editingEq) {
@@ -70,22 +79,25 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     <div className="space-y-6 pb-12">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 leading-tight">Equipamentos</h1>
-          <p className="text-sm text-slate-500">Monitoramento técnico e inventário de ativos.</p>
+          <h1 className="text-2xl font-black text-slate-900 leading-tight">Equipamentos</h1>
+          <p className="text-sm text-slate-500">{isCondo ? 'Inventário técnico do seu condomínio.' : 'Monitoramento técnico e inventário de ativos.'}</p>
         </div>
-        <button 
-          onClick={() => { setEditingEq(null); setIsModalOpen(true); }}
-          className="w-full md:w-auto bg-blue-600 text-white px-6 py-4 md:py-2 rounded-2xl md:rounded-xl flex items-center justify-center space-x-2 font-bold shadow-lg shadow-blue-500/20 active:scale-95 transition-all"
-        >
-          <Plus size={20} />
-          <span className="uppercase text-xs tracking-widest">Cadastrar Ativo</span>
-        </button>
+        {(isAdmin || isTech) && (
+          <button 
+            onClick={() => { setEditingEq(null); setIsModalOpen(true); }}
+            className="w-full md:w-auto bg-blue-600 text-white px-6 py-4 md:py-2 rounded-xl flex items-center justify-center space-x-2 font-bold shadow-lg shadow-blue-500/20 active:scale-95 transition-all"
+          >
+            <Plus size={20} />
+            <span className="uppercase text-xs tracking-widest">Cadastrar Ativo</span>
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
-        {data.equipments.map((eq: Equipment) => {
-          const condo = data.condos.find((c: Condo) => c.id === eq.condoId);
-          const type = data.equipmentTypes.find((t: EquipmentType) => t.id === eq.typeId);
+        {filteredEquipments.map((eq: Equipment) => {
+          // Fix: Updated eq.condoId to eq.condo_id and eq.typeId to eq.type_id
+          const condo = data.condos.find((c: Condo) => c.id === eq.condo_id);
+          const type = data.equipmentTypes.find((t: EquipmentType) => t.id === eq.type_id);
           
           return (
             <div key={eq.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col group hover:border-blue-400 transition-all">
@@ -95,14 +107,15 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                     {type?.name || 'Inespecífico'}
                   </span>
                   <div className="flex items-center space-x-2">
+                    {/* Fix: Updated eq.electricalState to eq.electrical_state */}
                     <div className={`flex items-center space-x-1.5 px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${
-                      eq.electricalState === 'Bom' ? 'bg-emerald-50 text-emerald-600' :
-                      eq.electricalState === 'Regular' ? 'bg-amber-50 text-amber-600' : 'bg-red-50 text-red-600'
+                      eq.electrical_state === 'Bom' ? 'bg-emerald-50 text-emerald-600' :
+                      eq.electrical_state === 'Regular' ? 'bg-amber-50 text-amber-600' : 'bg-red-50 text-red-600'
                     }`}>
                       <ShieldCheck size={12} />
-                      <span>{eq.electricalState}</span>
+                      <span>{eq.electrical_state}</span>
                     </div>
-                    {isAdmin && (
+                    {(isAdmin || isTech) && (
                       <div className="flex md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                          <button onClick={() => { setEditingEq(eq); setIsModalOpen(true); }} className="p-2 text-slate-400 hover:text-blue-600 active:bg-blue-50 rounded-lg">
                            <Edit2 size={16} />
@@ -124,8 +137,9 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                     <p className="text-[8px] text-slate-400 font-black uppercase tracking-[0.15em] mb-1">Medição</p>
                     <div className="flex items-center text-slate-800">
                       <Zap size={14} className="mr-1.5 text-blue-500" />
-                      <span className="text-sm font-black">{eq.measuredCurrent}</span>
-                      <span className="text-[10px] text-slate-400 ml-1 font-bold">/ {eq.nominalCurrent}A</span>
+                      {/* Fix: Updated measuredCurrent and nominalCurrent access */}
+                      <span className="text-sm font-black">{eq.measured_current}</span>
+                      <span className="text-[10px] text-slate-400 ml-1 font-bold">/ {eq.nominal_current}A</span>
                     </div>
                   </div>
                   <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
@@ -146,7 +160,7 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                   <button 
                     disabled={analyzingId === eq.id}
                     onClick={() => handleGeminiAnalysis(eq)}
-                    className="w-full py-3 bg-gradient-to-br from-slate-800 to-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-[0.15em] flex items-center justify-center space-x-2 mb-4 active:scale-95 transition-all disabled:opacity-50"
+                    className="w-full py-3 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-[0.15em] flex items-center justify-center space-x-2 mb-4 active:scale-95 transition-all disabled:opacity-50"
                   >
                     {analyzingId === eq.id ? (
                       <span className="animate-pulse">PROCESSANDO DADOS TÉCNICOS...</span>
@@ -158,8 +172,6 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                     )}
                   </button>
                 )}
-
-                <p className="text-xs text-slate-500 line-clamp-2 italic font-medium">"{eq.observations || 'Nenhuma observação registrada.'}"</p>
               </div>
               <div className="bg-slate-50/80 px-5 py-3.5 border-t border-slate-100 flex justify-between items-center">
                 <div className="flex items-center text-[9px] font-black uppercase tracking-widest">
@@ -171,15 +183,14 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
             </div>
           );
         })}
-        {data.equipments.length === 0 && (
+        {filteredEquipments.length === 0 && (
           <div className="col-span-full py-20 bg-white border-2 border-dashed border-slate-200 rounded-3xl flex flex-col items-center">
             <Layers size={50} className="text-slate-200 mb-4" />
-            <p className="text-slate-400 font-bold">Nenhum equipamento cadastrado.</p>
+            <p className="text-slate-400 font-bold uppercase text-xs tracking-widest">Nenhum ativo encontrado para este condomínio.</p>
           </div>
         )}
       </div>
 
-      {/* Cadastro Modal - Mobile Full Screen */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
           <div className="bg-white md:rounded-2xl w-full h-full md:h-auto md:max-h-[95vh] md:max-w-2xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-300 flex flex-col">
@@ -193,14 +204,14 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Condomínio Vinculado</label>
-                  <select required name="condoId" defaultValue={editingEq?.condoId} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700">
+                  <select required name="condoId" defaultValue={editingEq?.condo_id} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700">
                     <option value="">Selecione um cliente...</option>
                     {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Categoria do Ativo</label>
-                  <select required name="typeId" defaultValue={editingEq?.typeId} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700">
+                  <select required name="typeId" defaultValue={editingEq?.type_id} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700">
                     <option value="">Selecione um tipo...</option>
                     {data.equipmentTypes.map((t: EquipmentType) => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
@@ -226,11 +237,11 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Corr. Nom.</label>
-                  <input required type="number" step="0.1" name="nominalCurrent" defaultValue={editingEq?.nominalCurrent} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
+                  <input required type="number" step="0.1" name="nominalCurrent" defaultValue={editingEq?.nominal_current} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Corr. Med.</label>
-                  <input required type="number" step="0.1" name="measuredCurrent" defaultValue={editingEq?.measuredCurrent} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
+                  <input required type="number" step="0.1" name="measuredCurrent" defaultValue={editingEq?.measured_current} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
                 </div>
               </div>
 
@@ -248,7 +259,7 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Estado Crítico</label>
-                  <select required name="electricalState" defaultValue={editingEq?.electricalState} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold">
+                  <select required name="electricalState" defaultValue={editingEq?.electrical_state} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold">
                     <option value="Bom">Bom (Verde)</option>
                     <option value="Regular">Regular (Amarelo)</option>
                     <option value="Crítico">Crítico (Vermelho)</option>
