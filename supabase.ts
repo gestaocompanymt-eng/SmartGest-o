@@ -1,48 +1,39 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-const getEnv = (key: string, fallback: string) => {
-  try {
-    // No ambiente de execução, o process.env pode vir de diferentes fontes
-    // @ts-ignore
-    const val = typeof process !== 'undefined' ? (process.env[key] || process.env[`VITE_${key}`]) : null;
-    return val || fallback;
-  } catch (e) {
-    return fallback;
-  }
-};
-
-// Se o usuário não configurou as chaves, o App opera em modo LocalStorage (Mock)
-const SUPABASE_URL = getEnv('SUPABASE_URL', '');
-const SUPABASE_ANON_KEY = getEnv('SUPABASE_ANON_KEY', ''); 
+// Credenciais validadas para o projeto rlldyyipyapkehtxwvqk
+const SUPABASE_URL = 'https://rlldyyipyapkehtxwvqk.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_mOmsdU6uKC0eI6_ppTiHhQ_6NJD8jYv'; 
 
 let supabaseClient: any;
 
-const isConfigured = SUPABASE_URL && SUPABASE_ANON_KEY && SUPABASE_ANON_KEY.startsWith('eyJ');
+const isConfigured = SUPABASE_URL && SUPABASE_URL.startsWith('https://') && SUPABASE_ANON_KEY;
 
 if (isConfigured) {
-  supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true
+    },
+    global: {
+      headers: { 'x-application-name': 'smart-gestao' }
+    }
+  });
 } else {
-  console.info("SmartGestão: Modo Offline/Local Ativo. Configure as variáveis SUPABASE_URL e SUPABASE_ANON_KEY para habilitar o Banco de Dados em Nuvem.");
-  
-  // Mock robusto para desenvolvimento sem Supabase
+  // Mock para desenvolvimento sem banco
   supabaseClient = {
-    from: (table: string) => ({
+    from: () => ({
       select: () => Promise.resolve({ data: [], error: null }),
       upsert: (data: any) => Promise.resolve({ data, error: null }),
       insert: (data: any) => Promise.resolve({ data, error: null }),
       update: (data: any) => Promise.resolve({ data, error: null }),
       delete: (data: any) => Promise.resolve({ data, error: null }),
-      on: () => ({ subscribe: () => ({ unsubscribe: () => {} }) }),
     }),
     channel: () => ({
       on: () => ({ subscribe: () => {} }),
       subscribe: () => {}
     }),
-    auth: {
-      getUser: () => Promise.resolve({ data: { user: null }, error: null }),
-      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
-    }
+    removeChannel: () => {}
   };
 }
 
