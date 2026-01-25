@@ -8,8 +8,7 @@ import {
 import { UserRole, EquipmentType, User as UserType, ServiceOrder, Condo, System, Equipment, OSStatus } from '../types';
 
 const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
-  // Estados para Gestão de Usuários e Tipos
-  const [newTypeName, setNewTypeName] = useState('');
+  // Estados para Gestão de Usuários
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserType | null>(null);
 
@@ -59,20 +58,6 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     setSelectedTechId('all');
     setSelectedSystemId('all');
     setSelectedEquipId('all');
-  };
-
-  const addEquipmentType = () => {
-    if (!newTypeName) return;
-    const newType: EquipmentType = {
-      id: Math.random().toString(36).substr(2, 9),
-      name: newTypeName
-    };
-    updateData({ ...data, equipmentTypes: [...data.equipmentTypes, newType] });
-    setNewTypeName('');
-  };
-
-  const removeEquipmentType = (id: string) => {
-    updateData({ ...data, equipmentTypes: data.equipmentTypes.filter((t: any) => t.id !== id) });
   };
 
   const handleUserSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -250,8 +235,8 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-        {/* User Management */}
+      <div className="grid grid-cols-1 gap-8">
+        {/* User Management - Now Full Width */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="p-6 border-b border-slate-100 flex justify-between items-center">
             <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-xs">
@@ -303,46 +288,6 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                 </div>
               </div>
             ))}
-          </div>
-        </div>
-
-        {/* Equipment Types Management */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-            <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-xs">
-              <Settings2 size={18} className="mr-2 text-blue-600" /> Tipos de Equipamentos
-            </h3>
-          </div>
-          <div className="p-6 space-y-4">
-            <div className="flex space-x-2">
-              <input 
-                type="text" 
-                placeholder="Ex: Bomba de recalque" 
-                value={newTypeName}
-                onChange={(e) => setNewTypeName(e.target.value)}
-                className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-500/10 outline-none font-bold text-xs"
-              />
-              <button 
-                onClick={addEquipmentType}
-                className="bg-blue-600 text-white p-3 rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/10 active:scale-95"
-              >
-                <Plus size={20} />
-              </button>
-            </div>
-            
-            <div className="flex flex-wrap gap-2 pt-2">
-              {data.equipmentTypes.map((type: EquipmentType) => (
-                <div key={type.id} className="group flex items-center bg-white text-slate-700 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest border border-slate-200 hover:border-blue-300 transition-all">
-                  {type.name}
-                  <button 
-                    onClick={() => removeEquipmentType(type.id)}
-                    className="ml-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              ))}
-            </div>
           </div>
         </div>
       </div>
