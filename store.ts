@@ -23,8 +23,14 @@ export const getStore = (): AppData => {
   return saved ? JSON.parse(saved) : initialData;
 };
 
-export const saveStore = (data: AppData) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+export const saveStore = (data: AppData): boolean => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    return true;
+  } catch (e) {
+    console.error("Falha ao salvar no LocalStorage (provavelmente cheio):", e);
+    return false;
+  }
 };
 
 export const clearStore = () => {

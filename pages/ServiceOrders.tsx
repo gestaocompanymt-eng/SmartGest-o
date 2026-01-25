@@ -4,7 +4,8 @@ import { useLocation } from 'react-router-dom';
 import { 
   Plus, Filter, FileText, CheckCircle2, Clock, AlertCircle, 
   Share2, Edit2, Trash2, X, User as UserIcon, Settings, 
-  Wrench, Camera, Image as ImageIcon, Trash, ChevronDown, ChevronUp
+  Wrench, Camera, Image as ImageIcon, Trash, ChevronDown, ChevronUp,
+  Check, Save
 } from 'lucide-react';
 import { OSType, OSStatus, ServiceOrder, Condo, Equipment, System, UserRole } from '../types';
 
@@ -14,8 +15,9 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const [editingOS, setEditingOS] = useState<ServiceOrder | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [expandedOS, setExpandedOS] = useState<string | null>(null);
+  const [isCompressing, setIsCompressing] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   
-  // Estados para o formulário dinâmico
   const [selectedCondoId, setSelectedCondoId] = useState('');
   const [assignmentType, setAssignmentType] = useState<'equipment' | 'system' | 'general'>('general');
   const [photosBefore, setPhotosBefore] = useState<string[]>([]);
@@ -24,16 +26,43 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const fileInputBeforeRef = useRef<HTMLInputElement>(null);
   const fileInputAfterRef = useRef<HTMLInputElement>(null);
 
+  // Compressão mais agressiva (600px) para garantir salvamento no mobile
+  const compressImage = (base64Str: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.src = base64Str;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_DIM = 600; 
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_DIM) {
+            height *= MAX_DIM / width;
+            width = MAX_DIM;
+          }
+        } else {
+          if (height > MAX_DIM) {
+            width *= MAX_DIM / height;
+            height = MAX_DIM;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.6)); // Qualidade 60% reduz drasticamente o tamanho Base64
+      };
+    });
+  };
+
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const systemId = params.get('systemId');
-    const equipmentId = params.get('equipmentId');
-
     if (systemId) {
       const sys = data.systems.find((s: System) => s.id === systemId);
-      if (sys) {
-        openNewOSWithSystem(sys);
-      }
+      if (sys) openNewOSWithSystem(sys);
     }
   }, [location.search, data.systems]);
 
@@ -58,20 +87,56 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     setIsModalOpen(true);
   };
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'before' | 'after') => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'before' | 'after') => {
     const files = e.target.files;
     if (!files) return;
 
-    // Fix: Explicitly type the file as File to avoid 'unknown' type error on line 72 when using readAsDataURL
-    Array.from(files).forEach((file: File) => {
+    setIsCompressing(true);
+    for (const file of Array.from(files) as File[]) {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64 = reader.result as string;
-        if (type === 'before') setPhotosBefore(prev => [...prev, base64]);
-        else setPhotosAfter(prev => [...prev, base64]);
-      };
+      const promise = new Promise<void>((resolve) => {
+        reader.onloadend = async () => {
+          const result = reader.result;
+          if (typeof result === 'string') {
+            const compressed = await compressImage(result);
+            if (type === 'before') setPhotosBefore(prev => [...prev, compressed]);
+            else setPhotosAfter(prev => [...prev, compressed]);
+          }
+          resolve();
+        };
+      });
       reader.readAsDataURL(file);
-    });
+      await promise;
+    }
+    setIsCompressing(false);
+  };
+
+  const handleShare = async (os: ServiceOrder) => {
+    const condo = data.condos.find((c: Condo) => c.id === os.condoId);
+    const text = `🛠️ *Ordem de Serviço: ${os.id}*\n🏢 Condomínio: ${condo?.name || 'N/A'}\n📋 Tipo: ${os.type}\nStatus: ${os.status}\n\n📝 Descrição: ${os.problemDescription}\n${os.actionsPerformed ? `✅ Ações: ${os.actionsPerformed}` : ''}\n\nGerado via SmartGestão.`;
+
+    // No mobile, navigator.share é melhor. Se falhar ou não existir, usamos Clipboard.
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `SmartGestão - OS ${os.id}`,
+          text: text,
+          // Em navegadores modernos, podemos tentar anexar o link da PWA
+          url: window.location.href
+        });
+        return;
+      } catch (err) {
+        console.warn('Erro ou cancelamento do Share Nativo:', err);
+      }
+    }
+    
+    // Fallback robusto para Clipboard
+    try {
+      await navigator.clipboard.writeText(text);
+      alert('Resumo copiado com sucesso! Você já pode colar no WhatsApp ou E-mail.');
+    } catch (e) {
+      alert('Não foi possível compartilhar automaticamente. Por favor, tente novamente ou verifique as permissões do navegador.');
+    }
   };
 
   const removePhoto = (index: number, type: 'before' | 'after') => {
@@ -79,8 +144,9 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     else setPhotosAfter(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setSaveStatus('saving');
     const formData = new FormData(e.currentTarget);
     
     const osData: ServiceOrder = {
@@ -100,19 +166,30 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
       completedAt: editingOS?.completedAt,
     };
 
-    if (editingOS) {
-      updateData({
+    try {
+      // Pequeno delay para feedback visual de salvamento no mobile
+      await new Promise(r => setTimeout(r, 600));
+
+      const updatedServiceOrders = editingOS
+        ? data.serviceOrders.map((os: ServiceOrder) => os.id === editingOS.id ? osData : os)
+        : [osData, ...data.serviceOrders];
+
+      // Tenta salvar e aguarda confirmação do updateData (que agora monitora o store.saveStore)
+      await updateData({
         ...data,
-        serviceOrders: data.serviceOrders.map((os: ServiceOrder) => os.id === editingOS.id ? osData : os)
+        serviceOrders: updatedServiceOrders
       });
-    } else {
-      updateData({
-        ...data,
-        serviceOrders: [osData, ...data.serviceOrders]
-      });
+
+      setSaveStatus('success');
+      setTimeout(() => {
+        setSaveStatus('idle');
+        closeModal();
+      }, 1000);
+    } catch (err) {
+      console.error("Erro ao gravar OS:", err);
+      setSaveStatus('error');
+      alert("ERRO DE MEMÓRIA: O dispositivo não conseguiu gravar esta OS com as fotos atuais. Tente remover algumas fotos ou limpar o cache do navegador.");
     }
-    
-    closeModal();
   };
 
   const closeModal = () => {
@@ -122,6 +199,7 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     setPhotosAfter([]);
     setAssignmentType('general');
     setSelectedCondoId('');
+    setSaveStatus('idle');
   };
 
   const updateOSStatus = (id: string, newStatus: OSStatus) => {
@@ -232,11 +310,14 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                   </div>
                   
                   <div className="flex items-center space-x-1">
-                    <button onClick={() => handleEditOS(os)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                    <button onClick={() => handleEditOS(os)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Editar">
                       <Edit2 size={16} />
                     </button>
+                    <button onClick={() => handleShare(os)} className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Compartilhar">
+                      <Share2 size={16} />
+                    </button>
                     {data.currentUser?.role === UserRole.ADMIN && (
-                      <button onClick={() => deleteOS(os.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                      <button onClick={() => deleteOS(os.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Excluir">
                         <Trash2 size={16} />
                       </button>
                     )}
@@ -247,7 +328,6 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                 </div>
               </div>
 
-              {/* Detalhes Expandidos (Histórico e Fotos) */}
               {isExpanded && (
                 <div className="px-5 pb-6 border-t border-slate-50 pt-4 animate-in fade-in slide-in-from-top-2 duration-200">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -303,7 +383,7 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                             Finalizar OS
                           </button>
                         )}
-                        <button className="px-4 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-[10px] font-black uppercase active:scale-95">
+                        <button onClick={() => handleShare(os)} className="px-4 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-[10px] font-black uppercase active:scale-95">
                           <Share2 size={16} />
                         </button>
                       </div>
@@ -316,7 +396,6 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
         })}
       </div>
 
-      {/* Modal OS (Criação e Edição Completa) */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
           <div className="bg-white md:rounded-3xl w-full h-full md:h-auto md:max-h-[95vh] md:max-w-2xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-300 flex flex-col">
@@ -336,10 +415,38 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
             </div>
 
             <form onSubmit={handleSubmit} className="p-5 md:p-8 space-y-6 overflow-y-auto flex-1 scroll-touch">
+              {isCompressing && (
+                <div className="bg-blue-50 border border-blue-200 p-3 rounded-xl flex items-center space-x-3 animate-pulse">
+                  <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                  <p className="text-xs font-black text-blue-700 uppercase tracking-widest">Otimizando imagens...</p>
+                </div>
+              )}
+
+              {saveStatus === 'saving' && (
+                <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl flex items-center space-x-3 animate-pulse">
+                  <div className="w-5 h-5 border-2 border-amber-600 border-t-transparent rounded-full animate-spin"></div>
+                  <p className="text-xs font-black text-amber-700 uppercase tracking-widest">Gravando no banco de dados local...</p>
+                </div>
+              )}
+
+              {saveStatus === 'success' && (
+                <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl flex items-center space-x-3">
+                  <Check size={20} className="text-emerald-600" />
+                  <p className="text-xs font-black text-emerald-700 uppercase tracking-widest">OS Gravada com Sucesso!</p>
+                </div>
+              )}
+
+              {saveStatus === 'error' && (
+                <div className="bg-red-50 border border-red-200 p-3 rounded-xl flex items-center space-x-3">
+                  <AlertCircle size={20} className="text-red-600" />
+                  <p className="text-xs font-black text-red-700 uppercase tracking-widest">Falha Crítica ao Gravar OS</p>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Tipo de Chamado</label>
-                  <select required name="type" defaultValue={editingOS?.type} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10">
+                  <select required name="type" defaultValue={editingOS?.type} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none">
                     {Object.values(OSType).map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
@@ -394,7 +501,6 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                 </div>
               )}
 
-              {/* Seção de Fotos Antes/Depois */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
@@ -451,8 +557,19 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
 
               <div className="pt-6 flex flex-col-reverse md:flex-row gap-4 shrink-0">
                 <button type="button" onClick={closeModal} className="w-full px-6 py-4 border-2 border-slate-100 text-slate-500 font-black rounded-2xl uppercase text-xs active:bg-slate-50">Descartar</button>
-                <button type="submit" className="w-full px-6 py-4 bg-slate-900 text-white font-black rounded-2xl uppercase text-xs tracking-widest shadow-xl shadow-slate-900/20 active:scale-95 transition-all">
-                  {editingOS ? 'Atualizar Registro' : 'Salvar Ordem de Serviço'}
+                <button 
+                  type="submit" 
+                  disabled={isCompressing || saveStatus === 'saving'} 
+                  className="w-full px-6 py-4 bg-slate-900 text-white font-black rounded-2xl uppercase text-xs tracking-widest shadow-xl shadow-slate-900/20 active:scale-95 transition-all disabled:opacity-50"
+                >
+                  <div className="flex items-center justify-center space-x-2">
+                    {saveStatus === 'saving' ? (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      <Save size={16} />
+                    )}
+                    <span>{editingOS ? 'Atualizar Registro' : 'Salvar Ordem de Serviço'}</span>
+                  </div>
                 </button>
               </div>
             </form>
