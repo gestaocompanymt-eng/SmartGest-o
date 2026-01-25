@@ -13,10 +13,8 @@ if (isConfigured) {
   supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: {
       persistSession: true,
-      autoRefreshToken: true
-    },
-    global: {
-      headers: { 'x-application-name': 'smart-gestao' }
+      autoRefreshToken: true,
+      detectSessionInUrl: true
     }
   });
 } else {

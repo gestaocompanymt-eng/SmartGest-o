@@ -41,7 +41,7 @@ const AppContent: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // 1. Carregamento Inicial
+  // 1. Carregamento Inicial do LocalStorage
   useEffect(() => {
     const localData = getStore();
     setData(localData);
@@ -50,32 +50,34 @@ const AppContent: React.FC = () => {
     }
   }, []);
 
-  // 2. Sincronização: Busca do Supabase e Merging
+  // 2. Sincronização: Busca do Supabase (Cloud -> Local)
   const syncWithCloud = useCallback(async (currentLocalData: AppData) => {
     if (!navigator.onLine || !isSupabaseActive) return;
     
     setIsSyncing(true);
     try {
-      const [resCondos, resUsers, resEquips, resSystems, resOS] = await Promise.all([
+      const [resCondos, resUsers, resEquips, resSystems, resOS, resEqTypes, resSysTypes] = await Promise.all([
         supabase.from('condos').select('*'),
         supabase.from('users').select('*'),
         supabase.from('equipments').select('*'),
         supabase.from('systems').select('*'),
-        supabase.from('service_orders').select('*')
+        supabase.from('service_orders').select('*'),
+        supabase.from('equipment_types').select('*'),
+        supabase.from('system_types').select('*')
       ]);
 
-      // Se o banco estiver vazio mas o local tiver dados, faz o push inicial
-      const cloudIsEmpty = (!resCondos.data?.length && !resOS.data?.length);
+      // Verificar se o banco na nuvem está vazio (primeiro acesso)
+      const cloudIsEmpty = (!resCondos.data?.length && !resOS.data?.length && !resEquips.data?.length);
       const localHasData = (currentLocalData.condos.length > 0 || currentLocalData.serviceOrders.length > 0);
 
       if (cloudIsEmpty && localHasData) {
-        console.info("Banco na nuvem vazio. Realizando push de dados locais...");
+        console.info("SmartGestão: Cloud vazia detectada. Iniciando upload de dados locais...");
         await pushToCloud(currentLocalData);
         setIsSyncing(false);
         return;
       }
 
-      // Caso contrário, prioriza dados da nuvem
+      // Mesclar dados (Nuvem ganha de dados locais em caso de conflito)
       const syncedData: AppData = {
         ...currentLocalData,
         condos: resCondos.data || currentLocalData.condos,
@@ -85,35 +87,40 @@ const AppContent: React.FC = () => {
         serviceOrders: (resOS.data || currentLocalData.serviceOrders).sort((a: any, b: any) => 
           new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
         ),
+        equipmentTypes: resEqTypes.data?.length ? resEqTypes.data : currentLocalData.equipmentTypes,
+        systemTypes: resSysTypes.data?.length ? resSysTypes.data : currentLocalData.systemTypes,
       };
 
       setData(syncedData);
       saveStore(syncedData);
     } catch (error) {
-      console.error('Erro na sincronização:', error);
+      console.error('SmartGestão: Erro crítico na sincronização:', error);
     } finally {
       setIsSyncing(false);
     }
   }, []);
 
-  // 3. Push para Nuvem
+  // 3. Push para Cloud (Local -> Cloud)
   const pushToCloud = async (newData: AppData) => {
     if (!isSupabaseActive || !navigator.onLine) return;
     
     try {
+      // Usamos Promise.all para performance, garantindo que enviamos apenas se houver dados
       await Promise.all([
         newData.condos.length > 0 && supabase.from('condos').upsert(newData.condos),
         newData.users.length > 0 && supabase.from('users').upsert(newData.users),
         newData.equipments.length > 0 && supabase.from('equipments').upsert(newData.equipments),
         newData.systems.length > 0 && supabase.from('systems').upsert(newData.systems),
-        newData.serviceOrders.length > 0 && supabase.from('service_orders').upsert(newData.serviceOrders)
+        newData.serviceOrders.length > 0 && supabase.from('service_orders').upsert(newData.serviceOrders),
+        newData.equipmentTypes.length > 0 && supabase.from('equipment_types').upsert(newData.equipmentTypes),
+        newData.systemTypes.length > 0 && supabase.from('system_types').upsert(newData.systemTypes)
       ].filter(Boolean));
     } catch (err) {
-      console.error("Falha no push para cloud:", err);
+      console.error("SmartGestão: Erro ao enviar para Cloud:", err);
     }
   };
 
-  // 4. Efeitos de Monitoramento
+  // 4. Efeitos de Monitoramento de Rede e Realtime
   useEffect(() => {
     if (data) syncWithCloud(data);
     
@@ -132,7 +139,8 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     if (!isSupabaseActive || !isOnline) return;
 
-    const channel = supabase.channel('db-changes')
+    // Escuta mudanças globais em qualquer tabela
+    const channel = supabase.channel('db-changes-global')
       .on('postgres_changes', { event: '*', schema: 'public' }, () => {
         if(data) syncWithCloud(data);
       })
@@ -143,11 +151,14 @@ const AppContent: React.FC = () => {
     return () => { supabase.removeChannel(channel); };
   }, [isOnline, syncWithCloud, !!data]);
 
-  // 5. Função de Atualização de Dados (Chamada pelas páginas)
+  // 5. Função de Atualização de Dados (Interface das Páginas)
   const updateData = async (newData: AppData) => {
+    // 1. Atualiza UI imediatamente (Otimista)
     setData(newData);
+    // 2. Salva no cache local (PWA Offline Support)
     saveStore(newData);
     
+    // 3. Sincroniza com Cloud se estiver online
     if (navigator.onLine && isSupabaseActive) {
       setIsSyncing(true);
       await pushToCloud(newData);
@@ -199,7 +210,7 @@ const AppContent: React.FC = () => {
           <div className="bg-blue-600 p-1.5 rounded-lg">
             <Wrench size={18} className="text-white" />
           </div>
-          <span className="font-bold text-base tracking-tight">SMARTGESTÃO</span>
+          <span className="font-bold text-base tracking-tight uppercase">SmartGestão</span>
         </div>
         <div className="flex items-center space-x-3">
            {isSyncing && <Zap size={16} className="text-blue-400 animate-pulse" />}
@@ -215,7 +226,7 @@ const AppContent: React.FC = () => {
         <div className="p-6 hidden md:block">
           <div className="flex items-center space-x-2 mb-8">
             <div className="bg-blue-600 p-2 rounded-lg"><Wrench size={24} className="text-white" /></div>
-            <span className="font-bold text-xl tracking-tight">SMARTGESTÃO</span>
+            <span className="font-bold text-xl tracking-tight uppercase">SmartGestão</span>
           </div>
         </div>
         <nav className="px-4 py-6 md:py-0 space-y-1.5 md:space-y-2">
@@ -247,13 +258,13 @@ const AppContent: React.FC = () => {
             <span className="text-sm font-medium text-slate-400 italic">Central de Manutenção Inteligente</span>
             {isSyncing && (
               <div className="flex items-center space-x-2 text-[10px] bg-blue-50 text-blue-600 px-3 py-1 rounded-full animate-pulse font-bold tracking-widest uppercase border border-blue-100">
-                <CloudUpload size={12} /> <span>Sincronizando Cloud...</span>
+                <CloudUpload size={12} /> <span>Sincronizando Nuvem...</span>
               </div>
             )}
           </div>
           <div className="flex items-center space-x-6">
              <div className="flex items-center space-x-3">
-                {isRealtimeActive && <span className="flex items-center text-[10px] text-emerald-600 font-bold uppercase tracking-widest bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100"><Zap size={10} className="mr-1" /> Live</span>}
+                {isRealtimeActive && <span className="flex items-center text-[10px] text-emerald-600 font-bold uppercase tracking-widest bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100"><Zap size={10} className="mr-1" /> Cloud Live</span>}
                 <div className="flex items-center space-x-2 text-xs font-medium">
                   {isOnline ? <span className="flex items-center text-emerald-600 font-bold"><Wifi size={14} className="mr-1.5" /> ONLINE</span> : <span className="flex items-center text-amber-600 font-bold"><WifiOff size={14} className="mr-1.5" /> OFFLINE</span>}
                 </div>
