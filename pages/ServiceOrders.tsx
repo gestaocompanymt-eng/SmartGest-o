@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { 
-  Plus, FileText, ChevronDown, ChevronUp, X, DollarSign, Calculator, Printer, MessageCircle, Edit2, Share2, Wrench
+  Plus, FileText, ChevronDown, ChevronUp, X, DollarSign, Calculator, Printer, MessageCircle, Edit2, Share2, Wrench, MapPin
 } from 'lucide-react';
 import { OSType, OSStatus, ServiceOrder, Condo, System, UserRole } from '../types';
 
@@ -40,7 +40,7 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   };
 
   const handleShare = async (os: ServiceOrder, condoName?: string) => {
-    const text = `🛠️ *SmartGestão - Ordem de Serviço*\n\n*ID:* ${os.id}\n*Condomínio:* ${condoName || 'Não informado'}\n*Tipo:* ${os.type}\n*Status:* ${os.status}\n\n*Descrição:* ${os.problem_description}\n\n_Gerado via SmartGestão_`;
+    const text = `🛠️ *SmartGestão - Ordem de Serviço*\n\n*ID:* ${os.id}\n*Condomínio:* ${condoName || 'Não informado'}\n*Local:* ${os.location || 'Não informado'}\n*Tipo:* ${os.type}\n*Status:* ${os.status}\n\n*Descrição:* ${os.problem_description}\n\n_Gerado via SmartGestão_`;
 
     if (navigator.share) {
       try {
@@ -71,6 +71,7 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
       type: formData.get('type') as OSType,
       status: editingOS?.status || OSStatus.OPEN,
       condo_id: isCondoUser ? (user?.condo_id || '') : (formData.get('condo_id') as string),
+      location: formData.get('location') as string,
       equipment_id: assignmentType === 'equipment' ? (formData.get('equipment_id') as string) : undefined,
       system_id: assignmentType === 'system' ? (formData.get('system_id') as string) : undefined,
       problem_description: formData.get('description') as string,
@@ -153,7 +154,12 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                 <div className="px-4 pb-4 border-t pt-4 space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <p className="text-[10px] font-black text-slate-400 uppercase">Descrição</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] font-black text-slate-400 uppercase">Descrição da Ocorrência</p>
+                        {os.location && (
+                          <p className="text-[9px] font-black text-blue-600 flex items-center uppercase"><MapPin size={10} className="mr-1" /> {os.location}</p>
+                        )}
+                      </div>
                       <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-xl italic">{os.problem_description}</p>
                     </div>
                     {os.actions_performed && (
@@ -227,13 +233,18 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-500 uppercase">Descrição</label>
+                <label className="text-[10px] font-black text-slate-500 uppercase">Local Exato da Ocorrência</label>
+                <input required name="location" defaultValue={editingOS?.location} placeholder="Ex: Hall Social Bloco B, Apartamento 402, Piscina" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs" />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-500 uppercase">Descrição do Problema</label>
                 <textarea required name="description" defaultValue={editingOS?.problem_description} rows={3} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"></textarea>
               </div>
 
               {isAdminOrTech && (
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-blue-600 uppercase">Ações Técnicas</label>
+                  <label className="text-[10px] font-black text-blue-600 uppercase">Ações Técnicas / Parecer</label>
                   <textarea name="actions" defaultValue={editingOS?.actions_performed} rows={3} className="w-full px-4 py-3 bg-blue-50/50 border border-blue-100 rounded-xl text-xs font-medium"></textarea>
                 </div>
               )}
@@ -254,7 +265,7 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
               <div className="pt-4 flex gap-3">
                 <button type="button" onClick={closeModal} className="flex-1 py-4 border rounded-2xl font-black text-xs uppercase">Descartar</button>
                 <button type="submit" disabled={saveStatus === 'saving'} className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-slate-900/20 active:scale-95">
-                  {saveStatus === 'saving' ? 'Gravando...' : 'Salvar Alterações'}
+                  {saveStatus === 'saving' ? 'Gravando...' : 'Salvar Chamado'}
                 </button>
               </div>
             </form>
@@ -262,6 +273,7 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
         </div>
       )}
 
+      {/* Quote Modal and Styles remain same */}
       {isQuoteModalOpen && quoteOS && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/80 backdrop-blur-md p-0 md:p-6 overflow-hidden">
           <div className="bg-white md:rounded-3xl w-full h-full md:h-auto md:max-h-[95vh] md:max-w-3xl flex flex-col shadow-2xl animate-in zoom-in-95 duration-200">
@@ -285,15 +297,11 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Sistemas de Manutenção e Gestão Predial</p>
                    <div className="space-y-1">
                       <p className="text-[10px] text-slate-700 font-black uppercase tracking-widest">Contato: (65) 99699-5600</p>
-                      <a href={WHATSAPP_LINK} target="_blank" rel="noopener noreferrer" className="text-[9px] text-emerald-600 font-black flex items-center no-print hover:underline">
-                        <MessageCircle size={12} className="mr-1" /> CLIQUE AQUI PARA FALAR NO WHATSAPP
-                      </a>
                    </div>
                 </div>
                 <div className="text-right">
                   <h1 className="text-3xl font-black uppercase text-slate-900 leading-none mb-1">Orçamento</h1>
                   <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">REF: {quoteOS.id}</p>
-                  <p className="text-[10px] text-slate-500 font-bold mt-2 uppercase">{new Date().toLocaleDateString('pt-BR', {day:'2-digit', month:'long', year:'numeric'})}</p>
                 </div>
               </div>
 
@@ -304,8 +312,8 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                   <p className="text-[10px] text-slate-600 font-medium leading-relaxed">{data.condos.find((c:any)=>c.id===quoteOS.condo_id)?.address}</p>
                 </div>
                 <div className="text-right">
-                  <h4 className="text-[9px] font-black uppercase text-slate-400 tracking-[0.2em] mb-2">Resumo</h4>
-                  <p className="font-black text-slate-900 text-sm uppercase">{quoteOS.type}</p>
+                  <h4 className="text-[9px] font-black uppercase text-slate-400 tracking-[0.2em] mb-2">Local</h4>
+                  <p className="font-black text-slate-900 text-sm uppercase">{quoteOS.location || 'Conforme descrito'}</p>
                 </div>
               </div>
 

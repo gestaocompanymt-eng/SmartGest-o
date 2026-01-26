@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Plus, Search, Layers, ShieldCheck, Thermometer, Zap, AlertCircle, Sparkles, Trash2, Edit2, X, Camera } from 'lucide-react';
+import { Plus, Search, Layers, ShieldCheck, Thermometer, Zap, AlertCircle, Sparkles, Trash2, Edit2, X, Camera, MapPin } from 'lucide-react';
 import { Equipment, EquipmentType, Condo, UserRole } from '../types';
 import { analyzeEquipmentState } from '../geminiService';
 
@@ -15,7 +15,6 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const isTech = user?.role === UserRole.TECHNICIAN;
   const isCondo = user?.role === UserRole.CONDO_USER;
 
-  // Fix: Updated condoId to condo_id and user?.condoId to user?.condo_id
   const filteredEquipments = isCondo
     ? data.equipments.filter((e: Equipment) => e.condo_id === user?.condo_id)
     : data.equipments;
@@ -30,7 +29,6 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    // Fix: Map formData to correct snake_case properties on Equipment interface
     const eqData: Equipment = {
       id: editingEq?.id || Math.random().toString(36).substr(2, 9),
       condo_id: formData.get('condoId') as string,
@@ -95,7 +93,6 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
         {filteredEquipments.map((eq: Equipment) => {
-          // Fix: Updated eq.condoId to eq.condo_id and eq.typeId to eq.type_id
           const condo = data.condos.find((c: Condo) => c.id === eq.condo_id);
           const type = data.equipmentTypes.find((t: EquipmentType) => t.id === eq.type_id);
           
@@ -107,7 +104,6 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                     {type?.name || 'Inespecífico'}
                   </span>
                   <div className="flex items-center space-x-2">
-                    {/* Fix: Updated eq.electricalState to eq.electrical_state */}
                     <div className={`flex items-center space-x-1.5 px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${
                       eq.electrical_state === 'Bom' ? 'bg-emerald-50 text-emerald-600' :
                       eq.electrical_state === 'Regular' ? 'bg-amber-50 text-amber-600' : 'bg-red-50 text-red-600'
@@ -130,14 +126,16 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                 
                 <h3 className="font-bold text-slate-900 text-lg leading-tight mb-1">{eq.manufacturer}</h3>
                 <p className="text-xs font-medium text-slate-600 mb-1">{eq.model}</p>
-                <p className="text-[10px] text-blue-600 font-black uppercase tracking-widest mb-4 truncate">{condo?.name || 'SEM CONDOMÍNIO'}</p>
+                <div className="flex flex-col mb-4">
+                  <p className="text-[10px] text-blue-600 font-black uppercase tracking-widest truncate">{condo?.name || 'SEM CONDOMÍNIO'}</p>
+                  <p className="text-[9px] text-slate-400 font-bold flex items-center mt-1"><MapPin size={10} className="mr-1" /> {eq.location}</p>
+                </div>
 
                 <div className="grid grid-cols-2 gap-3 mb-5">
                   <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
                     <p className="text-[8px] text-slate-400 font-black uppercase tracking-[0.15em] mb-1">Medição</p>
                     <div className="flex items-center text-slate-800">
                       <Zap size={14} className="mr-1.5 text-blue-500" />
-                      {/* Fix: Updated measuredCurrent and nominalCurrent access */}
                       <span className="text-sm font-black">{eq.measured_current}</span>
                       <span className="text-[10px] text-slate-400 ml-1 font-bold">/ {eq.nominal_current}A</span>
                     </div>
@@ -268,8 +266,13 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Localização e Notas</label>
-                <textarea name="observations" defaultValue={editingEq?.observations} rows={4} placeholder="Especifique onde o equipamento está instalado e outros detalhes relevantes..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none"></textarea>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Localização (Onde se encontra?)</label>
+                <input required name="location" defaultValue={editingEq?.location} placeholder="Ex: Casa de Máquinas Térreo, Barrilete Cobertura" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none" />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Notas Adicionais</label>
+                <textarea name="observations" defaultValue={editingEq?.observations} rows={3} placeholder="Detalhes técnicos relevantes..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none"></textarea>
               </div>
 
               <div className="pt-6 flex flex-col-reverse md:flex-row gap-4 shrink-0">

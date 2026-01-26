@@ -66,6 +66,7 @@ export interface System {
   condo_id: string;
   type_id: string;
   name: string;
+  location: string;
   equipment_ids: string[];
   parameters: string;
   observations: string;
@@ -76,6 +77,7 @@ export interface ServiceOrder {
   type: OSType;
   status: OSStatus;
   condo_id: string;
+  location?: string;
   equipment_id?: string;
   system_id?: string; 
   problem_description: string;

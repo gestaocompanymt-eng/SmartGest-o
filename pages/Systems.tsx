@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Settings, Monitor, Activity, Edit2, Trash2, X, Cpu, CheckCircle2, Circle, Layers, FilePlus } from 'lucide-react';
+import { Plus, Settings, Monitor, Activity, Edit2, Trash2, X, Cpu, CheckCircle2, Circle, Layers, FilePlus, MapPin } from 'lucide-react';
 import { System, SystemType, Condo, UserRole, Equipment } from '../types';
 
 const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
@@ -15,8 +15,6 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
   const isTech = user?.role === UserRole.TECHNICIAN;
   const isCondo = user?.role === UserRole.CONDO_USER;
 
-  // Filtrar sistemas: Se for Condo User, vê apenas os dele.
-  // Fix: Updated condoId to condo_id
   const filteredSystems = isCondo
     ? data.systems.filter((s: System) => s.condo_id === user?.condo_id)
     : data.systems;
@@ -24,12 +22,12 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    // Fix: Map formData to correct snake_case properties on System interface
     const sysData: System = {
       id: editingSys?.id || Math.random().toString(36).substr(2, 9),
       condo_id: formData.get('condoId') as string,
       type_id: formData.get('typeId') as string,
       name: formData.get('name') as string,
+      location: formData.get('location') as string,
       equipment_ids: editingSys?.equipment_ids || [], 
       parameters: formData.get('parameters') as string,
       observations: formData.get('observations') as string,
@@ -63,7 +61,6 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
     const system = data.systems.find((s: System) => s.id === systemId);
     if (!system) return;
 
-    // Fix: Updated equipmentIds to equipment_ids
     const newEquipmentIds = system.equipment_ids.includes(equipmentId)
       ? system.equipment_ids.filter((id: string) => id !== equipmentId)
       : [...system.equipment_ids, equipmentId];
@@ -102,7 +99,6 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         {filteredSystems.map((sys: System) => {
-          // Fix: Updated condoId, typeId, and equipmentIds access
           const condo = data.condos.find((c: Condo) => c.id === sys.condo_id);
           const type = data.systemTypes.find((t: SystemType) => t.id === sys.type_id);
           const linkedEquipments = data.equipments.filter((e: Equipment) => sys.equipment_ids.includes(e.id));
@@ -128,7 +124,10 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
                       {type?.name || 'Sistema Operacional'}
                     </span>
                     <h3 className="text-lg font-black text-slate-900 leading-tight truncate">{sys.name}</h3>
-                    <p className="text-[10px] font-black text-blue-600 uppercase tracking-tight truncate">{condo?.name || 'Local Indefinido'}</p>
+                    <div className="flex flex-col mt-0.5">
+                      <p className="text-[10px] font-black text-blue-600 uppercase tracking-tight truncate">{condo?.name || 'Local Indefinido'}</p>
+                      <p className="text-[9px] text-slate-400 font-bold flex items-center mt-0.5"><MapPin size={10} className="mr-1" /> {sys.location}</p>
+                    </div>
                    </div>
                    {(isAdmin || isTech) && (
                      <div className="flex space-x-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0">
@@ -220,8 +219,12 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
                 <input required name="name" defaultValue={editingSys?.name} placeholder="Ex: Central de Água Quente - Bloco A" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none font-bold text-slate-700" />
               </div>
               <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Localização Técnica</label>
+                <input required name="location" defaultValue={editingSys?.location} placeholder="Ex: Subsolo 1 - Área Técnica" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none font-bold text-slate-700" />
+              </div>
+              <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Parâmetros de Controle</label>
-                <textarea name="parameters" defaultValue={editingSys?.parameters} rows={4} placeholder="Setpoints, pressões, temperaturas..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none font-medium text-slate-600"></textarea>
+                <textarea name="parameters" defaultValue={editingSys?.parameters} rows={3} placeholder="Setpoints, pressões, temperaturas..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none font-medium text-slate-600"></textarea>
               </div>
               <div className="pt-6 flex flex-col-reverse md:flex-row gap-4 shrink-0">
                 <button type="button" onClick={() => { setIsModalOpen(false); setEditingSys(null); }} className="w-full px-6 py-4 border-2 border-slate-100 text-slate-500 font-black rounded-xl uppercase text-xs">Descartar</button>
@@ -249,10 +252,8 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
             
             <div className="flex-1 overflow-y-auto p-5 md:p-8 space-y-2 scroll-touch">
               {data.equipments
-                // Fix: Updated condoId to condo_id
                 .filter((e: Equipment) => e.condo_id === managingSys.condo_id)
                 .map((eq: Equipment) => {
-                  // Fix: Updated equipmentIds to equipment_ids
                   const isLinked = managingSys.equipment_ids.includes(eq.id);
                   return (
                     <button
@@ -278,7 +279,6 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
 
             <div className="p-5 md:p-8 bg-slate-50 border-t flex flex-col md:flex-row justify-between items-center gap-4 shrink-0">
                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                 {/* Fix: Updated equipmentIds to equipment_ids */}
                  {managingSys.equipment_ids.length} Ativo(s) Vinculado(s)
                </p>
                <button onClick={() => setManagingSys(null)} className="w-full md:w-auto px-10 py-4 bg-slate-900 text-white font-black rounded-2xl uppercase text-xs tracking-widest active:scale-95">
