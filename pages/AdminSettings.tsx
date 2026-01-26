@@ -2,14 +2,13 @@
 import React, { useState, useMemo } from 'react';
 import { Navigate } from 'react-router-dom';
 import { 
-  UserPlus, User, Trash2, Edit2, X, Save, Building2, LayoutList, RotateCcw
+  UserPlus, User, Trash2, Edit2, X, Save, Building2, LayoutList, RotateCcw, Printer, Filter, Calendar, Calculator
 } from 'lucide-react';
-import { UserRole, User as UserType, ServiceOrder, Condo } from '../types';
+import { UserRole, User as UserType, ServiceOrder, Condo, OSStatus } from '../types';
 
 const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
   const user = data.currentUser;
   
-  // Bloqueio de segurança: Se o usuário logado não for ADMIN, redireciona para a home.
   if (!user || user.role !== UserRole.ADMIN) {
     return <Navigate to="/" />;
   }
@@ -23,11 +22,30 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const [selectedCondoId, setSelectedCondoId] = useState('all');
   const [selectedTechId, setSelectedTechId] = useState('all');
 
+  // Lógica de Filtragem de Relatórios
+  const filteredReportOrders = useMemo(() => {
+    return data.serviceOrders.filter((os: ServiceOrder) => {
+      const date = new Date(os.created_at).toISOString().split('T')[0];
+      const matchStart = reportStartDate ? date >= reportStartDate : true;
+      const matchEnd = reportEndDate ? date <= reportEndDate : true;
+      const matchCondo = selectedCondoId === 'all' ? true : os.condo_id === selectedCondoId;
+      const matchTech = selectedTechId === 'all' ? true : os.technician_id === selectedTechId;
+      return matchStart && matchEnd && matchCondo && matchTech;
+    });
+  }, [data.serviceOrders, reportStartDate, reportEndDate, selectedCondoId, selectedTechId]);
+
+  const totals = useMemo(() => {
+    return filteredReportOrders.reduce((acc: any, curr: ServiceOrder) => ({
+      services: acc.services + (curr.service_value || 0),
+      materials: acc.materials + (curr.material_value || 0),
+      count: acc.count + 1
+    }), { services: 0, materials: 0, count: 0 });
+  }, [filteredReportOrders]);
+
   const handleUserSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const role = formData.get('role') as UserRole;
-    // Fix: Map formData to correct condo_id property on User interface
     const userData: UserType = {
       id: editingUser?.id || Math.random().toString(36).substr(2, 9),
       name: formData.get('name') as string,
@@ -52,14 +70,94 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     }
   };
 
+  const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
   return (
     <div className="space-y-8 pb-12">
-      <div>
+      <div className="no-print">
         <h1 className="text-2xl font-black text-slate-900 leading-tight">Administração</h1>
-        <p className="text-sm text-slate-500">Gestão técnica, equipe e controle de acessos.</p>
+        <p className="text-sm text-slate-500 font-medium">Gestão técnica, equipe e controle de acessos.</p>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+      {/* Seção de Relatórios Operacionais - RESTAURADA */}
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm no-print">
+        <div className="p-6 border-b bg-slate-50/50 flex justify-between items-center">
+          <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-xs">
+            <LayoutList size={18} className="mr-2 text-blue-600" /> Relatórios Operacionais
+          </h3>
+          <div className="flex items-center space-x-2">
+             <button 
+              onClick={() => { setReportStartDate(''); setReportEndDate(''); setSelectedCondoId('all'); setSelectedTechId('all'); }}
+              className="p-2 text-slate-400 hover:text-slate-600"
+              title="Limpar Filtros"
+             >
+               <RotateCcw size={16} />
+             </button>
+          </div>
+        </div>
+        <div className="p-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase">Data Início</label>
+              <input type="date" value={reportStartDate} onChange={(e) => setReportStartDate(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase">Data Fim</label>
+              <input type="date" value={reportEndDate} onChange={(e) => setReportEndDate(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase">Condomínio</label>
+              <select value={selectedCondoId} onChange={(e) => setSelectedCondoId(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold">
+                <option value="all">Todos</option>
+                {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase">Técnico</label>
+              <select value={selectedTechId} onChange={(e) => setSelectedTechId(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold">
+                <option value="all">Todos</option>
+                {data.users.filter((u:any) => u.role !== UserRole.CONDO_USER).map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {filteredReportOrders.length > 0 ? (
+            <div className="space-y-6 animate-in fade-in duration-500">
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100">
+                    <p className="text-[9px] font-black text-blue-400 uppercase mb-1">Total de Atendimentos</p>
+                    <p className="text-xl font-black text-blue-900">{totals.count}</p>
+                  </div>
+                  <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100">
+                    <p className="text-[9px] font-black text-emerald-400 uppercase mb-1">Mão de Obra Total</p>
+                    <p className="text-xl font-black text-emerald-900">{formatCurrency(totals.services)}</p>
+                  </div>
+                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                    <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Materiais Totais</p>
+                    <p className="text-xl font-black text-slate-900">{formatCurrency(totals.materials)}</p>
+                  </div>
+               </div>
+
+               <div className="flex justify-end">
+                  <button 
+                    onClick={() => window.print()}
+                    className="bg-slate-900 text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center shadow-lg shadow-slate-900/20 active:scale-95 transition-all"
+                  >
+                    <Printer size={16} className="mr-2" /> Gerar Relatório Consolidado
+                  </button>
+               </div>
+            </div>
+          ) : (
+            <div className="py-12 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center text-slate-300">
+               <Filter size={40} className="mb-2 opacity-20" />
+               <p className="text-[10px] font-black uppercase tracking-widest">Nenhum dado para os filtros selecionados</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Lista de Usuários */}
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm no-print">
         <div className="p-6 border-b flex justify-between items-center">
           <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-xs">
             <User size={18} className="mr-2 text-blue-600" /> Colaboradores e Síndicos
@@ -78,7 +176,6 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                     <p className="font-bold text-slate-900 text-sm">{user.name}</p>
                     <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-slate-100 text-slate-500">{user.role}</span>
                   </div>
-                  {/* Fix: Updated condoId access to condo_id */}
                   <p className="text-[10px] text-slate-400 font-bold uppercase">
                     {user.email} {user.condo_id && `• ${data.condos.find((c:any)=>c.id===user.condo_id)?.name}`}
                   </p>
@@ -93,8 +190,83 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
         </div>
       </div>
 
+      {/* Versão para Impressão do Relatório */}
+      <div className="hidden print:block p-8" id="print-report">
+        <div className="border-b-4 border-slate-900 pb-6 mb-8 flex justify-between items-end">
+          <div>
+            <h1 className="text-3xl font-black uppercase text-slate-900 tracking-tighter">Relatório Consolidado</h1>
+            <p className="text-sm font-bold text-slate-500 uppercase">SmartGestão - Sistemas de Manutenção</p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs font-black text-slate-900 uppercase">Período: {reportStartDate || 'Início'} até {reportEndDate || 'Fim'}</p>
+            <p className="text-[10px] text-slate-400 font-bold uppercase">Gerado em: {new Date().toLocaleString()}</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-6 mb-10">
+          <div className="border-2 border-slate-100 p-6 rounded-3xl">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total OS</p>
+            <p className="text-3xl font-black text-slate-900">{totals.count}</p>
+          </div>
+          <div className="border-2 border-slate-100 p-6 rounded-3xl">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Mão de Obra</p>
+            <p className="text-3xl font-black text-slate-900">{formatCurrency(totals.services)}</p>
+          </div>
+          <div className="border-2 border-slate-100 p-6 rounded-3xl">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Materiais</p>
+            <p className="text-3xl font-black text-slate-900">{formatCurrency(totals.materials)}</p>
+          </div>
+        </div>
+
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="border-b-2 border-slate-900">
+              <th className="py-4 text-[10px] font-black uppercase tracking-widest">ID / Data</th>
+              <th className="py-4 text-[10px] font-black uppercase tracking-widest">Condomínio</th>
+              <th className="py-4 text-[10px] font-black uppercase tracking-widest">Descrição do Serviço</th>
+              <th className="py-4 text-right text-[10px] font-black uppercase tracking-widest">Total</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {filteredReportOrders.map((os: ServiceOrder) => (
+              <tr key={os.id}>
+                <td className="py-4">
+                  <p className="text-xs font-black text-slate-900">{os.id}</p>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase">{new Date(os.created_at).toLocaleDateString()}</p>
+                </td>
+                <td className="py-4">
+                  <p className="text-xs font-bold text-slate-700">{data.condos.find((c:any)=>c.id===os.condo_id)?.name}</p>
+                  <p className="text-[9px] font-bold text-blue-600 uppercase">{os.type}</p>
+                </td>
+                <td className="py-4 text-xs text-slate-600 italic max-w-xs">{os.problem_description}</td>
+                <td className="py-4 text-right font-black text-slate-900 text-xs">
+                  {formatCurrency((os.service_value || 0) + (os.material_value || 0))}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t-2 border-slate-900">
+              <td colSpan={3} className="py-6 text-right font-black uppercase text-sm">Total Geral:</td>
+              <td className="py-6 text-right font-black text-blue-600 text-lg">{formatCurrency(totals.services + totals.materials)}</td>
+            </tr>
+          </tfoot>
+        </table>
+
+        <div className="mt-20 pt-10 border-t border-slate-100 grid grid-cols-2 gap-20">
+           <div className="text-center">
+              <div className="border-b border-slate-400 mb-2"></div>
+              <p className="text-[10px] font-black uppercase text-slate-500">Responsável Técnico</p>
+           </div>
+           <div className="text-center">
+              <div className="border-b border-slate-400 mb-2"></div>
+              <p className="text-[10px] font-black uppercase text-slate-500">Gestão / Condomínio</p>
+           </div>
+        </div>
+      </div>
+
       {isUserModalOpen && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm no-print">
           <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
             <div className="p-6 border-b flex justify-between items-center">
               <h2 className="text-lg font-black uppercase tracking-tight">{editingUser ? 'Editar Acesso' : 'Novo Acesso'}</h2>
@@ -138,6 +310,18 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
           </div>
         </div>
       )}
+
+      <style>{`
+        @media print {
+          .no-print { display: none !important; }
+          body { background: white !important; overflow: visible !important; }
+          main { overflow: visible !important; }
+          #root { display: block !important; }
+          header, aside { display: none !important; }
+          .print-block { display: block !important; }
+          @page { margin: 1cm; }
+        }
+      `}</style>
     </div>
   );
 };
