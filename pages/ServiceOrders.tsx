@@ -39,6 +39,29 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     setIsModalOpen(true);
   };
 
+  const handleShare = async (os: ServiceOrder, condoName?: string) => {
+    const text = `🛠️ *SmartGestão - Ordem de Serviço*\n\n*ID:* ${os.id}\n*Condomínio:* ${condoName || 'Não informado'}\n*Tipo:* ${os.type}\n*Status:* ${os.status}\n\n*Descrição:* ${os.problem_description}\n\n_Gerado via SmartGestão_`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `OS ${os.id} - SmartGestão`,
+          text: text,
+          url: window.location.origin
+        });
+      } catch (err) {
+        console.error('Erro ao compartilhar:', err);
+      }
+    } else {
+      try {
+        await navigator.clipboard.writeText(text);
+        alert('Informações da OS copiadas para a área de transferência! (Ideal para colar no WhatsApp)');
+      } catch (err) {
+        alert('Não foi possível copiar os dados.');
+      }
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setSaveStatus('saving');
@@ -158,7 +181,10 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                         <Calculator size={14} className="mr-1.5" /> Gerar Orçamento
                       </button>
                     )}
-                    <button className="bg-slate-100 hover:bg-slate-200 text-slate-500 text-[10px] font-black uppercase px-4 py-2 rounded-xl flex items-center transition-colors">
+                    <button 
+                      onClick={() => handleShare(os, condo?.name)}
+                      className="bg-slate-100 hover:bg-slate-200 text-slate-500 text-[10px] font-black uppercase px-4 py-2 rounded-xl flex items-center transition-colors"
+                    >
                       <Share2 size={14} className="mr-1.5" /> Compartilhar
                     </button>
                   </div>
