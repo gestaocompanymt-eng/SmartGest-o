@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Plus, Search, Layers, ShieldCheck, Thermometer, Zap, AlertCircle, Sparkles, Trash2, Edit2, X, Camera, MapPin } from 'lucide-react';
+import { Plus, Search, Layers, ShieldCheck, Thermometer, Zap, AlertCircle, Sparkles, Trash2, Edit2, X, Camera, MapPin, Activity } from 'lucide-react';
 import { Equipment, EquipmentType, Condo, UserRole } from '../types';
 import { analyzeEquipmentState } from '../geminiService';
 
@@ -44,8 +44,11 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
       electrical_state: formData.get('electricalState') as any,
       location: formData.get('location') as string,
       observations: formData.get('observations') as string,
+      tuya_device_id: formData.get('tuya_device_id') as string || undefined,
       photos: editingEq?.photos || [],
       last_maintenance: editingEq?.last_maintenance || new Date().toISOString(),
+      monitoring_status: editingEq?.monitoring_status || 'normal',
+      is_online: editingEq?.is_online ?? true
     };
 
     if (editingEq) {
@@ -100,9 +103,16 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
             <div key={eq.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col group hover:border-blue-400 transition-all">
               <div className="p-5 flex-1">
                 <div className="flex justify-between items-start mb-4">
-                  <span className="px-2 py-1 bg-slate-100 text-slate-500 text-[9px] font-black uppercase tracking-widest rounded-md">
-                    {type?.name || 'Inespecífico'}
-                  </span>
+                  <div className="flex items-center space-x-2">
+                    <span className="px-2 py-1 bg-slate-100 text-slate-500 text-[9px] font-black uppercase tracking-widest rounded-md">
+                      {type?.name || 'Inespecífico'}
+                    </span>
+                    {eq.tuya_device_id && (
+                      <span className="px-2 py-1 bg-blue-50 text-blue-600 text-[9px] font-black uppercase tracking-widest rounded-md flex items-center">
+                        <Activity size={10} className="mr-1" /> Tuya Live
+                      </span>
+                    )}
+                  </div>
                   <div className="flex items-center space-x-2">
                     <div className={`flex items-center space-x-1.5 px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${
                       eq.electrical_state === 'Bom' ? 'bg-emerald-50 text-emerald-600' :
@@ -181,12 +191,6 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
             </div>
           );
         })}
-        {filteredEquipments.length === 0 && (
-          <div className="col-span-full py-20 bg-white border-2 border-dashed border-slate-200 rounded-3xl flex flex-col items-center">
-            <Layers size={50} className="text-slate-200 mb-4" />
-            <p className="text-slate-400 font-bold uppercase text-xs tracking-widest">Nenhum ativo encontrado para este condomínio.</p>
-          </div>
-        )}
       </div>
 
       {isModalOpen && (
@@ -210,10 +214,12 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Categoria do Ativo</label>
                   <select required name="typeId" defaultValue={editingEq?.type_id} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700">
-                    <option value="">Selecione um tipo...</option>
                     {data.equipmentTypes.map((t: EquipmentType) => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Fabricante</label>
                   <input required name="manufacturer" defaultValue={editingEq?.manufacturer} placeholder="Ex: WEG, Schneider" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none font-medium" />
@@ -222,6 +228,24 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Modelo / Identificação</label>
                   <input required name="model" defaultValue={editingEq?.model} placeholder="Ex: W22 High Efficiency" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none font-medium" />
                 </div>
+              </div>
+
+              {/* Seção Tuya Monitoring */}
+              <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100 space-y-3">
+                 <div className="flex items-center space-x-2 text-blue-600 mb-1">
+                   <Activity size={16} />
+                   <h3 className="text-[10px] font-black uppercase tracking-widest">Monitoramento Cloud (Opcional)</h3>
+                 </div>
+                 <div className="space-y-1">
+                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Tuya Device ID</label>
+                   <input 
+                    name="tuya_device_id" 
+                    defaultValue={editingEq?.tuya_device_id} 
+                    placeholder="Cole aqui o ID do dispositivo Tuya" 
+                    className="w-full px-4 py-3 bg-white border border-blue-200 rounded-xl outline-none font-medium text-blue-900" 
+                   />
+                   <p className="text-[8px] text-slate-400 italic">Deixe vazio se o equipamento não possuir telemetria.</p>
+                 </div>
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -243,36 +267,9 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Temperatura (°C)</label>
-                  <input required type="number" name="temperature" defaultValue={editingEq?.temperature} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Status de Ruído</label>
-                  <select required name="noise" defaultValue={editingEq?.noise} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold">
-                    <option value="Normal">Operação Normal</option>
-                    <option value="Anormal">Operação Anormal</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Estado Crítico</label>
-                  <select required name="electricalState" defaultValue={editingEq?.electrical_state} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold">
-                    <option value="Bom">Bom (Verde)</option>
-                    <option value="Regular">Regular (Amarelo)</option>
-                    <option value="Crítico">Crítico (Vermelho)</option>
-                  </select>
-                </div>
-              </div>
-
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Localização (Onde se encontra?)</label>
-                <input required name="location" defaultValue={editingEq?.location} placeholder="Ex: Casa de Máquinas Térreo, Barrilete Cobertura" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none" />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Notas Adicionais</label>
-                <textarea name="observations" defaultValue={editingEq?.observations} rows={3} placeholder="Detalhes técnicos relevantes..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none"></textarea>
+                <input required name="location" defaultValue={editingEq?.location} placeholder="Ex: Casa de Máquinas Térreo" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none" />
               </div>
 
               <div className="pt-6 flex flex-col-reverse md:flex-row gap-4 shrink-0">

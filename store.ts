@@ -10,6 +10,7 @@ const initialData: AppData = {
   systems: [],
   serviceOrders: [],
   appointments: [],
+  monitoringAlerts: [],
   users: [
     { id: 'admin1', name: 'Admin Principal', role: UserRole.ADMIN, email: 'admin', password: '41414889Ai' },
     { id: 'tech1', name: 'Carlos Técnico', role: UserRole.TECHNICIAN, email: 'carlos@smartgestao.com', password: '123' }
@@ -26,7 +27,6 @@ export const getStore = (): AppData => {
   try {
     const parsedData: AppData = JSON.parse(saved);
     
-    // Garantir que os usuários básicos sempre existam para evitar bloqueios por dados antigos
     initialData.users.forEach(defaultUser => {
       const exists = parsedData.users.some(u => u.email.toLowerCase() === defaultUser.email.toLowerCase());
       if (!exists) {
@@ -34,10 +34,8 @@ export const getStore = (): AppData => {
       }
     });
 
-    // Garantir que o campo appointments existe
-    if (!parsedData.appointments) {
-      parsedData.appointments = [];
-    }
+    if (!parsedData.appointments) parsedData.appointments = [];
+    if (!parsedData.monitoringAlerts) parsedData.monitoringAlerts = [];
     
     return parsedData;
   } catch (e) {
@@ -50,7 +48,7 @@ export const saveStore = (data: AppData): boolean => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     return true;
   } catch (e) {
-    console.error("Falha ao salvar no LocalStorage (provavelmente cheio):", e);
+    console.error("Falha ao salvar no LocalStorage:", e);
     return false;
   }
 };

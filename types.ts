@@ -59,6 +59,28 @@ export interface Equipment {
   observations: string;
   photos: string[];
   last_maintenance: string;
+  
+  // Monitoring Extension (Tuya)
+  tuya_device_id?: string;
+  monitoring_status?: 'normal' | 'atencao' | 'critico';
+  last_reading?: {
+    power?: number;
+    current?: number;
+    voltage?: number;
+    timestamp: string;
+  };
+  is_online?: boolean;
+}
+
+export interface MonitoringAlert {
+  id: string;
+  equipment_id: string;
+  condo_id: string;
+  severity: 'warning' | 'critical';
+  message: string;
+  value: string;
+  timestamp: string;
+  is_resolved: boolean;
 }
 
 export interface System {
@@ -117,6 +139,7 @@ export interface AppData {
   systems: System[];
   serviceOrders: ServiceOrder[];
   appointments: Appointment[];
+  monitoringAlerts: MonitoringAlert[];
   users: User[];
   equipmentTypes: EquipmentType[];
   systemTypes: SystemType[];
