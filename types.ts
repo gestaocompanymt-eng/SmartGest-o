@@ -92,6 +92,16 @@ export interface ServiceOrder {
   material_value?: number;
 }
 
+export interface Appointment {
+  id: string;
+  condo_id: string;
+  technician_id: string;
+  date: string;
+  time: string;
+  description: string;
+  status: 'Pendente' | 'Confirmada' | 'Realizada' | 'Cancelada';
+}
+
 export interface User {
   id: string;
   name: string;
@@ -106,6 +116,7 @@ export interface AppData {
   equipments: Equipment[];
   systems: System[];
   serviceOrders: ServiceOrder[];
+  appointments: Appointment[];
   users: User[];
   equipmentTypes: EquipmentType[];
   systemTypes: SystemType[];

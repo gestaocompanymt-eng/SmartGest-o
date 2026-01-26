@@ -9,6 +9,7 @@ const initialData: AppData = {
   equipments: [],
   systems: [],
   serviceOrders: [],
+  appointments: [],
   users: [
     { id: 'admin1', name: 'Admin Principal', role: UserRole.ADMIN, email: 'admin', password: '41414889Ai' },
     { id: 'tech1', name: 'Carlos Técnico', role: UserRole.TECHNICIAN, email: 'carlos@smartgestao.com', password: '123' }
@@ -32,6 +33,11 @@ export const getStore = (): AppData => {
         parsedData.users.push(defaultUser);
       }
     });
+
+    // Garantir que o campo appointments existe
+    if (!parsedData.appointments) {
+      parsedData.appointments = [];
+    }
     
     return parsedData;
   } catch (e) {

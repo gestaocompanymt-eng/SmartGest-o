@@ -81,12 +81,13 @@ const AppContent: React.FC = () => {
     if (!navigator.onLine || !isSupabaseActive) return;
     setIsSyncing(true);
     try {
-      const [resCondos, resUsers, resEquips, resSystems, resOS] = await Promise.all([
+      const [resCondos, resUsers, resEquips, resSystems, resOS, resAppts] = await Promise.all([
         supabase.from('condos').select('*'),
         supabase.from('users').select('*'),
         supabase.from('equipments').select('*'),
         supabase.from('systems').select('*'),
-        supabase.from('service_orders').select('*')
+        supabase.from('service_orders').select('*'),
+        supabase.from('appointments').select('*')
       ]);
       const syncedData: AppData = {
         ...currentLocalData,
@@ -97,6 +98,7 @@ const AppContent: React.FC = () => {
         serviceOrders: (resOS.data || currentLocalData.serviceOrders).sort((a: any, b: any) => 
           new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
         ),
+        appointments: resAppts.data || currentLocalData.appointments || [],
       };
       setData(syncedData);
       saveStore(syncedData);
@@ -112,6 +114,7 @@ const AppContent: React.FC = () => {
         supabase.from('equipments').upsert(newData.equipments),
         supabase.from('systems').upsert(newData.systems),
         supabase.from('service_orders').upsert(newData.serviceOrders),
+        supabase.from('appointments').upsert(newData.appointments || []),
       ].filter(Boolean));
     } catch (err) { console.error(err); }
   };
@@ -224,7 +227,7 @@ const AppContent: React.FC = () => {
         </header>
         <div className="flex-1 overflow-y-auto p-4 md:p-8">
           <Routes>
-            <Route path="/" element={<Dashboard data={data} />} />
+            <Route path="/" element={<Dashboard data={data} updateData={updateData} />} />
             {(isAdmin || isTech) && <Route path="/condos" element={<Condos data={data} updateData={updateData} />} />}
             <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} />} />
             <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} />} />
