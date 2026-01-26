@@ -1,35 +1,37 @@
 
 import React, { useState } from 'react';
-import { Wrench, Shield, Key, Mail, ArrowRight, Sparkles } from 'lucide-react';
+import { Wrench, Shield, Key, Mail, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { getStore } from '../store';
 import { User } from '../types';
 
 const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     const data = getStore();
     
-    // Procura o usuário ignorando maiúsculas/minúsculas
-    const user = data.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    const inputEmail = email.trim().toLowerCase();
+    const inputPassword = password.trim();
+
+    // Procura o usuário ignorando maiúsculas/minúsculas e espaços
+    const user = data.users.find(u => u.email.toLowerCase() === inputEmail);
     
     if (user) {
-      // Se o usuário tem senha cadastrada, valida. Se não (técnicos antigos), permite qualquer uma para compatibilidade
       if (user.password) {
-        if (password === user.password) {
+        if (inputPassword === user.password) {
           onLogin(user);
         } else {
-          setError('Senha incorreta.');
+          setError('Senha incorreta. Verifique os caracteres e tente novamente.');
         }
       } else {
-        // Fallback para usuários sem senha (tecnicos antigos na demo)
         onLogin(user);
       }
     } else {
-      setError('Usuário não encontrado.');
+      setError(`Usuário "${inputEmail}" não encontrado.`);
     }
   };
 
@@ -58,7 +60,7 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
                 required 
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="Ex: admin"
+                placeholder="Ex: seu@email.com"
                 className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 outline-none transition-all font-medium" 
               />
             </div>
@@ -72,17 +74,28 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
             <div className="relative">
               <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
               <input 
-                type="password" 
+                type={showPassword ? "text" : "password"}
                 required 
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 outline-none transition-all font-medium" 
+                className="w-full pl-10 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 outline-none transition-all font-medium" 
               />
+              <button 
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
             </div>
           </div>
 
-          {error && <p className="text-xs text-red-500 font-bold text-center bg-red-50 p-2 rounded-lg">{error}</p>}
+          {error && (
+            <div className="text-xs text-red-500 font-bold text-center bg-red-50 p-3 rounded-xl border border-red-100 animate-pulse">
+              {error}
+            </div>
+          )}
 
           <button 
             type="submit" 
@@ -93,24 +106,14 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
           </button>
         </form>
 
-        <div className="mt-8 pt-8 border-t border-slate-100">
-           <div className="flex items-center justify-center space-x-2 text-slate-400 mb-4">
-              <Shield size={14} />
-              <span className="text-xs font-bold uppercase tracking-widest">Acesso Restrito</span>
-           </div>
-           <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex items-start space-x-3">
-              <div className="bg-white p-2 rounded-lg text-blue-500 shadow-sm">
-                 <Sparkles size={16} />
-              </div>
-              <p className="text-[10px] text-blue-700 font-medium leading-relaxed">
-                Configure os acessos de sua equipe no menu Administração após o login.
-              </p>
-           </div>
+        <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-center space-x-2 text-slate-400">
+          <Shield size={14} />
+          <span className="text-[10px] font-black uppercase tracking-widest">Acesso Criptografado</span>
         </div>
       </div>
 
-      <div className="mt-8 text-center text-slate-500 text-xs font-medium z-10">
-        &copy; {new Date().getFullYear()} SmartGestão Sistemas de Manutenção. v2.4.0
+      <div className="mt-8 text-center text-slate-500 text-[10px] font-bold uppercase tracking-widest z-10">
+        &copy; {new Date().getFullYear()} SmartGestão Sistemas. Todos os direitos reservados.
       </div>
     </div>
   );

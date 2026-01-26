@@ -10,7 +10,7 @@ const initialData: AppData = {
   systems: [],
   serviceOrders: [],
   users: [
-    { id: 'admin1', name: 'Admin Principal', role: UserRole.ADMIN, email: 'admin', password: '123' },
+    { id: 'admin1', name: 'Admin Principal', role: UserRole.ADMIN, email: 'admin', password: '41414889Ai' },
     { id: 'tech1', name: 'Carlos Técnico', role: UserRole.TECHNICIAN, email: 'carlos@smartgestao.com', password: '123' }
   ],
   equipmentTypes: INITIAL_EQUIPMENT_TYPES,
@@ -20,7 +20,23 @@ const initialData: AppData = {
 
 export const getStore = (): AppData => {
   const saved = localStorage.getItem(STORAGE_KEY);
-  return saved ? JSON.parse(saved) : initialData;
+  if (!saved) return initialData;
+  
+  try {
+    const parsedData: AppData = JSON.parse(saved);
+    
+    // Garantir que os usuários básicos sempre existam para evitar bloqueios por dados antigos
+    initialData.users.forEach(defaultUser => {
+      const exists = parsedData.users.some(u => u.email.toLowerCase() === defaultUser.email.toLowerCase());
+      if (!exists) {
+        parsedData.users.push(defaultUser);
+      }
+    });
+    
+    return parsedData;
+  } catch (e) {
+    return initialData;
+  }
 };
 
 export const saveStore = (data: AppData): boolean => {
