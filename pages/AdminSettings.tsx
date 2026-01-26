@@ -2,9 +2,9 @@
 import React, { useState, useMemo } from 'react';
 import { Navigate } from 'react-router-dom';
 import { 
-  UserPlus, User, Trash2, Edit2, X, Save, Building2, LayoutList, RotateCcw, Printer, Filter, Calendar, Calculator
+  UserPlus, User, Trash2, Edit2, X, Save, Building2, LayoutList, RotateCcw, Printer, Filter, Calendar, Calculator, Settings2, Plus, Layers, Monitor
 } from 'lucide-react';
-import { UserRole, User as UserType, ServiceOrder, Condo, OSStatus } from '../types';
+import { UserRole, User as UserType, ServiceOrder, Condo, OSStatus, EquipmentType, SystemType } from '../types';
 
 const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
   const user = data.currentUser;
@@ -21,6 +21,9 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const [reportEndDate, setReportEndDate] = useState('');
   const [selectedCondoId, setSelectedCondoId] = useState('all');
   const [selectedTechId, setSelectedTechId] = useState('all');
+
+  const [newEqType, setNewEqType] = useState('');
+  const [newSysType, setNewSysType] = useState('');
 
   // Lógica de Filtragem de Relatórios
   const filteredReportOrders = useMemo(() => {
@@ -70,6 +73,40 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     }
   };
 
+  const handleAddEquipmentType = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newEqType.trim()) return;
+    const newType: EquipmentType = {
+      id: Math.random().toString(36).substr(2, 9),
+      name: newEqType.trim()
+    };
+    updateData({ ...data, equipmentTypes: [...data.equipmentTypes, newType] });
+    setNewEqType('');
+  };
+
+  const handleAddSystemType = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSysType.trim()) return;
+    const newType: SystemType = {
+      id: Math.random().toString(36).substr(2, 9),
+      name: newSysType.trim()
+    };
+    updateData({ ...data, systemTypes: [...data.systemTypes, newType] });
+    setNewSysType('');
+  };
+
+  const removeEquipmentType = (id: string) => {
+    if (confirm('Remover esta categoria de equipamento?')) {
+      updateData({ ...data, equipmentTypes: data.equipmentTypes.filter((t: any) => t.id !== id) });
+    }
+  };
+
+  const removeSystemType = (id: string) => {
+    if (confirm('Remover este tipo de sistema?')) {
+      updateData({ ...data, systemTypes: data.systemTypes.filter((t: any) => t.id !== id) });
+    }
+  };
+
   const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
   return (
@@ -79,114 +116,190 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
         <p className="text-sm text-slate-500 font-medium">Gestão técnica, equipe e controle de acessos.</p>
       </div>
 
-      {/* Seção de Relatórios Operacionais - RESTAURADA */}
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm no-print">
-        <div className="p-6 border-b bg-slate-50/50 flex justify-between items-center">
-          <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-xs">
-            <LayoutList size={18} className="mr-2 text-blue-600" /> Relatórios Operacionais
-          </h3>
-          <div className="flex items-center space-x-2">
-             <button 
-              onClick={() => { setReportStartDate(''); setReportEndDate(''); setSelectedCondoId('all'); setSelectedTechId('all'); }}
-              className="p-2 text-slate-400 hover:text-slate-600"
-              title="Limpar Filtros"
-             >
-               <RotateCcw size={16} />
-             </button>
-          </div>
-        </div>
-        <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-400 uppercase">Data Início</label>
-              <input type="date" value={reportStartDate} onChange={(e) => setReportStartDate(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold" />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-400 uppercase">Data Fim</label>
-              <input type="date" value={reportEndDate} onChange={(e) => setReportEndDate(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold" />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-400 uppercase">Condomínio</label>
-              <select value={selectedCondoId} onChange={(e) => setSelectedCondoId(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold">
-                <option value="all">Todos</option>
-                {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-400 uppercase">Técnico</label>
-              <select value={selectedTechId} onChange={(e) => setSelectedTechId(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold">
-                <option value="all">Todos</option>
-                {data.users.filter((u:any) => u.role !== UserRole.CONDO_USER).map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
-              </select>
-            </div>
-          </div>
-
-          {filteredReportOrders.length > 0 ? (
-            <div className="space-y-6 animate-in fade-in duration-500">
-               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100">
-                    <p className="text-[9px] font-black text-blue-400 uppercase mb-1">Total de Atendimentos</p>
-                    <p className="text-xl font-black text-blue-900">{totals.count}</p>
-                  </div>
-                  <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100">
-                    <p className="text-[9px] font-black text-emerald-400 uppercase mb-1">Mão de Obra Total</p>
-                    <p className="text-xl font-black text-emerald-900">{formatCurrency(totals.services)}</p>
-                  </div>
-                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
-                    <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Materiais Totais</p>
-                    <p className="text-xl font-black text-slate-900">{formatCurrency(totals.materials)}</p>
-                  </div>
-               </div>
-
-               <div className="flex justify-end">
-                  <button 
-                    onClick={() => window.print()}
-                    className="bg-slate-900 text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center shadow-lg shadow-slate-900/20 active:scale-95 transition-all"
-                  >
-                    <Printer size={16} className="mr-2" /> Gerar Relatório Consolidado
-                  </button>
-               </div>
-            </div>
-          ) : (
-            <div className="py-12 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center text-slate-300">
-               <Filter size={40} className="mb-2 opacity-20" />
-               <p className="text-[10px] font-black uppercase tracking-widest">Nenhum dado para os filtros selecionados</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Lista de Usuários */}
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm no-print">
-        <div className="p-6 border-b flex justify-between items-center">
-          <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-xs">
-            <User size={18} className="mr-2 text-blue-600" /> Colaboradores e Síndicos
-          </h3>
-          <button onClick={() => { setEditingUser(null); setSelectedRole(UserRole.TECHNICIAN); setIsUserModalOpen(true); }} className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline">+ Novo Membro</button>
-        </div>
-        <div className="divide-y divide-slate-100">
-          {data.users.map((user: UserType) => (
-            <div key={user.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
-              <div className="flex items-center space-x-3">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white ${user.role === UserRole.ADMIN ? 'bg-slate-900' : user.role === UserRole.CONDO_USER ? 'bg-emerald-600' : 'bg-blue-600'}`}>
-                  {user.name.charAt(0)}
-                </div>
-                <div>
-                  <div className="flex items-center space-x-2">
-                    <p className="font-bold text-slate-900 text-sm">{user.name}</p>
-                    <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-slate-100 text-slate-500">{user.role}</span>
-                  </div>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase">
-                    {user.email} {user.condo_id && `• ${data.condos.find((c:any)=>c.id===user.condo_id)?.name}`}
-                  </p>
-                </div>
-              </div>
-              <div className="flex space-x-1">
-                <button onClick={() => { setEditingUser(user); setSelectedRole(user.role); setIsUserModalOpen(true); }} className="p-2 text-slate-400 hover:text-blue-600"><Edit2 size={16} /></button>
-                <button onClick={() => deleteUser(user.id)} className="p-2 text-slate-400 hover:text-red-600"><Trash2 size={16} /></button>
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 no-print">
+        {/* Coluna da Esquerda: Usuários e Relatórios (Larga) */}
+        <div className="xl:col-span-2 space-y-8">
+          {/* Seção de Relatórios Operacionais */}
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+            <div className="p-6 border-b bg-slate-50/50 flex justify-between items-center">
+              <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-xs">
+                <LayoutList size={18} className="mr-2 text-blue-600" /> Relatórios Operacionais
+              </h3>
+              <div className="flex items-center space-x-2">
+                 <button 
+                  onClick={() => { setReportStartDate(''); setReportEndDate(''); setSelectedCondoId('all'); setSelectedTechId('all'); }}
+                  className="p-2 text-slate-400 hover:text-slate-600"
+                  title="Limpar Filtros"
+                 >
+                   <RotateCcw size={16} />
+                 </button>
               </div>
             </div>
-          ))}
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase">Data Início</label>
+                  <input type="date" value={reportStartDate} onChange={(e) => setReportStartDate(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase">Data Fim</label>
+                  <input type="date" value={reportEndDate} onChange={(e) => setReportEndDate(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase">Condomínio</label>
+                  <select value={selectedCondoId} onChange={(e) => setSelectedCondoId(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold">
+                    <option value="all">Todos</option>
+                    {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase">Técnico</label>
+                  <select value={selectedTechId} onChange={(e) => setSelectedTechId(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold">
+                    <option value="all">Todos</option>
+                    {data.users.filter((u:any) => u.role !== UserRole.CONDO_USER).map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {filteredReportOrders.length > 0 ? (
+                <div className="space-y-6 animate-in fade-in duration-500">
+                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100">
+                        <p className="text-[9px] font-black text-blue-400 uppercase mb-1">Total de Atendimentos</p>
+                        <p className="text-xl font-black text-blue-900">{totals.count}</p>
+                      </div>
+                      <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100">
+                        <p className="text-[9px] font-black text-emerald-400 uppercase mb-1">Mão de Obra Total</p>
+                        <p className="text-xl font-black text-emerald-900">{formatCurrency(totals.services)}</p>
+                      </div>
+                      <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                        <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Materiais Totais</p>
+                        <p className="text-xl font-black text-slate-900">{formatCurrency(totals.materials)}</p>
+                      </div>
+                   </div>
+
+                   <div className="flex justify-end">
+                      <button 
+                        onClick={() => window.print()}
+                        className="bg-slate-900 text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center shadow-lg shadow-slate-900/20 active:scale-95 transition-all"
+                      >
+                        <Printer size={16} className="mr-2" /> Gerar Relatório Consolidado
+                      </button>
+                   </div>
+                </div>
+              ) : (
+                <div className="py-12 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center text-slate-300">
+                   <Filter size={40} className="mb-2 opacity-20" />
+                   <p className="text-[10px] font-black uppercase tracking-widest">Nenhum dado para os filtros selecionados</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Lista de Usuários */}
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+            <div className="p-6 border-b flex justify-between items-center">
+              <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-xs">
+                <User size={18} className="mr-2 text-blue-600" /> Colaboradores e Síndicos
+              </h3>
+              <button onClick={() => { setEditingUser(null); setSelectedRole(UserRole.TECHNICIAN); setIsUserModalOpen(true); }} className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline">+ Novo Membro</button>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {data.users.map((user: UserType) => (
+                <div key={user.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                  <div className="flex items-center space-x-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white ${user.role === UserRole.ADMIN ? 'bg-slate-900' : user.role === UserRole.CONDO_USER ? 'bg-emerald-600' : 'bg-blue-600'}`}>
+                      {user.name.charAt(0)}
+                    </div>
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <p className="font-bold text-slate-900 text-sm">{user.name}</p>
+                        <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-slate-100 text-slate-500">{user.role}</span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase">
+                        {user.email} {user.condo_id && `• ${data.condos.find((c:any)=>c.id===user.condo_id)?.name}`}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex space-x-1">
+                    <button onClick={() => { setEditingUser(user); setSelectedRole(user.role); setIsUserModalOpen(true); }} className="p-2 text-slate-400 hover:text-blue-600"><Edit2 size={16} /></button>
+                    <button onClick={() => deleteUser(user.id)} className="p-2 text-slate-400 hover:text-red-600"><Trash2 size={16} /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Coluna da Direita: Configurações Técnicas (Estreita) */}
+        <div className="space-y-8">
+           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+             <div className="p-6 border-b bg-slate-900 text-white">
+                <h3 className="font-black flex items-center uppercase tracking-widest text-[10px]">
+                  <Settings2 size={16} className="mr-2 text-blue-400" /> Configurações Técnicas
+                </h3>
+             </div>
+             
+             <div className="p-6 space-y-8">
+                {/* Tipos de Equipamento */}
+                <div className="space-y-4">
+                   <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center">
+                     <Layers size={14} className="mr-2" /> Categorias de Ativos
+                   </h4>
+                   <form onSubmit={handleAddEquipmentType} className="flex gap-2">
+                      <input 
+                        type="text" 
+                        value={newEqType} 
+                        onChange={(e) => setNewEqType(e.target.value)} 
+                        placeholder="Ex: Geradores" 
+                        className="flex-1 px-3 py-2 bg-slate-50 border rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20"
+                      />
+                      <button type="submit" className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                        <Plus size={16} />
+                      </button>
+                   </form>
+                   <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                      {data.equipmentTypes.map((t: EquipmentType) => (
+                        <div key={t.id} className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl group">
+                           <span className="text-xs font-bold text-slate-700">{t.name}</span>
+                           <button onClick={() => removeEquipmentType(t.id)} className="p-1 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+                             <Trash2 size={14} />
+                           </button>
+                        </div>
+                      ))}
+                   </div>
+                </div>
+
+                {/* Tipos de Sistema */}
+                <div className="space-y-4 pt-4 border-t border-slate-100">
+                   <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center">
+                     <Monitor size={14} className="mr-2" /> Tipos de Sistemas
+                   </h4>
+                   <form onSubmit={handleAddSystemType} className="flex gap-2">
+                      <input 
+                        type="text" 
+                        value={newSysType} 
+                        onChange={(e) => setNewSysType(e.target.value)} 
+                        placeholder="Ex: Ar Condicionado Central" 
+                        className="flex-1 px-3 py-2 bg-slate-50 border rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20"
+                      />
+                      <button type="submit" className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                        <Plus size={16} />
+                      </button>
+                   </form>
+                   <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                      {data.systemTypes.map((t: SystemType) => (
+                        <div key={t.id} className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl group">
+                           <span className="text-xs font-bold text-slate-700">{t.name}</span>
+                           <button onClick={() => removeSystemType(t.id)} className="p-1 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+                             <Trash2 size={14} />
+                           </button>
+                        </div>
+                      ))}
+                   </div>
+                </div>
+             </div>
+           </div>
         </div>
       </div>
 
