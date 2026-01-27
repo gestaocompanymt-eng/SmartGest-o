@@ -1,13 +1,14 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// Credenciais validadas para o projeto rlldyyipyapkehtxwvqk
+// Credenciais do projeto rlldyyipyapkehtxwvqk
 const SUPABASE_URL = 'https://rlldyyipyapkehtxwvqk.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_mOmsdU6uKC0eI6_ppTiHhQ_6NJD8jYv'; 
 
 let supabaseClient: any;
 
-const isConfigured = SUPABASE_URL && SUPABASE_URL.startsWith('https://') && SUPABASE_ANON_KEY && !SUPABASE_ANON_KEY.startsWith('sb_');
+// Permitir configuração mesmo com prefixo 'sb_' que é comum em ambientes de sandbox/preview
+const isConfigured = SUPABASE_URL && SUPABASE_URL.startsWith('https://') && !!SUPABASE_ANON_KEY;
 
 if (isConfigured) {
   supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -18,7 +19,7 @@ if (isConfigured) {
     }
   });
 } else {
-  // Mock aprimorado para desenvolvimento local sem erros de console
+  // Mock para desenvolvimento local caso a URL não esteja presente
   supabaseClient = {
     from: (table: string) => ({
       select: () => Promise.resolve({ data: [], error: null }),

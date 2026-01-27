@@ -48,7 +48,6 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
     const files = e.target.files;
     if (!files) return;
 
-    // Explicitly cast to File[] to resolve 'unknown' to 'Blob' conversion error
     (Array.from(files) as File[]).forEach(file => {
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -99,11 +98,13 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
     setSaveStatus('saving');
     const formData = new FormData(e.currentTarget);
     
-    // Captura o status do formulário. Se não houver, mantém o atual ou 'Aberta'.
     const statusFromForm = formData.get('status') as OSStatus;
 
+    // Novo padrão de ID para evitar conflitos: OS-Timestamp-Random
+    const uniqueId = `OS-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
     const osData: ServiceOrder = {
-      id: editingOS?.id || `OS-${Math.floor(1000 + Math.random() * 9000)}`,
+      id: editingOS?.id || uniqueId,
       type: formData.get('type') as OSType,
       status: statusFromForm || editingOS?.status || OSStatus.OPEN,
       condo_id: isCondoUser ? (user?.condo_id || '') : (formData.get('condo_id') as string),
