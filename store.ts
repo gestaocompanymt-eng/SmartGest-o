@@ -4,20 +4,21 @@ import { INITIAL_EQUIPMENT_TYPES, INITIAL_SYSTEM_TYPES } from './constants';
 
 const STORAGE_KEY = 'smart_gestao_data';
 
+// Updated initialData to include monitoringAlerts
 const initialData: AppData = {
   condos: [],
   equipments: [],
   systems: [],
   serviceOrders: [],
   appointments: [],
-  monitoringAlerts: [],
   users: [
     { id: 'admin1', name: 'Admin Principal', role: UserRole.ADMIN, email: 'admin', password: '41414889Ai' },
     { id: 'tech1', name: 'Carlos Técnico', role: UserRole.TECHNICIAN, email: 'carlos@smartgestao.com', password: '123' }
   ],
   equipmentTypes: INITIAL_EQUIPMENT_TYPES,
   systemTypes: INITIAL_SYSTEM_TYPES,
-  currentUser: null
+  currentUser: null,
+  monitoringAlerts: []
 };
 
 export const getStore = (): AppData => {
@@ -34,6 +35,7 @@ export const getStore = (): AppData => {
       }
     });
 
+    // Ensure mandatory arrays exist in loaded data
     if (!parsedData.appointments) parsedData.appointments = [];
     if (!parsedData.monitoringAlerts) parsedData.monitoringAlerts = [];
     

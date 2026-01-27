@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Plus, Search, Layers, ShieldCheck, Thermometer, Zap, AlertCircle, Sparkles, Trash2, Edit2, X, Camera, MapPin, Activity } from 'lucide-react';
+import { Plus, Search, Layers, ShieldCheck, Thermometer, Zap, AlertCircle, Sparkles, Trash2, Edit2, X, Camera, MapPin } from 'lucide-react';
 import { Equipment, EquipmentType, Condo, UserRole } from '../types';
 import { analyzeEquipmentState } from '../geminiService';
 
@@ -44,11 +44,8 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
       electrical_state: formData.get('electricalState') as any,
       location: formData.get('location') as string,
       observations: formData.get('observations') as string,
-      tuya_device_id: formData.get('tuya_device_id') as string || undefined,
       photos: editingEq?.photos || [],
-      last_maintenance: editingEq?.last_maintenance || new Date().toISOString(),
-      monitoring_status: editingEq?.monitoring_status || 'normal',
-      is_online: editingEq?.is_online ?? true
+      last_maintenance: editingEq?.last_maintenance || new Date().toISOString()
     };
 
     if (editingEq) {
@@ -81,7 +78,7 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-900 leading-tight">Equipamentos</h1>
-          <p className="text-sm text-slate-500">{isCondo ? 'Inventário técnico do seu condomínio.' : 'Monitoramento técnico e inventário de ativos.'}</p>
+          <p className="text-sm text-slate-500">{isCondo ? 'Inventário técnico do seu condomínio.' : 'Inventário técnico e controle de ativos.'}</p>
         </div>
         {(isAdmin || isTech) && (
           <button 
@@ -107,11 +104,6 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                     <span className="px-2 py-1 bg-slate-100 text-slate-500 text-[9px] font-black uppercase tracking-widest rounded-md">
                       {type?.name || 'Inespecífico'}
                     </span>
-                    {eq.tuya_device_id && (
-                      <span className="px-2 py-1 bg-blue-50 text-blue-600 text-[9px] font-black uppercase tracking-widest rounded-md flex items-center">
-                        <Activity size={10} className="mr-1" /> Tuya Live
-                      </span>
-                    )}
                   </div>
                   <div className="flex items-center space-x-2">
                     <div className={`flex items-center space-x-1.5 px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${
@@ -228,24 +220,6 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Modelo / Identificação</label>
                   <input required name="model" defaultValue={editingEq?.model} placeholder="Ex: W22 High Efficiency" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none font-medium" />
                 </div>
-              </div>
-
-              {/* Seção Tuya Monitoring */}
-              <div className="p-4 bg-blue-50/50 rounded-2xl border border-blue-100 space-y-3">
-                 <div className="flex items-center space-x-2 text-blue-600 mb-1">
-                   <Activity size={16} />
-                   <h3 className="text-[10px] font-black uppercase tracking-widest">Monitoramento Cloud (Opcional)</h3>
-                 </div>
-                 <div className="space-y-1">
-                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Tuya Device ID</label>
-                   <input 
-                    name="tuya_device_id" 
-                    defaultValue={editingEq?.tuya_device_id} 
-                    placeholder="Cole aqui o ID do dispositivo Tuya" 
-                    className="w-full px-4 py-3 bg-white border border-blue-200 rounded-xl outline-none font-medium text-blue-900" 
-                   />
-                   <p className="text-[8px] text-slate-400 italic">Deixe vazio se o equipamento não possuir telemetria.</p>
-                 </div>
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

@@ -12,8 +12,7 @@ import {
   Menu, 
   X,
   Wifi,
-  WifiOff,
-  Activity
+  WifiOff
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
@@ -28,7 +27,6 @@ import EquipmentPage from './pages/Equipment';
 import SystemsPage from './pages/Systems';
 import ServiceOrders from './pages/ServiceOrders';
 import AdminSettings from './pages/AdminSettings';
-import Monitoring from './pages/Monitoring';
 import Login from './pages/Login';
 
 const AppContent: React.FC = () => {
@@ -39,8 +37,6 @@ const AppContent: React.FC = () => {
   
   const navigate = useNavigate();
   const location = useLocation();
-  const prevOrdersRef = useRef<ServiceOrder[]>([]);
-  const isFirstLoad = useRef(true);
 
   useEffect(() => {
     const localData = getStore();
@@ -51,14 +47,13 @@ const AppContent: React.FC = () => {
     if (!navigator.onLine || !isSupabaseActive) return;
     setIsSyncing(true);
     try {
-      const [resCondos, resUsers, resEquips, resSystems, resOS, resAppts, resAlerts] = await Promise.all([
+      const [resCondos, resUsers, resEquips, resSystems, resOS, resAppts] = await Promise.all([
         supabase.from('condos').select('*'),
         supabase.from('users').select('*'),
         supabase.from('equipments').select('*'),
         supabase.from('systems').select('*'),
         supabase.from('service_orders').select('*'),
-        supabase.from('appointments').select('*'),
-        supabase.from('monitoring_alerts').select('*')
+        supabase.from('appointments').select('*')
       ]);
       const syncedData: AppData = {
         ...currentLocalData,
@@ -70,7 +65,6 @@ const AppContent: React.FC = () => {
           new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
         ),
         appointments: resAppts.data || currentLocalData.appointments || [],
-        monitoringAlerts: resAlerts.data || currentLocalData.monitoringAlerts || [],
       };
       setData(syncedData);
       saveStore(syncedData);
@@ -80,9 +74,6 @@ const AppContent: React.FC = () => {
   const updateData = async (newData: AppData) => {
     setData(newData);
     saveStore(newData);
-    if (navigator.onLine && isSupabaseActive) {
-      // Implementar push aqui se necessário
-    }
   };
 
   if (!data) return null;
@@ -135,7 +126,6 @@ const AppContent: React.FC = () => {
         </div>
         <nav className="px-4 space-y-2">
           <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
-          <NavItem to="/monitoring" icon={Activity} label="Monitoramento Tuya" />
           {(isAdmin || isTech) && <NavItem to="/condos" icon={Building2} label="Condomínios" />}
           <NavItem to="/equipment" icon={Layers} label="Equipamentos" />
           <NavItem to="/systems" icon={Settings} label="Sistemas" />
@@ -159,7 +149,7 @@ const AppContent: React.FC = () => {
 
       <main className="flex-1 flex flex-col min-w-0 max-h-screen overflow-hidden">
         <header className="bg-white border-b border-slate-200 h-16 hidden md:flex items-center justify-between px-8 shrink-0">
-          <span className="text-sm font-medium text-slate-400 italic">Gestão & Monitoramento Inteligente</span>
+          <span className="text-sm font-medium text-slate-400 italic">Central de Manutenção Inteligente</span>
           <div className="flex items-center space-x-3">
              {isOnline ? <span className="text-emerald-600 font-bold text-xs"><Wifi size={14} className="inline mr-1" /> ONLINE</span> : <span className="text-amber-600 font-bold text-xs"><WifiOff size={14} className="inline mr-1" /> OFFLINE</span>}
           </div>
@@ -167,7 +157,6 @@ const AppContent: React.FC = () => {
         <div className="flex-1 overflow-y-auto p-4 md:p-8">
           <Routes>
             <Route path="/" element={<Dashboard data={data} updateData={updateData} />} />
-            <Route path="/monitoring" element={<Monitoring data={data} updateData={updateData} />} />
             {(isAdmin || isTech) && <Route path="/condos" element={<Condos data={data} updateData={updateData} />} />}
             <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} />} />
             <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} />} />

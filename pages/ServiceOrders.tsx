@@ -2,11 +2,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { 
-  Plus, FileText, ChevronDown, ChevronUp, X, DollarSign, Calculator, Printer, MessageCircle, Edit2, Share2, Wrench, MapPin
+  Plus, FileText, ChevronDown, ChevronUp, X, DollarSign, Calculator, Printer, MessageCircle, Edit2, Share2, Wrench, MapPin, Camera, Trash2, Image as ImageIcon, CheckCircle2
 } from 'lucide-react';
-import { OSType, OSStatus, ServiceOrder, Condo, System, UserRole } from '../types';
+import { OSType, OSStatus, ServiceOrder, Condo, System, UserRole, AppData } from '../types';
 
-const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
+// Fix: Correctly typing the data prop as AppData instead of any to prevent unknown/Blob type confusion
+const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void }> = ({ data, updateData }) => {
   const user = data.currentUser;
   const isCondoUser = user?.role === UserRole.CONDO_USER;
   const isAdminOrTech = user?.role === UserRole.ADMIN || user?.role === UserRole.TECHNICIAN;
@@ -23,10 +24,15 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const [selectedCondoId, setSelectedCondoId] = useState(isCondoUser ? (user?.condo_id || '') : '');
   const [assignmentType, setAssignmentType] = useState<'equipment' | 'system' | 'general'>('general');
 
+  // Estados para as fotos no formulário
+  const [photosBefore, setPhotosBefore] = useState<string[]>([]);
+  const [photosAfter, setPhotosAfter] = useState<string[]>([]);
+
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const systemId = params.get('systemId');
     if (systemId) {
+      // Fix: Ensure sys is treated as the System type from types.ts
       const sys = data.systems.find((s: System) => s.id === systemId);
       if (sys) openNewOSWithSystem(sys);
     }
@@ -36,7 +42,35 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     setSelectedCondoId(sys.condo_id);
     setAssignmentType('system');
     setEditingOS(null);
+    setPhotosBefore([]);
+    setPhotosAfter([]);
     setIsModalOpen(true);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'before' | 'after') => {
+    const files = e.target.files;
+    if (!files) return;
+
+    Array.from(files).forEach(file => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        if (type === 'before') {
+          setPhotosBefore(prev => [...prev, base64String]);
+        } else {
+          setPhotosAfter(prev => [...prev, base64String]);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const removePhoto = (index: number, type: 'before' | 'after') => {
+    if (type === 'before') {
+      setPhotosBefore(prev => prev.filter((_, i) => i !== index));
+    } else {
+      setPhotosAfter(prev => prev.filter((_, i) => i !== index));
+    }
   };
 
   const handleShare = async (os: ServiceOrder, condoName?: string) => {
@@ -55,7 +89,7 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     } else {
       try {
         await navigator.clipboard.writeText(text);
-        alert('Informações da OS copiadas para a área de transferência! (Ideal para colar no WhatsApp)');
+        alert('Informações da OS copiadas para a área de transferência!');
       } catch (err) {
         alert('Não foi possível copiar os dados.');
       }
@@ -77,8 +111,8 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
       problem_description: formData.get('description') as string,
       actions_performed: (formData.get('actions') as string) || editingOS?.actions_performed || '',
       parts_replaced: editingOS?.parts_replaced || [],
-      photos_before: editingOS?.photos_before || [],
-      photos_after: editingOS?.photos_after || [],
+      photos_before: photosBefore,
+      photos_after: photosAfter,
       technician_id: editingOS?.technician_id || user?.id || 'unknown',
       created_at: editingOS?.created_at || new Date().toISOString(),
       service_value: Number(formData.get('service_value')) || 0,
@@ -94,6 +128,8 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     setEditingOS(null);
     setAssignmentType('general');
     setSelectedCondoId(isCondoUser ? (user?.condo_id || '') : '');
+    setPhotosBefore([]);
+    setPhotosAfter([]);
     setSaveStatus('idle');
   };
 
@@ -107,8 +143,6 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     return (val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   };
 
-  const WHATSAPP_LINK = "https://wa.me/5565996995600?text=Quero%20saber%20mais%20sobre%20o%20or%C3%A7amento";
-
   return (
     <div className="space-y-6 pb-12">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -121,7 +155,7 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
             <option value="all">Todos</option>
             {Object.values(OSStatus).map(s => <option key={s} value={s}>{s}</option>)}
           </select>
-          <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-500/20 active:scale-95 flex-1 md:flex-none">
+          <button onClick={() => { setEditingOS(null); setIsModalOpen(true); }} className="bg-blue-600 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-500/20 active:scale-95 flex-1 md:flex-none">
             <Plus size={16} className="inline mr-1" /> Novo Chamado
           </button>
         </div>
@@ -132,7 +166,7 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
           const condo = data.condos.find((c: Condo) => c.id === os.condo_id);
           const isExpanded = expandedOS === os.id;
           return (
-            <div key={os.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div key={os.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden transition-all">
               <div className="p-4 flex items-center justify-between cursor-pointer" onClick={() => setExpandedOS(isExpanded ? null : os.id)}>
                 <div className="flex items-center space-x-4 min-w-0">
                   <div className={`p-2.5 rounded-xl ${os.type === OSType.CORRECTIVE ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>
@@ -144,6 +178,12 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                   </div>
                 </div>
                 <div className="flex items-center space-x-3">
+                  {(os.photos_before?.length > 0 || os.photos_after?.length > 0) && (
+                    <div className="hidden md:flex items-center text-slate-300">
+                      <ImageIcon size={14} />
+                      <span className="text-[9px] font-bold ml-1">{(os.photos_before?.length || 0) + (os.photos_after?.length || 0)}</span>
+                    </div>
+                  )}
                   <span className={`px-2 py-1 rounded text-[8px] font-black uppercase ${os.status === OSStatus.COMPLETED ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
                     {os.status}
                   </span>
@@ -151,7 +191,7 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                 </div>
               </div>
               {isExpanded && (
-                <div className="px-4 pb-4 border-t pt-4 space-y-4">
+                <div className="px-4 pb-4 border-t pt-4 space-y-4 animate-in slide-in-from-top duration-200">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
@@ -170,10 +210,41 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                     )}
                   </div>
 
+                  {/* Galeria de Fotos Antes/Depois */}
+                  {(os.photos_before?.length > 0 || os.photos_after?.length > 0) && (
+                    <div className="space-y-4">
+                      {os.photos_before?.length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Fotos: Antes / Diagnóstico</p>
+                          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                            {os.photos_before.map((img, i) => (
+                              <img key={i} src={img} className="h-24 w-24 object-cover rounded-xl border border-slate-100 shrink-0" alt="Antes" />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {os.photos_after?.length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Fotos: Após / Conclusão</p>
+                          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                            {os.photos_after.map((img, i) => (
+                              <img key={i} src={img} className="h-24 w-24 object-cover rounded-xl border border-emerald-100 shrink-0" alt="Depois" />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div className="flex flex-wrap gap-3 pt-2">
                     {isAdminOrTech && (
                       <button 
-                        onClick={() => { setEditingOS(os); setIsModalOpen(true); }} 
+                        onClick={() => { 
+                          setEditingOS(os); 
+                          setPhotosBefore(os.photos_before || []);
+                          setPhotosAfter(os.photos_after || []);
+                          setIsModalOpen(true); 
+                        }} 
                         className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-black uppercase px-4 py-2 rounded-xl flex items-center transition-colors"
                       >
                         <Edit2 size={14} className="mr-1.5" /> Editar Dados
@@ -242,24 +313,68 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                 <textarea required name="description" defaultValue={editingOS?.problem_description} rows={3} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"></textarea>
               </div>
 
-              {isAdminOrTech && (
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-blue-600 uppercase">Ações Técnicas / Parecer</label>
-                  <textarea name="actions" defaultValue={editingOS?.actions_performed} rows={3} className="w-full px-4 py-3 bg-blue-50/50 border border-blue-100 rounded-xl text-xs font-medium"></textarea>
+              {/* Registro Fotográfico: ANTES */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase flex items-center">
+                  <Camera size={14} className="mr-1.5" /> Fotos da Situação (Antes)
+                </label>
+                <div className="grid grid-cols-4 md:grid-cols-6 gap-2">
+                  {photosBefore.map((img, idx) => (
+                    <div key={idx} className="relative aspect-square">
+                      <img src={img} className="w-full h-full object-cover rounded-xl border border-slate-200" alt="Preview" />
+                      <button type="button" onClick={() => removePhoto(idx, 'before')} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-1 shadow-md">
+                        <X size={10} />
+                      </button>
+                    </div>
+                  ))}
+                  <label className="aspect-square border-2 border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center text-slate-400 hover:border-blue-400 hover:text-blue-500 transition-all cursor-pointer">
+                    <Plus size={20} />
+                    <span className="text-[8px] font-black uppercase mt-1">Add</span>
+                    <input type="file" multiple accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, 'before')} />
+                  </label>
                 </div>
-              )}
+              </div>
 
               {isAdminOrTech && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-dashed border-slate-200">
+                <>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-500 uppercase">Valor Mão de Obra (R$)</label>
-                    <input type="number" step="0.01" name="service_value" defaultValue={editingOS?.service_value} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl font-bold text-xs" />
+                    <label className="text-[10px] font-black text-blue-600 uppercase">Ações Técnicas / Parecer</label>
+                    <textarea name="actions" defaultValue={editingOS?.actions_performed} rows={3} className="w-full px-4 py-3 bg-blue-50/50 border border-blue-100 rounded-xl text-xs font-medium"></textarea>
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-500 uppercase">Valor Materiais (R$)</label>
-                    <input type="number" step="0.01" name="material_value" defaultValue={editingOS?.material_value} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl font-bold text-xs" />
+
+                  {/* Registro Fotográfico: DEPOIS */}
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-emerald-600 uppercase flex items-center">
+                      <CheckCircle2 size={14} className="mr-1.5" /> Comprovação de Serviço (Depois)
+                    </label>
+                    <div className="grid grid-cols-4 md:grid-cols-6 gap-2">
+                      {photosAfter.map((img, idx) => (
+                        <div key={idx} className="relative aspect-square">
+                          <img src={img} className="w-full h-full object-cover rounded-xl border border-emerald-100" alt="Preview" />
+                          <button type="button" onClick={() => removePhoto(idx, 'after')} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-1 shadow-md">
+                            <X size={10} />
+                          </button>
+                        </div>
+                      ))}
+                      <label className="aspect-square border-2 border-dashed border-emerald-100 rounded-xl flex flex-col items-center justify-center text-emerald-400 hover:bg-emerald-50 transition-all cursor-pointer">
+                        <Plus size={20} />
+                        <span className="text-[8px] font-black uppercase mt-1">Add</span>
+                        <input type="file" multiple accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, 'after')} />
+                      </label>
+                    </div>
                   </div>
-                </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-dashed border-slate-200">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-slate-500 uppercase">Valor Mão de Obra (R$)</label>
+                      <input type="number" step="0.01" name="service_value" defaultValue={editingOS?.service_value} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl font-bold text-xs" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px) font-black text-slate-500 uppercase">Valor Materiais (R$)</label>
+                      <input type="number" step="0.01" name="material_value" defaultValue={editingOS?.material_value} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl font-bold text-xs" />
+                    </div>
+                  </div>
+                </>
               )}
 
               <div className="pt-4 flex gap-3">
@@ -273,7 +388,7 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
         </div>
       )}
 
-      {/* Quote Modal and Styles remain same */}
+      {/* Quote Modal */}
       {isQuoteModalOpen && quoteOS && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/80 backdrop-blur-md p-0 md:p-6 overflow-hidden">
           <div className="bg-white md:rounded-3xl w-full h-full md:h-auto md:max-h-[95vh] md:max-w-3xl flex flex-col shadow-2xl animate-in zoom-in-95 duration-200">
@@ -366,6 +481,8 @@ const ServiceOrders: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
           .bg-blue-50 { background-color: #eff6ff !important; -webkit-print-color-adjust: exact; }
           .bg-slate-50 { background-color: #f8fafc !important; -webkit-print-color-adjust: exact; }
         }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
     </div>
   );

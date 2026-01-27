@@ -59,28 +59,16 @@ export interface Equipment {
   observations: string;
   photos: string[];
   last_maintenance: string;
-  
-  // Monitoring Extension (Tuya)
+  // Added monitoring fields required by Monitoring.tsx
   tuya_device_id?: string;
   monitoring_status?: 'normal' | 'atencao' | 'critico';
+  is_online?: boolean;
   last_reading?: {
-    power?: number;
-    current?: number;
-    voltage?: number;
+    power: number;
+    current: number;
+    voltage: number;
     timestamp: string;
   };
-  is_online?: boolean;
-}
-
-export interface MonitoringAlert {
-  id: string;
-  equipment_id: string;
-  condo_id: string;
-  severity: 'warning' | 'critical';
-  message: string;
-  value: string;
-  timestamp: string;
-  is_resolved: boolean;
 }
 
 export interface System {
@@ -124,6 +112,16 @@ export interface Appointment {
   status: 'Pendente' | 'Confirmada' | 'Realizada' | 'Cancelada';
 }
 
+// Added MonitoringAlert interface to fix error in Monitoring.tsx
+export interface MonitoringAlert {
+  id: string;
+  equipment_id: string;
+  message: string;
+  value: string | number;
+  is_resolved: boolean;
+  created_at: string;
+}
+
 export interface User {
   id: string;
   name: string;
@@ -139,9 +137,10 @@ export interface AppData {
   systems: System[];
   serviceOrders: ServiceOrder[];
   appointments: Appointment[];
-  monitoringAlerts: MonitoringAlert[];
   users: User[];
   equipmentTypes: EquipmentType[];
   systemTypes: SystemType[];
   currentUser: User | null;
+  // Added monitoringAlerts to match AppData usage in Monitoring.tsx
+  monitoringAlerts: MonitoringAlert[];
 }
