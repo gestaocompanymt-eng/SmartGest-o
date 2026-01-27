@@ -38,19 +38,17 @@
         @media print { .no-print { display: none !important; } }
     </style>
 
-    <!-- Registro do Service Worker Simplificado para evitar erros de URL em Sandboxes -->
+    <!-- Registro do Service Worker Simplificado (String Direta) -->
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', function() {
-          // O erro "Invalid URL" ocorria ao tentar construir um objeto URL manualmente
-          // Usar o caminho relativo direto é mais seguro em ambientes de preview/iframe
-          navigator.serviceWorker.register('./sw.js')
+          // Usar string direta evita o erro 'Failed to construct URL'
+          navigator.serviceWorker.register('sw.js', { scope: './' })
             .then(function(reg) {
-              console.log('SmartGestão: PWA Service Worker registrado.');
+              console.log('SmartGestão: PWA Ativo.');
             })
             .catch(function(err) {
-              // Falhas aqui são comuns em sandboxes e não devem impedir o app de rodar
-              console.info('SmartGestão: Modo PWA offline indisponível no preview.');
+              console.warn('SmartGestão: Modo offline indisponível no ambiente atual.');
             });
         });
       }
