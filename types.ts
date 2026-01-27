@@ -59,7 +59,7 @@ export interface Equipment {
   observations: string;
   photos: string[];
   last_maintenance: string;
-  // Added monitoring fields required by Monitoring.tsx
+  // Propriedades para integração com monitoramento em tempo real (ex: Tuya)
   tuya_device_id?: string;
   monitoring_status?: 'normal' | 'atencao' | 'critico';
   is_online?: boolean;
@@ -112,14 +112,14 @@ export interface Appointment {
   status: 'Pendente' | 'Confirmada' | 'Realizada' | 'Cancelada';
 }
 
-// Added MonitoringAlert interface to fix error in Monitoring.tsx
+// Interface para alertas gerados pelo sistema de monitoramento
 export interface MonitoringAlert {
   id: string;
   equipment_id: string;
   message: string;
-  value: string | number;
+  value: string;
+  timestamp: string;
   is_resolved: boolean;
-  created_at: string;
 }
 
 export interface User {
@@ -141,6 +141,6 @@ export interface AppData {
   equipmentTypes: EquipmentType[];
   systemTypes: SystemType[];
   currentUser: User | null;
-  // Added monitoringAlerts to match AppData usage in Monitoring.tsx
+  // Lista de alertas de monitoramento ativos/históricos
   monitoringAlerts: MonitoringAlert[];
 }

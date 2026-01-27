@@ -14,10 +14,8 @@ import {
   Wifi,
   WifiOff,
   RefreshCw,
-  CloudCheck,
   Zap,
-  AlertTriangle,
-  Activity
+  AlertTriangle
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
@@ -31,7 +29,6 @@ import EquipmentPage from './pages/Equipment';
 import SystemsPage from './pages/Systems';
 import ServiceOrders from './pages/ServiceOrders';
 import AdminSettings from './pages/AdminSettings';
-import Monitoring from './pages/Monitoring'; // Importação adicionada
 import Login from './pages/Login';
 
 const AppContent: React.FC = () => {
@@ -59,13 +56,12 @@ const AppContent: React.FC = () => {
     if (!navigator.onLine || !isSupabaseActive) return currentLocalData;
     setSyncStatus('syncing');
     try {
-      const [resCondos, resEquips, resSystems, resOS, resAppts, resAlerts] = await Promise.all([
+      const [resCondos, resEquips, resSystems, resOS, resAppts] = await Promise.all([
         supabase.from('condos').select('*'),
         supabase.from('equipments').select('*'),
         supabase.from('systems').select('*'),
         supabase.from('service_orders').select('*'),
-        supabase.from('appointments').select('*'),
-        supabase.from('monitoring_alerts').select('*') // Adicionado alertas de monitoramento
+        supabase.from('appointments').select('*')
       ]);
 
       const cloudData: AppData = {
@@ -76,8 +72,7 @@ const AppContent: React.FC = () => {
         serviceOrders: mergeData(currentLocalData.serviceOrders, resOS.data || []).sort((a: any, b: any) => 
           new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
         ),
-        appointments: resAppts.data || currentLocalData.appointments || [],
-        monitoringAlerts: resAlerts.data || currentLocalData.monitoringAlerts || []
+        appointments: resAppts.data || currentLocalData.appointments || []
       };
       
       setSyncStatus('synced');
@@ -208,7 +203,6 @@ const AppContent: React.FC = () => {
         </div>
         <nav className="px-4 space-y-1.5">
           <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
-          <NavItem to="/monitoring" icon={Activity} label="Telemetria" />
           {(isAdmin || isTech) && <NavItem to="/condos" icon={Building2} label="Condomínios" />}
           <NavItem to="/equipment" icon={Layers} label="Equipamentos" />
           <NavItem to="/systems" icon={Settings} label="Sistemas" />
@@ -239,7 +233,6 @@ const AppContent: React.FC = () => {
         <div className="flex-1 overflow-y-auto p-4 md:p-8">
           <Routes>
             <Route path="/" element={<Dashboard data={data} updateData={updateData} />} />
-            <Route path="/monitoring" element={<Monitoring data={data} updateData={updateData} />} />
             {(isAdmin || isTech) && <Route path="/condos" element={<Condos data={data} updateData={updateData} />} />}
             <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} />} />
             <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} />} />
