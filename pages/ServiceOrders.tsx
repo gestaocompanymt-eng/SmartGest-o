@@ -6,7 +6,6 @@ import {
 } from 'lucide-react';
 import { OSType, OSStatus, ServiceOrder, Condo, System, UserRole, AppData } from '../types';
 
-// Fix: Correctly typing the data prop as AppData instead of any to prevent unknown/Blob type confusion
 const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void }> = ({ data, updateData }) => {
   const user = data.currentUser;
   const isCondoUser = user?.role === UserRole.CONDO_USER;
@@ -24,7 +23,6 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
   const [selectedCondoId, setSelectedCondoId] = useState(isCondoUser ? (user?.condo_id || '') : '');
   const [assignmentType, setAssignmentType] = useState<'equipment' | 'system' | 'general'>('general');
 
-  // Estados para as fotos no formulário
   const [photosBefore, setPhotosBefore] = useState<string[]>([]);
   const [photosAfter, setPhotosAfter] = useState<string[]>([]);
 
@@ -32,7 +30,6 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
     const params = new URLSearchParams(location.search);
     const systemId = params.get('systemId');
     if (systemId) {
-      // Fix: Ensure sys is treated as the System type from types.ts
       const sys = data.systems.find((s: System) => s.id === systemId);
       if (sys) openNewOSWithSystem(sys);
     }
@@ -51,7 +48,8 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
     const files = e.target.files;
     if (!files) return;
 
-    Array.from(files).forEach(file => {
+    // Explicitly cast to File[] to resolve 'unknown' to 'Blob' conversion error
+    (Array.from(files) as File[]).forEach(file => {
       const reader = new FileReader();
       reader.onloadend = () => {
         const base64String = reader.result as string;
@@ -100,10 +98,14 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
     e.preventDefault();
     setSaveStatus('saving');
     const formData = new FormData(e.currentTarget);
+    
+    // Captura o status do formulário. Se não houver, mantém o atual ou 'Aberta'.
+    const statusFromForm = formData.get('status') as OSStatus;
+
     const osData: ServiceOrder = {
       id: editingOS?.id || `OS-${Math.floor(1000 + Math.random() * 9000)}`,
       type: formData.get('type') as OSType,
-      status: editingOS?.status || OSStatus.OPEN,
+      status: statusFromForm || editingOS?.status || OSStatus.OPEN,
       condo_id: isCondoUser ? (user?.condo_id || '') : (formData.get('condo_id') as string),
       location: formData.get('location') as string,
       equipment_id: assignmentType === 'equipment' ? (formData.get('equipment_id') as string) : undefined,
@@ -117,8 +119,16 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
       created_at: editingOS?.created_at || new Date().toISOString(),
       service_value: Number(formData.get('service_value')) || 0,
       material_value: Number(formData.get('material_value')) || 0,
+      completed_at: statusFromForm === OSStatus.COMPLETED ? new Date().toISOString() : editingOS?.completed_at
     };
-    await updateData({ ...data, serviceOrders: editingOS ? data.serviceOrders.map((o: any) => o.id === editingOS.id ? osData : o) : [osData, ...data.serviceOrders] });
+
+    await updateData({ 
+      ...data, 
+      serviceOrders: editingOS 
+        ? data.serviceOrders.map((o: ServiceOrder) => o.id === editingOS.id ? osData : o) 
+        : [osData, ...data.serviceOrders] 
+    });
+
     setSaveStatus('success');
     setTimeout(closeModal, 800);
   };
@@ -184,7 +194,11 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                       <span className="text-[9px] font-bold ml-1">{(os.photos_before?.length || 0) + (os.photos_after?.length || 0)}</span>
                     </div>
                   )}
-                  <span className={`px-2 py-1 rounded text-[8px] font-black uppercase ${os.status === OSStatus.COMPLETED ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
+                  <span className={`px-2 py-1 rounded text-[8px] font-black uppercase ${
+                    os.status === OSStatus.COMPLETED ? 'bg-emerald-100 text-emerald-700' : 
+                    os.status === OSStatus.CANCELLED ? 'bg-slate-100 text-slate-500' : 
+                    os.status === OSStatus.IN_PROGRESS ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
+                  }`}>
                     {os.status}
                   </span>
                   {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -247,7 +261,7 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                         }} 
                         className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-black uppercase px-4 py-2 rounded-xl flex items-center transition-colors"
                       >
-                        <Edit2 size={14} className="mr-1.5" /> Editar Dados
+                        <Edit2 size={14} className="mr-1.5" /> Editar / Finalizar
                       </button>
                     )}
                     {isAdminOrTech && (
@@ -276,10 +290,29 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-300 flex flex-col max-h-[90vh]">
             <div className="p-6 border-b flex justify-between items-center bg-slate-50">
-              <h2 className="text-lg font-black uppercase tracking-tight">{editingOS ? 'Atualizar OS' : 'Novo Chamado'}</h2>
+              <h2 className="text-lg font-black uppercase tracking-tight">{editingOS ? 'Gerenciar OS' : 'Novo Chamado'}</h2>
               <button onClick={closeModal} className="p-2 bg-white rounded-xl shadow-sm"><X size={20} /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-6 overflow-y-auto">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-500 uppercase">Status do Atendimento</label>
+                  <select 
+                    name="status" 
+                    defaultValue={editingOS?.status || OSStatus.OPEN}
+                    className="w-full px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl font-black text-blue-700 text-xs focus:ring-2 focus:ring-blue-500/20"
+                  >
+                    {Object.values(OSStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-500 uppercase">Tipo de Intervenção</label>
+                  <select required name="type" defaultValue={editingOS?.type} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs">
+                    {Object.values(OSType).map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-500 uppercase">Condomínio</label>
@@ -296,16 +329,9 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase">Tipo de Intervenção</label>
-                  <select required name="type" defaultValue={editingOS?.type} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs">
-                    {Object.values(OSType).map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
+                  <label className="text-[10px] font-black text-slate-500 uppercase">Local Exato</label>
+                  <input required name="location" defaultValue={editingOS?.location} placeholder="Ex: Casa de Máquinas" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs" />
                 </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-500 uppercase">Local Exato da Ocorrência</label>
-                <input required name="location" defaultValue={editingOS?.location} placeholder="Ex: Hall Social Bloco B, Apartamento 402, Piscina" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs" />
               </div>
 
               <div className="space-y-1">
@@ -313,10 +339,9 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                 <textarea required name="description" defaultValue={editingOS?.problem_description} rows={3} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"></textarea>
               </div>
 
-              {/* Registro Fotográfico: ANTES */}
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-500 uppercase flex items-center">
-                  <Camera size={14} className="mr-1.5" /> Fotos da Situação (Antes)
+                  <Camera size={14} className="mr-1.5" /> Registro Fotográfico (Antes)
                 </label>
                 <div className="grid grid-cols-4 md:grid-cols-6 gap-2">
                   {photosBefore.map((img, idx) => (
@@ -329,7 +354,6 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                   ))}
                   <label className="aspect-square border-2 border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center text-slate-400 hover:border-blue-400 hover:text-blue-500 transition-all cursor-pointer">
                     <Plus size={20} />
-                    <span className="text-[8px] font-black uppercase mt-1">Add</span>
                     <input type="file" multiple accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, 'before')} />
                   </label>
                 </div>
@@ -338,14 +362,13 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
               {isAdminOrTech && (
                 <>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-black text-blue-600 uppercase">Ações Técnicas / Parecer</label>
-                    <textarea name="actions" defaultValue={editingOS?.actions_performed} rows={3} className="w-full px-4 py-3 bg-blue-50/50 border border-blue-100 rounded-xl text-xs font-medium"></textarea>
+                    <label className="text-[10px] font-black text-blue-600 uppercase">Parecer Técnico / Resolução</label>
+                    <textarea name="actions" defaultValue={editingOS?.actions_performed} rows={3} placeholder="Descreva o que foi feito..." className="w-full px-4 py-3 bg-blue-50/50 border border-blue-100 rounded-xl text-xs font-medium"></textarea>
                   </div>
 
-                  {/* Registro Fotográfico: DEPOIS */}
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-emerald-600 uppercase flex items-center">
-                      <CheckCircle2 size={14} className="mr-1.5" /> Comprovação de Serviço (Depois)
+                      <CheckCircle2 size={14} className="mr-1.5" /> Comprovação Visual (Depois)
                     </label>
                     <div className="grid grid-cols-4 md:grid-cols-6 gap-2">
                       {photosAfter.map((img, idx) => (
@@ -358,7 +381,6 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                       ))}
                       <label className="aspect-square border-2 border-dashed border-emerald-100 rounded-xl flex flex-col items-center justify-center text-emerald-400 hover:bg-emerald-50 transition-all cursor-pointer">
                         <Plus size={20} />
-                        <span className="text-[8px] font-black uppercase mt-1">Add</span>
                         <input type="file" multiple accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, 'after')} />
                       </label>
                     </div>
@@ -366,11 +388,11 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-dashed border-slate-200">
                     <div className="space-y-1">
-                      <label className="text-[10px] font-black text-slate-500 uppercase">Valor Mão de Obra (R$)</label>
+                      <label className="text-[10px] font-black text-slate-500 uppercase">Mão de Obra (R$)</label>
                       <input type="number" step="0.01" name="service_value" defaultValue={editingOS?.service_value} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl font-bold text-xs" />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[10px) font-black text-slate-500 uppercase">Valor Materiais (R$)</label>
+                      <label className="text-[10px] font-black text-slate-500 uppercase">Materiais (R$)</label>
                       <input type="number" step="0.01" name="material_value" defaultValue={editingOS?.material_value} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl font-bold text-xs" />
                     </div>
                   </div>
@@ -380,7 +402,7 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
               <div className="pt-4 flex gap-3">
                 <button type="button" onClick={closeModal} className="flex-1 py-4 border rounded-2xl font-black text-xs uppercase">Descartar</button>
                 <button type="submit" disabled={saveStatus === 'saving'} className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-slate-900/20 active:scale-95">
-                  {saveStatus === 'saving' ? 'Gravando...' : 'Salvar Chamado'}
+                  {saveStatus === 'saving' ? 'Salvando...' : 'Gravar Informações'}
                 </button>
               </div>
             </form>
@@ -393,12 +415,12 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/80 backdrop-blur-md p-0 md:p-6 overflow-hidden">
           <div className="bg-white md:rounded-3xl w-full h-full md:h-auto md:max-h-[95vh] md:max-w-3xl flex flex-col shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b flex justify-between items-center no-print">
-              <h3 className="font-black uppercase text-xs tracking-widest">Orçamento</h3>
+              <h3 className="font-black uppercase text-xs tracking-widest text-slate-900">Documento de Orçamento</h3>
               <div className="flex space-x-2">
                  <button onClick={() => window.print()} className="bg-blue-600 text-white px-5 py-2.5 rounded-xl font-black text-[10px] uppercase flex items-center shadow-lg shadow-blue-500/20 active:scale-95 transition-all">
-                   <Printer size={16} className="mr-2" /> Gerar PDF / Imprimir
+                   <Printer size={16} className="mr-2" /> Gerar PDF
                  </button>
-                 <button onClick={() => setIsQuoteModalOpen(false)} className="p-2.5 bg-slate-100 rounded-xl hover:bg-slate-200"><X size={20} /></button>
+                 <button onClick={() => setIsQuoteModalOpen(false)} className="p-2.5 bg-slate-100 rounded-xl hover:bg-slate-200 text-slate-600"><X size={20} /></button>
               </div>
             </div>
             
@@ -409,32 +431,32 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                      <Wrench size={32} className="text-blue-600" />
                      <span className="font-black text-2xl uppercase tracking-tighter text-slate-900">SmartGestão</span>
                    </div>
-                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Sistemas de Manutenção e Gestão Predial</p>
+                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Manutenção e Gestão Predial</p>
                    <div className="space-y-1">
                       <p className="text-[10px] text-slate-700 font-black uppercase tracking-widest">Contato: (65) 99699-5600</p>
                    </div>
                 </div>
                 <div className="text-right">
                   <h1 className="text-3xl font-black uppercase text-slate-900 leading-none mb-1">Orçamento</h1>
-                  <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">REF: {quoteOS.id}</p>
+                  <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Nº DOCUMENTO: {quoteOS.id}</p>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-8">
                 <div>
-                  <h4 className="text-[9px] font-black uppercase text-slate-400 tracking-[0.2em] mb-2">Destinatário</h4>
+                  <h4 className="text-[9px] font-black uppercase text-slate-400 tracking-[0.2em] mb-2">Cliente / Condomínio</h4>
                   <p className="font-black text-slate-900 text-sm mb-1">{data.condos.find((c:any)=>c.id===quoteOS.condo_id)?.name}</p>
                   <p className="text-[10px] text-slate-600 font-medium leading-relaxed">{data.condos.find((c:any)=>c.id===quoteOS.condo_id)?.address}</p>
                 </div>
                 <div className="text-right">
-                  <h4 className="text-[9px] font-black uppercase text-slate-400 tracking-[0.2em] mb-2">Local</h4>
-                  <p className="font-black text-slate-900 text-sm uppercase">{quoteOS.location || 'Conforme descrito'}</p>
+                  <h4 className="text-[9px] font-black uppercase text-slate-400 tracking-[0.2em] mb-2">Local do Serviço</h4>
+                  <p className="font-black text-slate-900 text-sm uppercase">{quoteOS.location || 'Áreas Comuns'}</p>
                 </div>
               </div>
 
               <div className="space-y-4">
                 <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
-                  <h4 className="text-[9px] font-black uppercase text-slate-400 tracking-[0.2em] mb-3">Diagnóstico / Problema</h4>
+                  <h4 className="text-[9px] font-black uppercase text-slate-400 tracking-[0.2em] mb-3">Escopo do Trabalho</h4>
                   <p className="text-xs text-slate-700 leading-relaxed font-medium italic">{quoteOS.problem_description}</p>
                 </div>
               </div>
@@ -443,23 +465,23 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-900 text-white uppercase text-[9px] tracking-widest font-black">
                     <tr>
-                      <th className="px-6 py-4">Serviço / Material</th>
+                      <th className="px-6 py-4">Item de Manutenção</th>
                       <th className="px-6 py-4 text-right">Valor</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     <tr>
-                      <td className="px-6 py-4 font-bold text-slate-600">Mão de Obra Técnica</td>
+                      <td className="px-6 py-4 font-bold text-slate-600">Serviços Técnicos Especializados</td>
                       <td className="px-6 py-4 text-right font-black text-slate-900">{formatCurrency(quoteOS.service_value)}</td>
                     </tr>
                     <tr>
-                      <td className="px-6 py-4 font-bold text-slate-600">Peças e Materiais</td>
+                      <td className="px-6 py-4 font-bold text-slate-600">Componentes, Peças e Insumos</td>
                       <td className="px-6 py-4 text-right font-black text-slate-900">{formatCurrency(quoteOS.material_value)}</td>
                     </tr>
                   </tbody>
                   <tfoot className="bg-blue-50">
                     <tr>
-                      <td className="px-6 py-5 font-black uppercase text-[10px] text-blue-900 tracking-widest">Total</td>
+                      <td className="px-6 py-5 font-black uppercase text-[10px] text-blue-900 tracking-widest">Valor Total Investimento</td>
                       <td className="px-6 py-5 text-right text-xl font-black text-blue-900">
                         {formatCurrency((quoteOS.service_value || 0) + (quoteOS.material_value || 0))}
                       </td>
