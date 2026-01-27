@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { HashRouter, Routes, Route, Link, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -12,13 +12,14 @@ import {
   Menu, 
   X,
   Wifi,
-  WifiOff
+  WifiOff,
+  RefreshCw,
+  CloudCheck
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
 import { UserRole, AppData, ServiceOrder } from './types';
 import { supabase, isSupabaseActive } from './supabase';
-import { sendLocalNotification } from './notificationService';
 
 // Pages
 import Dashboard from './pages/Dashboard';
@@ -33,19 +34,15 @@ const AppContent: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [data, setData] = useState<AppData | null>(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error' | 'offline'>('synced');
   
   const navigate = useNavigate();
   const location = useLocation();
 
-  useEffect(() => {
-    const localData = getStore();
-    setData(localData);
-  }, []);
-
-  const syncWithCloud = useCallback(async (currentLocalData: AppData) => {
-    if (!navigator.onLine || !isSupabaseActive) return;
-    setIsSyncing(true);
+  // Função para carregar dados (Nuvem -> Local)
+  const fetchAllData = useCallback(async (currentLocalData: AppData) => {
+    if (!navigator.onLine || !isSupabaseActive) return currentLocalData;
+    setSyncStatus('syncing');
     try {
       const [resCondos, resUsers, resEquips, resSystems, resOS, resAppts] = await Promise.all([
         supabase.from('condos').select('*'),
@@ -55,7 +52,8 @@ const AppContent: React.FC = () => {
         supabase.from('service_orders').select('*'),
         supabase.from('appointments').select('*')
       ]);
-      const syncedData: AppData = {
+
+      const cloudData: AppData = {
         ...currentLocalData,
         condos: resCondos.data || currentLocalData.condos,
         users: resUsers.data || currentLocalData.users,
@@ -66,14 +64,66 @@ const AppContent: React.FC = () => {
         ),
         appointments: resAppts.data || currentLocalData.appointments || [],
       };
-      setData(syncedData);
-      saveStore(syncedData);
-    } catch (error) { console.error(error); } finally { setIsSyncing(false); }
+      
+      setSyncStatus('synced');
+      return cloudData;
+    } catch (error) {
+      console.error("Erro ao sincronizar:", error);
+      setSyncStatus('error');
+      return currentLocalData;
+    }
   }, []);
 
+  // Inicialização
+  useEffect(() => {
+    const init = async () => {
+      const local = getStore();
+      const updated = await fetchAllData(local);
+      setData(updated);
+      saveStore(updated);
+    };
+    init();
+
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [fetchAllData]);
+
+  // Função central de atualização que agora sincroniza com a Nuvem
   const updateData = async (newData: AppData) => {
     setData(newData);
     saveStore(newData);
+
+    // Se estiver online, tenta subir as mudanças imediatamente
+    if (navigator.onLine && isSupabaseActive) {
+      setSyncStatus('syncing');
+      try {
+        // Exemplo: Sincroniza Ordens de Serviço (Tabela principal de divergência)
+        await supabase.from('service_orders').upsert(newData.serviceOrders);
+        // Sincroniza Condomínios e outros se necessário
+        await supabase.from('condos').upsert(newData.condos);
+        await supabase.from('equipments').upsert(newData.equipments);
+        
+        setSyncStatus('synced');
+      } catch (e) {
+        console.error("Erro ao subir dados:", e);
+        setSyncStatus('error');
+      }
+    } else {
+      setSyncStatus('offline');
+    }
+  };
+
+  const handleManualSync = async () => {
+    if (!data) return;
+    const freshData = await fetchAllData(data);
+    setData(freshData);
+    saveStore(freshData);
   };
 
   if (!data) return null;
@@ -112,9 +162,14 @@ const AppContent: React.FC = () => {
           <Wrench size={18} className="text-blue-500" />
           <span className="font-bold text-base tracking-tight uppercase">SmartGestão</span>
         </div>
-        <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 bg-slate-800 rounded-lg">
-          {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
+        <div className="flex items-center space-x-2">
+          <button onClick={handleManualSync} className={`p-2 rounded-lg ${syncStatus === 'syncing' ? 'animate-spin' : ''}`}>
+             <RefreshCw size={20} className={syncStatus === 'error' ? 'text-red-500' : 'text-blue-400'} />
+          </button>
+          <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 bg-slate-800 rounded-lg">
+            {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
+        </div>
       </div>
 
       <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-slate-900 text-white transform transition-transform duration-300 md:relative md:translate-x-0 md:w-64 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
@@ -149,7 +204,20 @@ const AppContent: React.FC = () => {
 
       <main className="flex-1 flex flex-col min-w-0 max-h-screen overflow-hidden">
         <header className="bg-white border-b border-slate-200 h-16 hidden md:flex items-center justify-between px-8 shrink-0">
-          <span className="text-sm font-medium text-slate-400 italic">Central de Manutenção Inteligente</span>
+          <div className="flex items-center space-x-4">
+            <span className="text-sm font-medium text-slate-400 italic">Central de Manutenção Inteligente</span>
+            <div className="h-4 w-px bg-slate-200"></div>
+            <button 
+              onClick={handleManualSync}
+              className={`flex items-center space-x-2 text-[10px] font-black uppercase tracking-widest transition-colors ${
+                syncStatus === 'synced' ? 'text-emerald-500' : 
+                syncStatus === 'syncing' ? 'text-blue-500' : 'text-amber-500'
+              }`}
+            >
+              {syncStatus === 'synced' ? <Wifi size={14} /> : <RefreshCw size={14} className="animate-spin" />}
+              <span>{syncStatus === 'synced' ? 'Dados Sincronizados' : 'Sincronizando Nuvem...'}</span>
+            </button>
+          </div>
           <div className="flex items-center space-x-3">
              {isOnline ? <span className="text-emerald-600 font-bold text-xs"><Wifi size={14} className="inline mr-1" /> ONLINE</span> : <span className="text-amber-600 font-bold text-xs"><WifiOff size={14} className="inline mr-1" /> OFFLINE</span>}
           </div>
