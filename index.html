@@ -38,20 +38,19 @@
         @media print { .no-print { display: none !important; } }
     </style>
 
-    <!-- Registro do Service Worker Corrigido para evitar Origin Mismatch -->
+    <!-- Registro do Service Worker Simplificado para evitar erros de URL em Sandboxes -->
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', function() {
-          // Resolve a URL do Service Worker contra a URL atual para evitar erros de domínio em sandboxes
-          const swPath = new URL('./sw.js', window.location.href).href;
-          
-          navigator.serviceWorker.register(swPath)
+          // O erro "Invalid URL" ocorria ao tentar construir um objeto URL manualmente
+          // Usar o caminho relativo direto é mais seguro em ambientes de preview/iframe
+          navigator.serviceWorker.register('./sw.js')
             .then(function(reg) {
-              console.log('SmartGestão: PWA Service Worker registrado com sucesso.');
+              console.log('SmartGestão: PWA Service Worker registrado.');
             })
             .catch(function(err) {
-              // Em ambientes de preview, o erro de origin é comum e pode ser ignorado sem afetar o app
-              console.info('SmartGestão: Service Worker não registrado (comum em previews). O app funcionará normalmente online.');
+              // Falhas aqui são comuns em sandboxes e não devem impedir o app de rodar
+              console.info('SmartGestão: Modo PWA offline indisponível no preview.');
             });
         });
       }
