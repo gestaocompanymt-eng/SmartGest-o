@@ -10,15 +10,14 @@ const initialData: AppData = {
   systems: [],
   serviceOrders: [],
   appointments: [],
+  monitoringAlerts: [],
   users: [
     { id: 'admin1', name: 'Admin Principal', role: UserRole.ADMIN, email: 'admin', password: '41414889Ai' },
     { id: 'tech1', name: 'Carlos Técnico', role: UserRole.TECHNICIAN, email: 'carlos@smartgestao.com', password: '123' }
   ],
   equipmentTypes: INITIAL_EQUIPMENT_TYPES,
   systemTypes: INITIAL_SYSTEM_TYPES,
-  currentUser: null,
-  // Added monitoringAlerts initialization
-  monitoringAlerts: []
+  currentUser: null
 };
 
 export const getStore = (): AppData => {
@@ -28,10 +27,11 @@ export const getStore = (): AppData => {
   try {
     const parsedData: AppData = JSON.parse(saved);
     
-    // Garantir usuários padrão
+    // Garantir usuários padrão se não existirem
     initialData.users.forEach(defaultUser => {
-      const exists = parsedData.users.some(u => u.email.toLowerCase() === defaultUser.email.toLowerCase());
+      const exists = parsedData.users?.some(u => u.email.toLowerCase() === defaultUser.email.toLowerCase());
       if (!exists) {
+        if (!parsedData.users) parsedData.users = [];
         parsedData.users.push(defaultUser);
       }
     });
@@ -41,11 +41,10 @@ export const getStore = (): AppData => {
     if (!parsedData.equipments) parsedData.equipments = [];
     if (!parsedData.systems) parsedData.systems = [];
     if (!parsedData.serviceOrders) parsedData.serviceOrders = [];
+    if (!parsedData.monitoringAlerts) parsedData.monitoringAlerts = [];
     if (!parsedData.users) parsedData.users = [];
     if (!parsedData.equipmentTypes) parsedData.equipmentTypes = INITIAL_EQUIPMENT_TYPES;
     if (!parsedData.systemTypes) parsedData.systemTypes = INITIAL_SYSTEM_TYPES;
-    // Ensure monitoringAlerts array exists in parsed data
-    if (!parsedData.monitoringAlerts) parsedData.monitoringAlerts = [];
     
     return parsedData;
   } catch (e) {

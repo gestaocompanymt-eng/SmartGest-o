@@ -1,8 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { Building2, AlertTriangle, CheckCircle2, Clock, TrendingUp, Wrench, Calendar, Plus, Edit2, Trash2, X, MapPin, User as UserIcon } from 'lucide-react';
-import { AppData, OSStatus, OSType, UserRole, Appointment, Condo, User } from '../types';
+import { Building2, AlertTriangle, CheckCircle2, Clock, Calendar, Plus, Edit2, Trash2, X } from 'lucide-react';
+import { AppData, OSStatus, OSType, UserRole, Appointment } from '../types';
 import { useNavigate } from 'react-router-dom';
 
 const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> = ({ data, updateData }) => {
@@ -33,18 +32,6 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
   const openOS = filteredOSList.filter((os: any) => os.status === OSStatus.OPEN).length;
   const criticalEquip = filteredEquipList.filter((eq: any) => eq.electrical_state === 'Crítico').length;
   const completedOS = filteredOSList.filter((os: any) => os.status === OSStatus.COMPLETED).length;
-
-  const chartData = [
-    { name: 'Prev.', value: filteredOSList.filter((os: any) => os.type === OSType.PREVENTIVE).length },
-    { name: 'Corr.', value: filteredOSList.filter((os: any) => os.type === OSType.CORRECTIVE).length },
-    { name: 'Avulso', value: filteredOSList.filter((os: any) => os.type === OSType.SERVICE).length },
-  ];
-
-  const statusData = [
-    { name: 'Aberta', value: openOS, color: '#3b82f6' },
-    { name: 'Concluída', value: completedOS, color: '#10b981' },
-    { name: 'Progresso', value: filteredOSList.filter((os: any) => os.status === OSStatus.IN_PROGRESS).length, color: '#f59e0b' },
-  ];
 
   const handleAppointmentSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();

@@ -61,10 +61,10 @@ export interface Equipment {
   photos: string[];
   last_maintenance: string;
   updated_at?: string;
-  // Added monitoring fields for Tuya integration
+  // Tuya Monitoring Fields
   tuya_device_id?: string;
-  monitoring_status?: 'normal' | 'atencao' | 'critico';
   is_online?: boolean;
+  monitoring_status?: 'normal' | 'atencao' | 'critico';
   last_reading?: {
     power: number;
     current: number;
@@ -117,12 +117,12 @@ export interface Appointment {
   updated_at?: string;
 }
 
-// Added MonitoringAlert interface to fix import error in Monitoring.tsx
+// Monitoring Alert Interface for Tuya Cloud Integration
 export interface MonitoringAlert {
   id: string;
   equipment_id: string;
   message: string;
-  value: string;
+  value: string | number;
   is_resolved: boolean;
   created_at: string;
 }
@@ -142,10 +142,9 @@ export interface AppData {
   systems: System[];
   serviceOrders: ServiceOrder[];
   appointments: Appointment[];
+  monitoringAlerts: MonitoringAlert[];
   users: User[];
   equipmentTypes: EquipmentType[];
   systemTypes: SystemType[];
   currentUser: User | null;
-  // Added monitoringAlerts to fix usage in Monitoring.tsx
-  monitoringAlerts: MonitoringAlert[];
 }

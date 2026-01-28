@@ -4,7 +4,7 @@ import { useLocation } from 'react-router-dom';
 import { 
   Plus, FileText, ChevronDown, ChevronUp, X, DollarSign, Calculator, Printer, MessageCircle, Edit2, Share2, Wrench, MapPin, Camera, Trash2, Image as ImageIcon, CheckCircle2
 } from 'lucide-react';
-import { OSType, OSStatus, ServiceOrder, Condo, System, UserRole, AppData } from '../types';
+import { OSType, OSStatus, ServiceOrder, Condo, System, UserRole, AppData, Equipment } from '../types';
 
 const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void }> = ({ data, updateData }) => {
   const user = data.currentUser;
@@ -22,6 +22,9 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
   
   const [selectedCondoId, setSelectedCondoId] = useState(isCondoUser ? (user?.condo_id || '') : '');
   const [assignmentType, setAssignmentType] = useState<'equipment' | 'system' | 'general'>('general');
+  const [selectedEquipmentId, setSelectedEquipmentId] = useState('');
+  const [selectedSystemId, setSelectedSystemId] = useState('');
+  const [initialDescription, setInitialDescription] = useState('');
 
   const [photosBefore, setPhotosBefore] = useState<string[]>([]);
   const [photosAfter, setPhotosAfter] = useState<string[]>([]);
@@ -29,15 +32,36 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const systemId = params.get('systemId');
+    const equipmentId = params.get('equipmentId');
+    const description = params.get('description');
+
     if (systemId) {
       const sys = data.systems.find((s: System) => s.id === systemId);
       if (sys) openNewOSWithSystem(sys);
+    } else if (equipmentId) {
+      const eq = data.equipments.find((e: Equipment) => e.id === equipmentId);
+      if (eq) openNewOSWithEquipment(eq, description || '');
     }
-  }, [location.search, data.systems]);
+  }, [location.search, data.systems, data.equipments]);
 
   const openNewOSWithSystem = (sys: System) => {
     setSelectedCondoId(sys.condo_id);
     setAssignmentType('system');
+    setSelectedSystemId(sys.id);
+    setSelectedEquipmentId('');
+    setInitialDescription('');
+    setEditingOS(null);
+    setPhotosBefore([]);
+    setPhotosAfter([]);
+    setIsModalOpen(true);
+  };
+
+  const openNewOSWithEquipment = (eq: Equipment, desc: string) => {
+    setSelectedCondoId(eq.condo_id);
+    setAssignmentType('equipment');
+    setSelectedEquipmentId(eq.id);
+    setSelectedSystemId('');
+    setInitialDescription(desc);
     setEditingOS(null);
     setPhotosBefore([]);
     setPhotosAfter([]);
@@ -100,7 +124,7 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
     
     const statusFromForm = formData.get('status') as OSStatus;
 
-    // Novo padrão de ID para evitar conflitos: OS-Timestamp-Random
+    // Gerar ID único para novas OS
     const uniqueId = `OS-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
     const osData: ServiceOrder = {
@@ -139,6 +163,9 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
     setEditingOS(null);
     setAssignmentType('general');
     setSelectedCondoId(isCondoUser ? (user?.condo_id || '') : '');
+    setSelectedEquipmentId('');
+    setSelectedSystemId('');
+    setInitialDescription('');
     setPhotosBefore([]);
     setPhotosAfter([]);
     setSaveStatus('idle');
@@ -335,9 +362,56 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                 </div>
               </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-500 uppercase">Vincular a:</label>
+                  <select 
+                    value={assignmentType} 
+                    onChange={(e) => setAssignmentType(e.target.value as any)}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs"
+                  >
+                    <option value="general">Geral / Sem vínculo específico</option>
+                    <option value="equipment">Equipamento</option>
+                    <option value="system">Sistema</option>
+                  </select>
+                </div>
+                {assignmentType === 'equipment' && (
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-500 uppercase">Equipamento</label>
+                    <select 
+                      name="equipment_id" 
+                      value={selectedEquipmentId} 
+                      onChange={(e) => setSelectedEquipmentId(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs"
+                    >
+                      <option value="">Selecione o equipamento...</option>
+                      {data.equipments.filter(e => e.condo_id === selectedCondoId).map(e => (
+                        <option key={e.id} value={e.id}>{e.manufacturer} - {e.model}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {assignmentType === 'system' && (
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-500 uppercase">Sistema</label>
+                    <select 
+                      name="system_id" 
+                      value={selectedSystemId} 
+                      onChange={(e) => setSelectedSystemId(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs"
+                    >
+                      <option value="">Selecione o sistema...</option>
+                      {data.systems.filter(s => s.condo_id === selectedCondoId).map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-500 uppercase">Descrição do Problema</label>
-                <textarea required name="description" defaultValue={editingOS?.problem_description} rows={3} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"></textarea>
+                <textarea required name="description" defaultValue={editingOS?.problem_description || initialDescription} rows={3} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"></textarea>
               </div>
 
               <div className="space-y-2">
@@ -411,7 +485,6 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
         </div>
       )}
 
-      {/* Quote Modal */}
       {isQuoteModalOpen && quoteOS && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/80 backdrop-blur-md p-0 md:p-6 overflow-hidden">
           <div className="bg-white md:rounded-3xl w-full h-full md:h-auto md:max-h-[95vh] md:max-w-3xl flex flex-col shadow-2xl animate-in zoom-in-95 duration-200">
