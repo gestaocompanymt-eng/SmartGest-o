@@ -1,11 +1,9 @@
 
-
 import { AppData, UserRole } from './types';
 import { INITIAL_EQUIPMENT_TYPES, INITIAL_SYSTEM_TYPES } from './constants';
 
 const STORAGE_KEY = 'smart_gestao_data_v2';
 
-// Added monitoringAlerts initialization to initialData
 const initialData: AppData = {
   condos: [],
   equipments: [],
@@ -19,6 +17,7 @@ const initialData: AppData = {
   equipmentTypes: INITIAL_EQUIPMENT_TYPES,
   systemTypes: INITIAL_SYSTEM_TYPES,
   currentUser: null,
+  // Added monitoringAlerts initialization
   monitoringAlerts: []
 };
 
@@ -29,6 +28,7 @@ export const getStore = (): AppData => {
   try {
     const parsedData: AppData = JSON.parse(saved);
     
+    // Garantir usuários padrão
     initialData.users.forEach(defaultUser => {
       const exists = parsedData.users.some(u => u.email.toLowerCase() === defaultUser.email.toLowerCase());
       if (!exists) {
@@ -36,12 +36,15 @@ export const getStore = (): AppData => {
       }
     });
 
-    // Added safety check for monitoringAlerts when loading from storage
     if (!parsedData.appointments) parsedData.appointments = [];
     if (!parsedData.condos) parsedData.condos = [];
     if (!parsedData.equipments) parsedData.equipments = [];
     if (!parsedData.systems) parsedData.systems = [];
     if (!parsedData.serviceOrders) parsedData.serviceOrders = [];
+    if (!parsedData.users) parsedData.users = [];
+    if (!parsedData.equipmentTypes) parsedData.equipmentTypes = INITIAL_EQUIPMENT_TYPES;
+    if (!parsedData.systemTypes) parsedData.systemTypes = INITIAL_SYSTEM_TYPES;
+    // Ensure monitoringAlerts array exists in parsed data
     if (!parsedData.monitoringAlerts) parsedData.monitoringAlerts = [];
     
     return parsedData;
