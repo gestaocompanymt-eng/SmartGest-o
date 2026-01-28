@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Building2, AlertTriangle, CheckCircle2, Clock, Calendar, Plus, Edit2, Trash2, X } from 'lucide-react';
-import { AppData, OSStatus, OSType, UserRole, Appointment } from '../types';
+import { AppData, OSStatus, OSType, UserRole, Appointment, Condo, User } from '../types';
 import { useNavigate } from 'react-router-dom';
 
 const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> = ({ data, updateData }) => {
@@ -24,7 +24,7 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
   const filteredAppointments = useMemo(() => {
     let appts = data.appointments || [];
     if (isCondoUser) {
-      return appts.filter(a => a.condo_id === user?.condo_id);
+      appts = appts.filter(a => a.condo_id === user?.condo_id);
     }
     return [...appts].sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime());
   }, [data.appointments, isCondoUser, user?.condo_id]);
@@ -89,6 +89,7 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
         <StatCard title="Ativos Críticos" value={criticalEquip} icon={AlertTriangle} color="bg-red-500" trend={criticalEquip > 0 ? "Atenção" : "OK"} />
         <StatCard title="OS Aberta" value={openOS} icon={Clock} color="bg-blue-600" trend="HOJE" />
         <StatCard title="OS Finalizada" value={completedOS} icon={CheckCircle2} color="bg-emerald-500" />
+        {/* Fix: Changed StatStatCard to StatCard to resolve "Cannot find name 'StatStatCard'" error */}
         <StatCard title="Agenda" value={data.appointments.length} icon={Calendar} color="bg-slate-700" />
       </div>
 
@@ -164,6 +165,118 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
           )}
         </div>
       </div>
+
+      {isAppointmentModalOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+              <h2 className="text-lg font-black uppercase tracking-tight text-slate-900">
+                {editingAppointment ? 'Editar Visita' : 'Agendar Nova Visita'}
+              </h2>
+              <button 
+                onClick={() => { setIsAppointmentModalOpen(false); setEditingAppointment(null); }} 
+                className="p-2 bg-white rounded-xl shadow-sm text-slate-400 hover:text-slate-600"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            <form onSubmit={handleAppointmentSubmit} className="p-6 space-y-5">
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Condomínio</label>
+                <select 
+                  required 
+                  name="condo_id" 
+                  defaultValue={editingAppointment?.condo_id} 
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs"
+                >
+                  <option value="">Selecione...</option>
+                  {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Técnico Responsável</label>
+                <select 
+                  required 
+                  name="technician_id" 
+                  defaultValue={editingAppointment?.technician_id} 
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs"
+                >
+                  <option value="">Selecione...</option>
+                  {data.users.filter((u: User) => u.role !== UserRole.CONDO_USER).map((u: User) => (
+                    <option key={u.id} value={u.id}>{u.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Data</label>
+                  <input 
+                    required 
+                    type="date" 
+                    name="date" 
+                    defaultValue={editingAppointment?.date} 
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs" 
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Hora</label>
+                  <input 
+                    required 
+                    type="time" 
+                    name="time" 
+                    defaultValue={editingAppointment?.time} 
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs" 
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Objetivo da Visita</label>
+                <textarea 
+                  required 
+                  name="description" 
+                  defaultValue={editingAppointment?.description} 
+                  rows={3} 
+                  placeholder="Ex: Manutenção preventiva bombas recalque..." 
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"
+                ></textarea>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Status</label>
+                <select 
+                  name="status" 
+                  defaultValue={editingAppointment?.status || 'Pendente'} 
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-black text-xs text-blue-600"
+                >
+                  <option value="Pendente">Pendente</option>
+                  <option value="Confirmada">Confirmada</option>
+                  <option value="Realizada">Realizada</option>
+                  <option value="Cancelada">Cancelada</option>
+                </select>
+              </div>
+
+              <div className="pt-4 flex gap-3">
+                <button 
+                  type="button" 
+                  onClick={() => { setIsAppointmentModalOpen(false); setEditingAppointment(null); }} 
+                  className="flex-1 py-4 border rounded-2xl font-black text-xs uppercase tracking-widest active:scale-95 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-slate-900/20 active:scale-95 transition-all"
+                >
+                  Salvar Agenda
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
