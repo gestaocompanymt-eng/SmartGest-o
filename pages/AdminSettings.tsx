@@ -25,7 +25,6 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const [newEqType, setNewEqType] = useState('');
   const [newSysType, setNewSysType] = useState('');
 
-  // Lógica de Filtragem de Relatórios
   const filteredReportOrders = useMemo(() => {
     return data.serviceOrders.filter((os: ServiceOrder) => {
       const date = new Date(os.created_at).toISOString().split('T')[0];
@@ -45,24 +44,30 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     }), { services: 0, materials: 0, count: 0 });
   }, [filteredReportOrders]);
 
-  const handleUserSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleUserSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const role = formData.get('role') as UserRole;
+    
+    // Gerar ID se for novo
+    const userId = editingUser?.id || `user-${Date.now()}`;
+    
     const userData: UserType = {
-      id: editingUser?.id || Math.random().toString(36).substr(2, 9),
+      id: userId,
       name: formData.get('name') as string,
-      email: formData.get('email') as string,
+      email: (formData.get('email') as string).trim().toLowerCase(),
       role: role,
-      password: formData.get('password') as string,
+      password: (formData.get('password') as string).trim(),
       condo_id: role === UserRole.CONDO_USER ? (formData.get('condoId') as string) : undefined
     };
 
-    if (editingUser) {
-      updateData({ ...data, users: data.users.map((u: UserType) => u.id === editingUser.id ? userData : u) });
-    } else {
-      updateData({ ...data, users: [...data.users, userData] });
-    }
+    const newUsersList = editingUser 
+      ? data.users.map((u: UserType) => u.id === editingUser.id ? userData : u) 
+      : [...data.users, userData];
+
+    // Aqui o updateData no App.tsx cuidará do upsert no Supabase
+    await updateData({ ...data, users: newUsersList });
+    
     setIsUserModalOpen(false);
     setEditingUser(null);
   };
@@ -117,9 +122,7 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 no-print">
-        {/* Coluna da Esquerda: Usuários e Relatórios (Larga) */}
         <div className="xl:col-span-2 space-y-8">
-          {/* Seção de Relatórios Operacionais */}
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
             <div className="p-6 border-b bg-slate-50/50 flex justify-between items-center">
               <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-xs">
@@ -196,7 +199,6 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
             </div>
           </div>
 
-          {/* Lista de Usuários */}
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
             <div className="p-6 border-b flex justify-between items-center">
               <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-xs">
@@ -231,7 +233,6 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
           </div>
         </div>
 
-        {/* Coluna da Direita: Configurações Técnicas (Estreita) */}
         <div className="space-y-8">
            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
              <div className="p-6 border-b bg-slate-900 text-white">
@@ -241,7 +242,6 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
              </div>
              
              <div className="p-6 space-y-8">
-                {/* Tipos de Equipamento */}
                 <div className="space-y-4">
                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center">
                      <Layers size={14} className="mr-2" /> Categorias de Ativos
@@ -270,7 +270,6 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                    </div>
                 </div>
 
-                {/* Tipos de Sistema */}
                 <div className="space-y-4 pt-4 border-t border-slate-100">
                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center">
                      <Monitor size={14} className="mr-2" /> Tipos de Sistemas
@@ -303,7 +302,6 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
         </div>
       </div>
 
-      {/* Versão para Impressão do Relatório */}
       <div className="hidden print:block p-8" id="print-report">
         <div className="border-b-4 border-slate-900 pb-6 mb-8 flex justify-between items-end">
           <div>

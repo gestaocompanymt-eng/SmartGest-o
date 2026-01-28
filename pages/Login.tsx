@@ -1,14 +1,38 @@
 
 import React, { useState } from 'react';
-import { Wrench, Shield, Key, Mail, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { Wrench, Shield, Key, Mail, ArrowRight, Eye, EyeOff, RefreshCw } from 'lucide-react';
 import { getStore } from '../store';
 import { User } from '../types';
+import { supabase } from '../supabase';
 
 const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefreshUsers = async () => {
+    setIsRefreshing(true);
+    try {
+      const { data: remoteUsers } = await supabase.from('users').select('*');
+      if (remoteUsers) {
+        const local = getStore();
+        // Mesclar
+        const userMap = new Map();
+        local.users.forEach(u => userMap.set(u.id, u));
+        remoteUsers.forEach(u => userMap.set(u.id, u));
+        local.users = Array.from(userMap.values());
+        localStorage.setItem('smart_gestao_data_v2', JSON.stringify(local));
+        setError('Base de usuários atualizada com a nuvem!');
+        setTimeout(() => setError(''), 3000);
+      }
+    } catch (e) {
+      setError('Erro ao conectar com o servidor.');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -17,7 +41,6 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
     const inputEmail = email.trim().toLowerCase();
     const inputPassword = password.trim();
 
-    // Procura o usuário ignorando maiúsculas/minúsculas e espaços
     const user = data.users.find(u => u.email.toLowerCase() === inputEmail);
     
     if (user) {
@@ -25,19 +48,18 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
         if (inputPassword === user.password) {
           onLogin(user);
         } else {
-          setError('Senha incorreta. Verifique os caracteres e tente novamente.');
+          setError('Senha incorreta.');
         }
       } else {
         onLogin(user);
       }
     } else {
-      setError(`Usuário "${inputEmail}" não encontrado.`);
+      setError(`Usuário "${inputEmail}" não encontrado localmente.`);
     }
   };
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 relative overflow-hidden">
-      {/* Background blobs */}
       <div className="absolute top-0 -left-1/4 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl animate-pulse"></div>
       <div className="absolute bottom-0 -right-1/4 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
 
@@ -47,7 +69,7 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
             <Wrench size={40} className="text-blue-500" />
           </div>
           <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">SMARTGESTÃO</h1>
-          <p className="text-slate-500 mt-2 font-medium">Gestão Técnica e Manutenção Condominial</p>
+          <p className="text-slate-500 mt-2 font-medium">Gestão Técnica e Manutenção</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-6">
@@ -60,17 +82,14 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
                 required 
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="Ex: seu@email.com"
+                placeholder="Ex: admin"
                 className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 outline-none transition-all font-medium" 
               />
             </div>
           </div>
 
           <div className="space-y-1">
-            <div className="flex justify-between ml-1">
-               <label className="text-sm font-bold text-slate-700">Senha</label>
-               <button type="button" className="text-xs font-bold text-blue-600 hover:underline">Esqueceu?</button>
-            </div>
+            <label className="text-sm font-bold text-slate-700 ml-1">Senha</label>
             <div className="relative">
               <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
               <input 
@@ -92,7 +111,7 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
           </div>
 
           {error && (
-            <div className="text-xs text-red-500 font-bold text-center bg-red-50 p-3 rounded-xl border border-red-100 animate-pulse">
+            <div className="text-xs text-red-500 font-bold text-center bg-red-50 p-3 rounded-xl border border-red-100">
               {error}
             </div>
           )}
@@ -101,19 +120,26 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
             type="submit" 
             className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-4 rounded-xl shadow-lg shadow-slate-900/20 transition-all flex items-center justify-center group"
           >
-            ACESSAR PLATAFORMA
+            ACESSAR
             <ArrowRight size={18} className="ml-2 group-hover:translate-x-1 transition-transform" />
           </button>
         </form>
 
+        <div className="mt-6 text-center">
+           <button 
+            onClick={handleRefreshUsers}
+            disabled={isRefreshing}
+            className="text-[10px] font-black text-blue-600 uppercase tracking-widest flex items-center justify-center mx-auto hover:underline"
+           >
+             <RefreshCw size={12} className={`mr-2 ${isRefreshing ? 'animate-spin' : ''}`} /> 
+             Sincronizar usuários agora
+           </button>
+        </div>
+
         <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-center space-x-2 text-slate-400">
           <Shield size={14} />
-          <span className="text-[10px] font-black uppercase tracking-widest">Acesso Criptografado</span>
+          <span className="text-[10px] font-black uppercase tracking-widest">Conexão Segura</span>
         </div>
-      </div>
-
-      <div className="mt-8 text-center text-slate-500 text-[10px] font-bold uppercase tracking-widest z-10">
-        &copy; {new Date().getFullYear()} SmartGestão Sistemas. Todos os direitos reservados.
       </div>
     </div>
   );

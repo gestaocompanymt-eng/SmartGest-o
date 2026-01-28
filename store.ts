@@ -10,6 +10,7 @@ const initialData: AppData = {
   systems: [],
   serviceOrders: [],
   appointments: [],
+  // Initialize monitoringAlerts
   monitoringAlerts: [],
   users: [
     { id: 'admin1', name: 'Admin Principal', role: UserRole.ADMIN, email: 'admin', password: '41414889Ai' },
@@ -41,6 +42,7 @@ export const getStore = (): AppData => {
     if (!parsedData.equipments) parsedData.equipments = [];
     if (!parsedData.systems) parsedData.systems = [];
     if (!parsedData.serviceOrders) parsedData.serviceOrders = [];
+    // Ensure monitoringAlerts is present
     if (!parsedData.monitoringAlerts) parsedData.monitoringAlerts = [];
     if (!parsedData.users) parsedData.users = [];
     if (!parsedData.equipmentTypes) parsedData.equipmentTypes = INITIAL_EQUIPMENT_TYPES;

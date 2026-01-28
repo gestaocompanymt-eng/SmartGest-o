@@ -14,8 +14,7 @@ import {
   Wifi,
   WifiOff,
   RefreshCw,
-  Cloud,
-  Activity
+  Cloud
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
@@ -30,7 +29,6 @@ import SystemsPage from './pages/Systems';
 import ServiceOrders from './pages/ServiceOrders';
 import AdminSettings from './pages/AdminSettings';
 import Login from './pages/Login';
-import Monitoring from './pages/Monitoring';
 
 const AppContent: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
@@ -49,6 +47,7 @@ const AppContent: React.FC = () => {
 
   const mergeData = useCallback((localItems: any[] = [], cloudItems: any[] = []) => {
     const map = new Map();
+    // Prioridade para o ID, se houver conflito de dados o da nuvem sobrescreve o local (Verdade Única)
     localItems.forEach(item => { if(item?.id) map.set(item.id, item) });
     cloudItems.forEach(item => { if(item?.id) map.set(item.id, item) });
     return Array.from(map.values());
@@ -57,29 +56,29 @@ const AppContent: React.FC = () => {
   const syncLocalToCloud = async (currentData: AppData) => {
     if (!navigator.onLine || !isSupabaseActive) return;
     try {
-      // MAPEAMENTO CRÍTICO: Usuários devem ser sincronizados primeiro para permitir login no Desktop
+      // MAPEAMENTO CRÍTICO: Usuários devem ser sincronizados primeiro
       const syncConfig = [
         { table: 'users', key: 'users' },
         { table: 'condos', key: 'condos' },
         { table: 'equipments', key: 'equipments' },
         { table: 'systems', key: 'systems' },
         { table: 'service_orders', key: 'serviceOrders' },
-        { table: 'appointments', key: 'appointments' },
-        { table: 'monitoring_alerts', key: 'monitoringAlerts' },
-        { table: 'equipment_types', key: 'equipmentTypes' },
-        { table: 'system_types', key: 'systemTypes' }
+        { table: 'appointments', key: 'appointments' }
       ];
       
       for (const config of syncConfig) {
         const items = (currentData as any)[config.key];
         if (items && items.length > 0) {
-          // Usamos upsert para garantir que o que foi criado offline no celular suba
           const { error } = await supabase.from(config.table).upsert(items);
-          if (error) console.error(`Erro ao sincronizar tabela ${config.table}:`, error);
+          if (error) {
+            console.error(`Erro ao sincronizar tabela ${config.table}:`, error.message);
+            throw error;
+          }
         }
       }
     } catch (e) {
       console.warn("Falha no push automático:", e);
+      setSyncStatus('error');
     }
   };
 
@@ -88,24 +87,22 @@ const AppContent: React.FC = () => {
     setSyncStatus('syncing');
     
     try {
-      // 1. Enviar o que o celular tem para a nuvem
+      // 1. Enviar o que o celular tem para a nuvem antes de baixar
       await syncLocalToCloud(currentLocalData);
 
-      // 2. Baixar a versão mais recente da nuvem (Verdade Única)
-      const [resCondos, resEquips, resSystems, resOS, resAppts, resUsers, resEqTypes, resSysTypes, resAlerts] = await Promise.all([
+      // 2. Baixar a versão mais recente
+      const [resUsers, resCondos, resEquips, resSystems, resOS, resAppts] = await Promise.all([
+        supabase.from('users').select('*'),
         supabase.from('condos').select('*'),
         supabase.from('equipments').select('*'),
         supabase.from('systems').select('*'),
         supabase.from('service_orders').select('*'),
-        supabase.from('appointments').select('*'),
-        supabase.from('users').select('*'),
-        supabase.from('equipment_types').select('*'),
-        supabase.from('system_types').select('*'),
-        supabase.from('monitoring_alerts').select('*')
+        supabase.from('appointments').select('*')
       ]);
 
       const cloudData: AppData = {
         ...currentLocalData,
+        users: mergeData(currentLocalData.users, resUsers.data || []),
         condos: mergeData(currentLocalData.condos, resCondos.data || []),
         equipments: mergeData(currentLocalData.equipments, resEquips.data || []),
         systems: mergeData(currentLocalData.systems, resSystems.data || []),
@@ -113,10 +110,8 @@ const AppContent: React.FC = () => {
           new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
         ),
         appointments: mergeData(currentLocalData.appointments || [], resAppts.data || []),
-        monitoringAlerts: mergeData(currentLocalData.monitoringAlerts || [], resAlerts.data || []),
-        users: mergeData(currentLocalData.users, resUsers.data || []),
-        equipmentTypes: mergeData(currentLocalData.equipmentTypes, resEqTypes.data || []),
-        systemTypes: mergeData(currentLocalData.systemTypes, resSysTypes.data || [])
+        equipmentTypes: currentLocalData.equipmentTypes,
+        systemTypes: currentLocalData.systemTypes
       };
       
       setSyncStatus('synced');
@@ -146,7 +141,11 @@ const AppContent: React.FC = () => {
         saveStore(updated);
       });
     };
-    const handleOffline = () => setIsOnline(false);
+    const handleOffline = () => {
+      setIsOnline(false);
+      setSyncStatus('offline');
+    };
+    
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     return () => {
@@ -177,7 +176,7 @@ const AppContent: React.FC = () => {
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-center">
         <Wrench size={48} className="text-blue-500 animate-bounce mb-6" />
         <h2 className="text-white font-black uppercase tracking-widest text-lg mb-2">SmartGestão</h2>
-        <p className="text-slate-400 text-sm font-bold animate-pulse">Equalizando dados...</p>
+        <p className="text-slate-400 text-sm font-bold animate-pulse">Sincronizando com a Nuvem...</p>
       </div>
     );
   }
@@ -233,7 +232,6 @@ const AppContent: React.FC = () => {
         <nav className="px-4 space-y-1.5 overflow-y-auto max-h-[calc(100vh-160px)]">
           <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
           {(isAdmin || isTech) && <NavItem to="/condos" icon={Building2} label="Condomínios" />}
-          <NavItem to="/monitoring" icon={Activity} label="Monitoramento" />
           <NavItem to="/equipment" icon={Layers} label="Equipamentos" />
           <NavItem to="/systems" icon={Settings} label="Sistemas" />
           <NavItem to="/os" icon={FileText} label="Ordens de Serviço" />
@@ -255,18 +253,17 @@ const AppContent: React.FC = () => {
               syncStatus === 'error' ? 'text-red-500' : 'text-blue-500'
             }`}>
               <Cloud size={14} />
-              <span>{syncStatus === 'synced' ? 'Nuvem Conectada' : syncStatus === 'error' ? 'Erro Nuvem' : 'Sincronizando...'}</span>
+              <span>{syncStatus === 'synced' ? 'Nuvem Conectada' : syncStatus === 'error' ? 'Erro de Sincronismo' : 'Sincronizando...'}</span>
             </div>
           </div>
           <div className="flex items-center space-x-4">
-             {isOnline ? <span className="text-emerald-600 font-bold text-xs uppercase"><Wifi size={14} className="inline mr-1" /> Servidor OK</span> : <span className="text-amber-600 font-bold text-xs uppercase"><WifiOff size={14} className="inline mr-1" /> Offline</span>}
+             {isOnline ? <span className="text-emerald-600 font-bold text-xs uppercase"><Wifi size={14} className="inline mr-1" /> Servidor OK</span> : <span className="text-amber-600 font-bold text-xs uppercase"><WifiOff size={14} className="inline mr-1" /> Modo Offline</span>}
           </div>
         </header>
         <div className="flex-1 overflow-y-auto p-4 md:p-8">
           <Routes>
             <Route path="/" element={<Dashboard data={data} updateData={updateData} />} />
             {(isAdmin || isTech) && <Route path="/condos" element={<Condos data={data} updateData={updateData} />} />}
-            <Route path="/monitoring" element={<Monitoring data={data} updateData={updateData} />} />
             <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} />} />
             <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} />} />
             <Route path="/os" element={<ServiceOrders data={data} updateData={updateData} />} />
