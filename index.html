@@ -3,13 +3,13 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>SmartGestão</title>
     
     <!-- Configurações PWA -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0f172a">
-    <meta name="description" content="Plataforma profissional de gestão de manutenção predial e monitoramento técnico.">
+    <meta name="description" content="Plataforma profissional de gestão de manutenção predial.">
     
     <!-- iOS Support -->
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -20,7 +20,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; }
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
         #root:empty {
             display: flex;
             align-items: center;
@@ -30,7 +30,7 @@
             color: white;
         }
         #root:empty::after {
-            content: "Iniciando SmartGestão...";
+            content: "Sincronizando SmartGestão...";
             font-weight: bold;
             animation: pulse 2s infinite;
         }
@@ -38,18 +38,12 @@
         @media print { .no-print { display: none !important; } }
     </style>
 
-    <!-- Registro do Service Worker Simplificado (String Direta) -->
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', function() {
-          // Usar string direta evita o erro 'Failed to construct URL'
-          navigator.serviceWorker.register('sw.js', { scope: './' })
-            .then(function(reg) {
-              console.log('SmartGestão: PWA Ativo.');
-            })
-            .catch(function(err) {
-              console.warn('SmartGestão: Modo offline indisponível no ambiente atual.');
-            });
+          navigator.serviceWorker.register('sw.js')
+            .then(function(reg) { console.log('SmartGestão: PWA Offline OK.'); })
+            .catch(function(err) { console.info('SmartGestão: Modo nuvem ativo.'); });
         });
       }
     </script>
@@ -71,7 +65,7 @@
 }
 </script>
 </head>
-<body class="bg-slate-50 text-slate-900">
+<body class="bg-slate-50 text-slate-900 overflow-x-hidden">
     <div id="root"></div>
     <script type="module" src="./index.tsx"></script>
 </body>

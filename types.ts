@@ -1,4 +1,5 @@
 
+
 export enum UserRole {
   ADMIN = 'ADMIN',
   TECHNICIAN = 'TECHNICIAN',
@@ -40,8 +41,10 @@ export interface Condo {
   manager: string;
   contract_type: ContractType;
   start_date: string;
+  updated_at?: string;
 }
 
+// Added monitoring properties to Equipment interface for Tuya integration
 export interface Equipment {
   id: string;
   condo_id: string;
@@ -59,10 +62,10 @@ export interface Equipment {
   observations: string;
   photos: string[];
   last_maintenance: string;
-  // Propriedades para integração com monitoramento em tempo real (ex: Tuya)
+  updated_at?: string;
   tuya_device_id?: string;
-  monitoring_status?: 'normal' | 'atencao' | 'critico';
   is_online?: boolean;
+  monitoring_status?: 'normal' | 'atencao' | 'critico';
   last_reading?: {
     power: number;
     current: number;
@@ -80,6 +83,7 @@ export interface System {
   equipment_ids: string[];
   parameters: string;
   observations: string;
+  updated_at?: string;
 }
 
 export interface ServiceOrder {
@@ -100,6 +104,7 @@ export interface ServiceOrder {
   completed_at?: string;
   service_value?: number;
   material_value?: number;
+  updated_at?: string;
 }
 
 export interface Appointment {
@@ -110,16 +115,7 @@ export interface Appointment {
   time: string;
   description: string;
   status: 'Pendente' | 'Confirmada' | 'Realizada' | 'Cancelada';
-}
-
-// Interface para alertas gerados pelo sistema de monitoramento
-export interface MonitoringAlert {
-  id: string;
-  equipment_id: string;
-  message: string;
-  value: string;
-  timestamp: string;
-  is_resolved: boolean;
+  updated_at?: string;
 }
 
 export interface User {
@@ -129,6 +125,16 @@ export interface User {
   email: string;
   password?: string;
   condo_id?: string;
+}
+
+// Added MonitoringAlert interface to store Tuya alerts
+export interface MonitoringAlert {
+  id: string;
+  equipment_id: string;
+  message: string;
+  value: string;
+  is_resolved: boolean;
+  timestamp: string;
 }
 
 export interface AppData {
@@ -141,6 +147,6 @@ export interface AppData {
   equipmentTypes: EquipmentType[];
   systemTypes: SystemType[];
   currentUser: User | null;
-  // Lista de alertas de monitoramento ativos/históricos
+  // Added monitoringAlerts array to AppData
   monitoringAlerts: MonitoringAlert[];
 }

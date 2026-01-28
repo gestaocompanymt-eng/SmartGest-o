@@ -1,23 +1,25 @@
 
+
 import { AppData, UserRole } from './types';
 import { INITIAL_EQUIPMENT_TYPES, INITIAL_SYSTEM_TYPES } from './constants';
 
-const STORAGE_KEY = 'smart_gestao_data';
+const STORAGE_KEY = 'smart_gestao_data_v2';
 
+// Added monitoringAlerts initialization to initialData
 const initialData: AppData = {
   condos: [],
   equipments: [],
   systems: [],
   serviceOrders: [],
   appointments: [],
-  monitoringAlerts: [],
   users: [
     { id: 'admin1', name: 'Admin Principal', role: UserRole.ADMIN, email: 'admin', password: '41414889Ai' },
     { id: 'tech1', name: 'Carlos Técnico', role: UserRole.TECHNICIAN, email: 'carlos@smartgestao.com', password: '123' }
   ],
   equipmentTypes: INITIAL_EQUIPMENT_TYPES,
   systemTypes: INITIAL_SYSTEM_TYPES,
-  currentUser: null
+  currentUser: null,
+  monitoringAlerts: []
 };
 
 export const getStore = (): AppData => {
@@ -34,8 +36,12 @@ export const getStore = (): AppData => {
       }
     });
 
-    // Garante que arrays obrigatórios existam nos dados carregados
+    // Added safety check for monitoringAlerts when loading from storage
     if (!parsedData.appointments) parsedData.appointments = [];
+    if (!parsedData.condos) parsedData.condos = [];
+    if (!parsedData.equipments) parsedData.equipments = [];
+    if (!parsedData.systems) parsedData.systems = [];
+    if (!parsedData.serviceOrders) parsedData.serviceOrders = [];
     if (!parsedData.monitoringAlerts) parsedData.monitoringAlerts = [];
     
     return parsedData;

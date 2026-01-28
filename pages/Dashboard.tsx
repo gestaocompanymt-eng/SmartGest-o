@@ -113,7 +113,7 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
           {filteredOSList.slice(0, 5).map((os: any) => (
             <div key={os.id} className="px-5 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
               <div className="flex items-center space-x-4 min-w-0">
-                <div className={`w-1 h-10 rounded-full shrink-0 ${os.type === OSType.CORRECTIVE ? 'bg-red-500' : 'bg-blue-500'}`}></div>
+                <div className={`w-1 h-10 rounded-full shrink-0 ${os.type === OSType.CORRECTIVE ? 'bg-red-50' : 'bg-blue-500'}`}></div>
                 <div className="min-w-0">
                   <p className="font-bold text-slate-900 text-sm truncate">{data.condos.find((c: any) => c.id === os.condo_id)?.name}</p>
                   <p className="text-[10px] font-bold text-slate-400 uppercase">{os.type} • {new Date(os.created_at).toLocaleDateString()}</p>
@@ -140,7 +140,6 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
         <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[400px] overflow-y-auto">
           {filteredAppointments.length > 0 ? filteredAppointments.map((appt) => {
             const condo = data.condos.find(c => c.id === appt.condo_id);
-            const tech = data.users.find(u => u.id === appt.technician_id);
             return (
               <div key={appt.id} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col justify-between hover:border-blue-300 transition-colors group">
                 <div className="space-y-3">
@@ -178,95 +177,6 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
           )}
         </div>
       </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200">
-          <h3 className="text-xs font-black uppercase tracking-widest mb-6 flex items-center text-slate-400"><Wrench size={14} className="mr-2" /> Demanda por Tipo</h3>
-          <div className="h-48">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} style={{fontSize: '10px', fontWeight: 'bold'}} />
-                <YAxis axisLine={false} tickLine={false} style={{fontSize: '10px'}} />
-                <Tooltip />
-                <Bar dataKey="value" fill="#3b82f6" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200">
-          <h3 className="text-xs font-black uppercase tracking-widest mb-6 flex items-center text-slate-400"><TrendingUp size={14} className="mr-2" /> Saúde Operacional</h3>
-          <div className="h-48">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={statusData} cx="50%" cy="50%" innerRadius={40} outerRadius={60} paddingAngle={8} dataKey="value">
-                  {statusData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
-
-      {isAppointmentModalOpen && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-300 flex flex-col">
-            <div className="p-6 border-b flex justify-between items-center bg-slate-50">
-              <h2 className="text-lg font-black uppercase tracking-tight">{editingAppointment ? 'Editar Visita' : 'Nova Visita Técnica'}</h2>
-              <button onClick={() => setIsAppointmentModalOpen(false)} className="p-2 bg-white rounded-xl shadow-sm"><X size={20} /></button>
-            </div>
-            <form onSubmit={handleAppointmentSubmit} className="p-6 space-y-5">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase">Condomínio</label>
-                  <select required name="condo_id" defaultValue={editingAppointment?.condo_id} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs">
-                    <option value="">Selecione...</option>
-                    {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase">Técnico Responsável</label>
-                  <select required name="technician_id" defaultValue={editingAppointment?.technician_id} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs">
-                    <option value="">Selecione...</option>
-                    {data.users.filter(u => u.role === UserRole.TECHNICIAN || u.role === UserRole.ADMIN).map((u: User) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase">Data</label>
-                  <input required type="date" name="date" defaultValue={editingAppointment?.date} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase">Horário</label>
-                  <input required type="time" name="time" defaultValue={editingAppointment?.time} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs" />
-                </div>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-500 uppercase">Descrição da Visita</label>
-                <textarea required name="description" defaultValue={editingAppointment?.description} rows={2} placeholder="Ex: Manutenção preventiva..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"></textarea>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-500 uppercase">Status</label>
-                <select name="status" defaultValue={editingAppointment?.status || 'Pendente'} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs">
-                  <option value="Pendente">Pendente</option>
-                  <option value="Confirmada">Confirmada</option>
-                  <option value="Realizada">Realizada</option>
-                  <option value="Cancelada">Cancelada</option>
-                </select>
-              </div>
-              <div className="pt-4 flex gap-3">
-                <button type="button" onClick={() => setIsAppointmentModalOpen(false)} className="flex-1 py-4 border rounded-2xl font-black text-xs uppercase">Sair</button>
-                <button type="submit" className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-slate-900/20 active:scale-95">
-                  Salvar Visita
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

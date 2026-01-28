@@ -15,7 +15,8 @@ import {
   WifiOff,
   RefreshCw,
   Zap,
-  AlertTriangle
+  Cloud,
+  AlertCircle
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
@@ -52,10 +53,28 @@ const AppContent: React.FC = () => {
     return Array.from(map.values());
   }, []);
 
+  const syncLocalToCloud = async (currentData: AppData) => {
+    if (!navigator.onLine || !isSupabaseActive) return;
+    try {
+      if (currentData.condos.length) await supabase.from('condos').upsert(currentData.condos);
+      if (currentData.equipments.length) await supabase.from('equipments').upsert(currentData.equipments);
+      if (currentData.systems.length) await supabase.from('systems').upsert(currentData.systems);
+      if (currentData.serviceOrders.length) await supabase.from('service_orders').upsert(currentData.serviceOrders);
+      if (currentData.appointments.length) await supabase.from('appointments').upsert(currentData.appointments);
+    } catch (e) {
+      console.warn("Push de sincronização inicial falhou:", e);
+    }
+  };
+
   const fetchAllData = useCallback(async (currentLocalData: AppData) => {
     if (!navigator.onLine || !isSupabaseActive) return currentLocalData;
     setSyncStatus('syncing');
+    
     try {
+      // Primeiro empurra o que é novo no local (as 5 OS do celular)
+      await syncLocalToCloud(currentLocalData);
+
+      // Depois baixa o consolidado de todos os dispositivos
       const [resCondos, resEquips, resSystems, resOS, resAppts] = await Promise.all([
         supabase.from('condos').select('*'),
         supabase.from('equipments').select('*'),
@@ -72,7 +91,7 @@ const AppContent: React.FC = () => {
         serviceOrders: mergeData(currentLocalData.serviceOrders, resOS.data || []).sort((a: any, b: any) => 
           new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
         ),
-        appointments: resAppts.data || currentLocalData.appointments || []
+        appointments: mergeData(currentLocalData.appointments || [], resAppts.data || [])
       };
       
       setSyncStatus('synced');
@@ -92,34 +111,19 @@ const AppContent: React.FC = () => {
   }, [fetchAllData]);
 
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        refreshDataSilently();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [refreshDataSilently]);
-
-  useEffect(() => {
-    if (!isSupabaseActive) return;
-    const channel = supabase
-      .channel('db-all-changes')
-      .on('postgres_changes', { event: '*', schema: 'public' }, () => refreshDataSilently())
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [refreshDataSilently]);
-
-  useEffect(() => {
     const init = async () => {
       const local = getStore();
+      setData(local);
       const updated = await fetchAllData(local);
       setData(updated);
       saveStore(updated);
     };
     init();
 
-    const handleOnline = () => setIsOnline(true);
+    const handleOnline = () => {
+      setIsOnline(true);
+      refreshDataSilently();
+    };
     const handleOffline = () => setIsOnline(false);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
@@ -127,7 +131,7 @@ const AppContent: React.FC = () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [fetchAllData]);
+  }, [fetchAllData, refreshDataSilently]);
 
   const updateData = async (newData: AppData) => {
     setData(newData);
@@ -136,12 +140,11 @@ const AppContent: React.FC = () => {
     if (navigator.onLine && isSupabaseActive) {
       setSyncStatus('syncing');
       try {
-        await Promise.all([
-          supabase.from('service_orders').upsert(newData.serviceOrders),
-          supabase.from('condos').upsert(newData.condos),
-          supabase.from('equipments').upsert(newData.equipments),
-          supabase.from('systems').upsert(newData.systems)
-        ]);
+        await supabase.from('service_orders').upsert(newData.serviceOrders);
+        await supabase.from('appointments').upsert(newData.appointments);
+        await supabase.from('condos').upsert(newData.condos);
+        await supabase.from('equipments').upsert(newData.equipments);
+        await supabase.from('systems').upsert(newData.systems);
         setSyncStatus('synced');
       } catch (e) {
         setSyncStatus('error');
@@ -180,7 +183,6 @@ const AppContent: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row overflow-x-hidden">
-      {/* Mobile Top Bar */}
       <div className="md:hidden bg-slate-900 text-white p-4 flex justify-between items-center sticky top-0 z-50 h-16">
         <div className="flex items-center space-x-3">
           <Wrench size={18} className="text-blue-500" />
@@ -221,13 +223,16 @@ const AppContent: React.FC = () => {
         <header className="bg-white border-b border-slate-200 h-16 hidden md:flex items-center justify-between px-8 shrink-0">
           <div className="flex items-center space-x-4">
             <span className="text-sm font-medium text-slate-400">Plataforma de Gestão Predial</span>
-            <div className={`flex items-center space-x-2 text-[10px] font-black uppercase tracking-widest ${syncStatus === 'synced' ? 'text-emerald-500' : 'text-blue-500'}`}>
-              <Zap size={14} className={syncStatus === 'synced' ? 'animate-pulse' : ''} />
-              <span>{syncStatus === 'synced' ? 'Sincronizado' : 'Atualizando...'}</span>
+            <div className={`flex items-center space-x-2 text-[10px] font-black uppercase tracking-widest ${
+              syncStatus === 'synced' ? 'text-emerald-500' : 
+              syncStatus === 'error' ? 'text-red-500' : 'text-blue-500'
+            }`}>
+              {syncStatus === 'synced' ? <Cloud size={14} /> : <RefreshCw size={14} className="animate-spin" />}
+              <span>{syncStatus === 'synced' ? 'Sincronizado' : syncStatus === 'error' ? 'Erro ao salvar' : 'Atualizando...'}</span>
             </div>
           </div>
           <div className="flex items-center space-x-4">
-             {isOnline ? <span className="text-emerald-600 font-bold text-xs"><Wifi size={14} className="inline mr-1" /> ONLINE</span> : <span className="text-amber-600 font-bold text-xs"><WifiOff size={14} className="inline mr-1" /> OFFLINE</span>}
+             {isOnline ? <span className="text-emerald-600 font-bold text-xs uppercase tracking-tighter"><Wifi size={14} className="inline mr-1" /> ONLINE</span> : <span className="text-amber-600 font-bold text-xs uppercase tracking-tighter"><WifiOff size={14} className="inline mr-1" /> OFFLINE</span>}
           </div>
         </header>
         <div className="flex-1 overflow-y-auto p-4 md:p-8">
