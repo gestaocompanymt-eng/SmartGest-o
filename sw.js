@@ -1,10 +1,5 @@
 
-const CACHE_NAME = 'smart-gestao-v25';
-const OFFLINE_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json'
-];
+const CACHE_NAME = 'smart-gestao-v26';
 
 // Instalação: Cacheia arquivos fundamentais
 self.addEventListener('install', (event) => {
@@ -23,9 +18,15 @@ self.addEventListener('activate', (event) => {
   return self.clients.claim();
 });
 
-// Fetch: Prioridade total para a Rede
+// Fetch: Prioridade total para a Rede em chamadas de API
 self.addEventListener('fetch', (event) => {
-  // Ignora solicitações que não sejam GET ou de domínios externos problemáticos
+  const url = new URL(event.request.url);
+
+  // NUNCA cacheia chamadas ao Supabase para evitar disparidade entre celular e desktop
+  if (url.hostname.includes('supabase.co')) {
+    return; 
+  }
+
   if (event.request.method !== 'GET') return;
 
   event.respondWith(

@@ -1,5 +1,4 @@
 
-
 export enum UserRole {
   ADMIN = 'ADMIN',
   TECHNICIAN = 'TECHNICIAN',
@@ -44,7 +43,6 @@ export interface Condo {
   updated_at?: string;
 }
 
-// Added monitoring properties to Equipment interface for Tuya integration
 export interface Equipment {
   id: string;
   condo_id: string;
@@ -118,16 +116,6 @@ export interface Appointment {
   updated_at?: string;
 }
 
-export interface User {
-  id: string;
-  name: string;
-  role: UserRole;
-  email: string;
-  password?: string;
-  condo_id?: string;
-}
-
-// Added MonitoringAlert interface to store Tuya alerts
 export interface MonitoringAlert {
   id: string;
   equipment_id: string;
@@ -135,6 +123,15 @@ export interface MonitoringAlert {
   value: string;
   is_resolved: boolean;
   timestamp: string;
+}
+
+export interface User {
+  id: string;
+  name: string;
+  role: UserRole;
+  email: string;
+  password?: string;
+  condo_id?: string;
 }
 
 export interface AppData {
@@ -147,6 +144,5 @@ export interface AppData {
   equipmentTypes: EquipmentType[];
   systemTypes: SystemType[];
   currentUser: User | null;
-  // Added monitoringAlerts array to AppData
   monitoringAlerts: MonitoringAlert[];
 }

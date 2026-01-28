@@ -16,7 +16,8 @@ import {
   RefreshCw,
   Zap,
   Cloud,
-  AlertCircle
+  AlertCircle,
+  Activity
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
@@ -30,6 +31,7 @@ import EquipmentPage from './pages/Equipment';
 import SystemsPage from './pages/Systems';
 import ServiceOrders from './pages/ServiceOrders';
 import AdminSettings from './pages/AdminSettings';
+import Monitoring from './pages/Monitoring';
 import Login from './pages/Login';
 
 const AppContent: React.FC = () => {
@@ -37,6 +39,7 @@ const AppContent: React.FC = () => {
   const [data, setData] = useState<AppData | null>(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error' | 'offline'>('synced');
+  const [isInitialSyncing, setIsInitialSyncing] = useState(true);
   
   const navigate = useNavigate();
   const location = useLocation();
@@ -46,6 +49,7 @@ const AppContent: React.FC = () => {
     dataRef.current = data;
   }, [data]);
 
+  // Função para mesclar dados priorizando os mais recentes ou os da nuvem em caso de conflito
   const mergeData = useCallback((localItems: any[] = [], cloudItems: any[] = []) => {
     const map = new Map();
     localItems.forEach(item => { if(item?.id) map.set(item.id, item) });
@@ -56,13 +60,19 @@ const AppContent: React.FC = () => {
   const syncLocalToCloud = async (currentData: AppData) => {
     if (!navigator.onLine || !isSupabaseActive) return;
     try {
-      if (currentData.condos.length) await supabase.from('condos').upsert(currentData.condos);
-      if (currentData.equipments.length) await supabase.from('equipments').upsert(currentData.equipments);
-      if (currentData.systems.length) await supabase.from('systems').upsert(currentData.systems);
-      if (currentData.serviceOrders.length) await supabase.from('service_orders').upsert(currentData.serviceOrders);
-      if (currentData.appointments.length) await supabase.from('appointments').upsert(currentData.appointments);
+      // Forçamos o envio de tudo que o local tem para o Supabase
+      // Isso garante que as 5 OS do celular subam para o banco
+      const tables = ['condos', 'equipments', 'systems', 'service_orders', 'appointments'];
+      const dataKeys = ['condos', 'equipments', 'systems', 'serviceOrders', 'appointments'];
+      
+      for (let i = 0; i < tables.length; i++) {
+        const items = (currentData as any)[dataKeys[i]];
+        if (items && items.length > 0) {
+          await supabase.from(tables[i]).upsert(items);
+        }
+      }
     } catch (e) {
-      console.warn("Push de sincronização inicial falhou:", e);
+      console.warn("Falha no push de sincronização:", e);
     }
   };
 
@@ -71,16 +81,17 @@ const AppContent: React.FC = () => {
     setSyncStatus('syncing');
     
     try {
-      // Primeiro empurra o que é novo no local (as 5 OS do celular)
+      // PASSO 1: Upload (Garantir que as 5 OS do celular cheguem na nuvem)
       await syncLocalToCloud(currentLocalData);
 
-      // Depois baixa o consolidado de todos os dispositivos
-      const [resCondos, resEquips, resSystems, resOS, resAppts] = await Promise.all([
+      // PASSO 2: Download (Baixar a verdade consolidada de todos os dispositivos)
+      const [resCondos, resEquips, resSystems, resOS, resAppts, resAlerts] = await Promise.all([
         supabase.from('condos').select('*'),
         supabase.from('equipments').select('*'),
         supabase.from('systems').select('*'),
         supabase.from('service_orders').select('*'),
-        supabase.from('appointments').select('*')
+        supabase.from('appointments').select('*'),
+        supabase.from('monitoring_alerts').select('*')
       ]);
 
       const cloudData: AppData = {
@@ -91,38 +102,40 @@ const AppContent: React.FC = () => {
         serviceOrders: mergeData(currentLocalData.serviceOrders, resOS.data || []).sort((a: any, b: any) => 
           new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
         ),
-        appointments: mergeData(currentLocalData.appointments || [], resAppts.data || [])
+        appointments: mergeData(currentLocalData.appointments || [], resAppts.data || []),
+        monitoringAlerts: resAlerts.data || []
       };
       
       setSyncStatus('synced');
       return cloudData;
     } catch (error) {
-      console.error("Erro ao sincronizar:", error);
+      console.error("Erro fatal na sincronização:", error);
       setSyncStatus('error');
       return currentLocalData;
     }
   }, [mergeData]);
 
-  const refreshDataSilently = useCallback(async () => {
-    if (!dataRef.current || !navigator.onLine) return;
-    const fresh = await fetchAllData(dataRef.current);
-    setData(fresh);
-    saveStore(fresh);
-  }, [fetchAllData]);
-
   useEffect(() => {
     const init = async () => {
       const local = getStore();
       setData(local);
+      
+      // Sincronização agressiva na inicialização
       const updated = await fetchAllData(local);
       setData(updated);
       saveStore(updated);
+      
+      // Delay visual para garantir que o usuário veja que a sincronização terminou
+      setTimeout(() => setIsInitialSyncing(false), 1500);
     };
     init();
 
     const handleOnline = () => {
       setIsOnline(true);
-      refreshDataSilently();
+      if (dataRef.current) fetchAllData(dataRef.current).then(updated => {
+        setData(updated);
+        saveStore(updated);
+      });
     };
     const handleOffline = () => setIsOnline(false);
     window.addEventListener('online', handleOnline);
@@ -131,7 +144,7 @@ const AppContent: React.FC = () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [fetchAllData, refreshDataSilently]);
+  }, [fetchAllData]);
 
   const updateData = async (newData: AppData) => {
     setData(newData);
@@ -140,11 +153,14 @@ const AppContent: React.FC = () => {
     if (navigator.onLine && isSupabaseActive) {
       setSyncStatus('syncing');
       try {
-        await supabase.from('service_orders').upsert(newData.serviceOrders);
-        await supabase.from('appointments').upsert(newData.appointments);
-        await supabase.from('condos').upsert(newData.condos);
-        await supabase.from('equipments').upsert(newData.equipments);
-        await supabase.from('systems').upsert(newData.systems);
+        // Envia as alterações imediatamente para o banco
+        await Promise.all([
+          supabase.from('service_orders').upsert(newData.serviceOrders),
+          supabase.from('appointments').upsert(newData.appointments),
+          supabase.from('condos').upsert(newData.condos),
+          supabase.from('equipments').upsert(newData.equipments),
+          supabase.from('systems').upsert(newData.systems)
+        ]);
         setSyncStatus('synced');
       } catch (e) {
         setSyncStatus('error');
@@ -153,6 +169,20 @@ const AppContent: React.FC = () => {
   };
 
   if (!data) return null;
+
+  if (isInitialSyncing) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-center">
+        <Wrench size={48} className="text-blue-500 animate-bounce mb-6" />
+        <h2 className="text-white font-black uppercase tracking-widest text-lg mb-2">SmartGestão</h2>
+        <p className="text-slate-400 text-sm font-bold animate-pulse">Equalizando dados entre dispositivos...</p>
+        <div className="mt-8 w-48 h-1 bg-slate-800 rounded-full overflow-hidden">
+          <div className="h-full bg-blue-500 animate-[loading_2s_ease-in-out_infinite]"></div>
+        </div>
+        <style>{`@keyframes loading { 0% { width: 0; } 50% { width: 100%; } 100% { width: 0; } }`}</style>
+      </div>
+    );
+  }
 
   if (!data.currentUser && location.pathname !== '/login') {
     return <Login onLogin={(user) => {
@@ -196,22 +226,23 @@ const AppContent: React.FC = () => {
         </div>
       </div>
 
-      <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-slate-900 text-white transform transition-transform duration-300 md:relative md:translate-x-0 md:w-64 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-slate-900 text-white transform transition-transform duration-300 md:relative md:translate-x-0 md:w-64 shrink-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-6 hidden md:block">
           <div className="flex items-center space-x-2 mb-8">
             <Wrench size={24} className="text-blue-500" />
             <span className="font-bold text-xl uppercase">SmartGestão</span>
           </div>
         </div>
-        <nav className="px-4 space-y-1.5">
+        <nav className="px-4 space-y-1.5 overflow-y-auto max-h-[calc(100vh-160px)]">
           <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
           {(isAdmin || isTech) && <NavItem to="/condos" icon={Building2} label="Condomínios" />}
           <NavItem to="/equipment" icon={Layers} label="Equipamentos" />
           <NavItem to="/systems" icon={Settings} label="Sistemas" />
           <NavItem to="/os" icon={FileText} label="Ordens de Serviço" />
+          <NavItem to="/monitoring" icon={Activity} label="Monitoramento IoT" />
           {isAdmin && <NavItem to="/admin" icon={Settings} label="Administração" />}
         </nav>
-        <div className="absolute bottom-0 w-full p-4 border-t border-slate-800">
+        <div className="absolute bottom-0 w-full p-4 border-t border-slate-800 bg-slate-900">
           <button onClick={() => { setData({...data, currentUser: null}); navigate('/login'); }} className="flex items-center space-x-3 w-full px-4 py-3 text-red-400 hover:bg-red-500/10 rounded-xl transition-colors">
             <LogOut size={18} />
             <span className="text-sm font-bold uppercase">Sair</span>
@@ -219,20 +250,20 @@ const AppContent: React.FC = () => {
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col min-w-0 max-h-screen overflow-hidden">
+      <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         <header className="bg-white border-b border-slate-200 h-16 hidden md:flex items-center justify-between px-8 shrink-0">
           <div className="flex items-center space-x-4">
-            <span className="text-sm font-medium text-slate-400">Plataforma de Gestão Predial</span>
+            <span className="text-sm font-medium text-slate-400">Status do Sistema:</span>
             <div className={`flex items-center space-x-2 text-[10px] font-black uppercase tracking-widest ${
               syncStatus === 'synced' ? 'text-emerald-500' : 
               syncStatus === 'error' ? 'text-red-500' : 'text-blue-500'
             }`}>
               {syncStatus === 'synced' ? <Cloud size={14} /> : <RefreshCw size={14} className="animate-spin" />}
-              <span>{syncStatus === 'synced' ? 'Sincronizado' : syncStatus === 'error' ? 'Erro ao salvar' : 'Atualizando...'}</span>
+              <span>{syncStatus === 'synced' ? 'Dados Sincronizados' : syncStatus === 'error' ? 'Falha na Nuvem' : 'Equalizando...'}</span>
             </div>
           </div>
           <div className="flex items-center space-x-4">
-             {isOnline ? <span className="text-emerald-600 font-bold text-xs uppercase tracking-tighter"><Wifi size={14} className="inline mr-1" /> ONLINE</span> : <span className="text-amber-600 font-bold text-xs uppercase tracking-tighter"><WifiOff size={14} className="inline mr-1" /> OFFLINE</span>}
+             {isOnline ? <span className="text-emerald-600 font-bold text-xs uppercase tracking-tighter"><Wifi size={14} className="inline mr-1" /> Servidor Online</span> : <span className="text-amber-600 font-bold text-xs uppercase tracking-tighter"><WifiOff size={14} className="inline mr-1" /> Modo Offline</span>}
           </div>
         </header>
         <div className="flex-1 overflow-y-auto p-4 md:p-8">
@@ -242,6 +273,7 @@ const AppContent: React.FC = () => {
             <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} />} />
             <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} />} />
             <Route path="/os" element={<ServiceOrders data={data} updateData={updateData} />} />
+            <Route path="/monitoring" element={<Monitoring data={data} updateData={updateData} />} />
             {isAdmin && <Route path="/admin" element={<AdminSettings data={data} updateData={updateData} />} />}
             <Route path="/login" element={<Navigate to="/" />} />
           </Routes>
