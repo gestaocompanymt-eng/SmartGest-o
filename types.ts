@@ -43,7 +43,7 @@ export interface Condo {
   updated_at?: string;
 }
 
-// Added monitoring fields to Equipment interface
+// Interface para telemetria de equipamento (Tuya/IoT)
 export interface Equipment {
   id: string;
   condo_id: string;
@@ -62,10 +62,10 @@ export interface Equipment {
   photos: string[];
   last_maintenance: string;
   updated_at?: string;
-  // Monitoring fields
+  // Novos campos para suporte ao Monitoramento IoT/Tuya
   tuya_device_id?: string;
-  monitoring_status?: 'normal' | 'atencao' | 'critico';
   is_online?: boolean;
+  monitoring_status?: 'normal' | 'atencao' | 'critico';
   last_reading?: {
     power: number;
     current: number;
@@ -118,13 +118,23 @@ export interface Appointment {
   updated_at?: string;
 }
 
-// Added MonitoringAlert interface to fix missing export error
+// Interface para alertas gerados pelo monitoramento Tuya
 export interface MonitoringAlert {
   id: string;
   equipment_id: string;
   message: string;
   value: string;
   is_resolved: boolean;
+  created_at: string;
+}
+
+// Interface para o monitoramento de nível de reservatório (nivel_caixa)
+export interface WaterLevel {
+  id: number;
+  condominio_id: string;
+  nivel_cm: number;
+  percentual: number;
+  status: string;
   created_at: string;
 }
 
@@ -143,7 +153,7 @@ export interface AppData {
   systems: System[];
   serviceOrders: ServiceOrder[];
   appointments: Appointment[];
-  // Added monitoringAlerts to AppData
+  waterLevels: WaterLevel[];
   monitoringAlerts: MonitoringAlert[];
   users: User[];
   equipmentTypes: EquipmentType[];

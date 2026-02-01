@@ -4,13 +4,14 @@ import { INITIAL_EQUIPMENT_TYPES, INITIAL_SYSTEM_TYPES } from './constants';
 
 const STORAGE_KEY = 'smart_gestao_data_v2';
 
+// Adicionado monitoringAlerts para conformidade com a interface AppData atualizada
 const initialData: AppData = {
   condos: [],
   equipments: [],
   systems: [],
   serviceOrders: [],
   appointments: [],
-  // Initialize monitoringAlerts
+  waterLevels: [],
   monitoringAlerts: [],
   users: [
     { id: 'admin1', name: 'Admin Principal', role: UserRole.ADMIN, email: 'admin', password: '41414889Ai' },
@@ -37,12 +38,13 @@ export const getStore = (): AppData => {
       }
     });
 
+    // Garantir integridade de todos os arrays de dados
     if (!parsedData.appointments) parsedData.appointments = [];
     if (!parsedData.condos) parsedData.condos = [];
     if (!parsedData.equipments) parsedData.equipments = [];
     if (!parsedData.systems) parsedData.systems = [];
     if (!parsedData.serviceOrders) parsedData.serviceOrders = [];
-    // Ensure monitoringAlerts is present
+    if (!parsedData.waterLevels) parsedData.waterLevels = [];
     if (!parsedData.monitoringAlerts) parsedData.monitoringAlerts = [];
     if (!parsedData.users) parsedData.users = [];
     if (!parsedData.equipmentTypes) parsedData.equipmentTypes = INITIAL_EQUIPMENT_TYPES;

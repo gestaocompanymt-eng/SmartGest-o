@@ -13,13 +13,14 @@ import {
   X,
   Wifi,
   WifiOff,
-  RefreshCw,
-  Cloud
+  Cloud,
+  Droplets,
+  Activity
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
-import { UserRole, AppData } from './types';
-import { supabase, isSupabaseActive } from './supabase';
+import { UserRole, AppData, WaterLevel as WaterLevelType } from './types';
+import { supabase, isSupabaseActive, subscribeToChanges } from './supabase';
 
 // Pages
 import Dashboard from './pages/Dashboard';
@@ -29,6 +30,8 @@ import SystemsPage from './pages/Systems';
 import ServiceOrders from './pages/ServiceOrders';
 import AdminSettings from './pages/AdminSettings';
 import Login from './pages/Login';
+import WaterLevel from './pages/WaterLevel';
+import Monitoring from './pages/Monitoring';
 
 const AppContent: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
@@ -47,7 +50,6 @@ const AppContent: React.FC = () => {
 
   const mergeData = useCallback((localItems: any[] = [], cloudItems: any[] = []) => {
     const map = new Map();
-    // Prioridade para o ID, se houver conflito de dados o da nuvem sobrescreve o local (Verdade Única)
     localItems.forEach(item => { if(item?.id) map.set(item.id, item) });
     cloudItems.forEach(item => { if(item?.id) map.set(item.id, item) });
     return Array.from(map.values());
@@ -56,24 +58,22 @@ const AppContent: React.FC = () => {
   const syncLocalToCloud = async (currentData: AppData) => {
     if (!navigator.onLine || !isSupabaseActive) return;
     try {
-      // MAPEAMENTO CRÍTICO: Usuários devem ser sincronizados primeiro
       const syncConfig = [
         { table: 'users', key: 'users' },
         { table: 'condos', key: 'condos' },
         { table: 'equipments', key: 'equipments' },
         { table: 'systems', key: 'systems' },
         { table: 'service_orders', key: 'serviceOrders' },
-        { table: 'appointments', key: 'appointments' }
+        { table: 'appointments', key: 'appointments' },
+        { table: 'nivel_caixa', key: 'waterLevels' },
+        { table: 'monitoring_alerts', key: 'monitoringAlerts' }
       ];
       
       for (const config of syncConfig) {
         const items = (currentData as any)[config.key];
         if (items && items.length > 0) {
           const { error } = await supabase.from(config.table).upsert(items);
-          if (error) {
-            console.error(`Erro ao sincronizar tabela ${config.table}:`, error.message);
-            throw error;
-          }
+          if (error) throw error;
         }
       }
     } catch (e) {
@@ -87,17 +87,17 @@ const AppContent: React.FC = () => {
     setSyncStatus('syncing');
     
     try {
-      // 1. Enviar o que o celular tem para a nuvem antes de baixar
       await syncLocalToCloud(currentLocalData);
 
-      // 2. Baixar a versão mais recente
-      const [resUsers, resCondos, resEquips, resSystems, resOS, resAppts] = await Promise.all([
+      const [resUsers, resCondos, resEquips, resSystems, resOS, resAppts, resLevels, resAlerts] = await Promise.all([
         supabase.from('users').select('*'),
         supabase.from('condos').select('*'),
         supabase.from('equipments').select('*'),
         supabase.from('systems').select('*'),
         supabase.from('service_orders').select('*'),
-        supabase.from('appointments').select('*')
+        supabase.from('appointments').select('*'),
+        supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(100),
+        supabase.from('monitoring_alerts').select('*')
       ]);
 
       const cloudData: AppData = {
@@ -110,6 +110,8 @@ const AppContent: React.FC = () => {
           new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
         ),
         appointments: mergeData(currentLocalData.appointments || [], resAppts.data || []),
+        waterLevels: resLevels.data || [],
+        monitoringAlerts: mergeData(currentLocalData.monitoringAlerts || [], resAlerts.data || []),
         equipmentTypes: currentLocalData.equipmentTypes,
         systemTypes: currentLocalData.systemTypes
       };
@@ -134,6 +136,25 @@ const AppContent: React.FC = () => {
     };
     init();
 
+    // Sincronismo em Tempo Real (Realtime) para Nível de Caixa
+    let subscription: any = null;
+    if (isSupabaseActive) {
+      subscription = subscribeToChanges('nivel_caixa', (payload) => {
+        if (payload.eventType === 'INSERT' && dataRef.current) {
+          const newLevel = payload.new as WaterLevelType;
+          setData(prev => {
+            if (!prev) return prev;
+            const updated = {
+              ...prev,
+              waterLevels: [newLevel, ...prev.waterLevels].slice(0, 100)
+            };
+            saveStore(updated);
+            return updated;
+          });
+        }
+      });
+    }
+
     const handleOnline = () => {
       setIsOnline(true);
       if (dataRef.current) fetchAllData(dataRef.current).then(updated => {
@@ -151,6 +172,7 @@ const AppContent: React.FC = () => {
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      if (subscription) subscription.unsubscribe();
     };
   }, [fetchAllData]);
 
@@ -232,6 +254,8 @@ const AppContent: React.FC = () => {
         <nav className="px-4 space-y-1.5 overflow-y-auto max-h-[calc(100vh-160px)]">
           <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
           {(isAdmin || isTech) && <NavItem to="/condos" icon={Building2} label="Condomínios" />}
+          <NavItem to="/reservatorios" icon={Droplets} label="Reservatórios" />
+          {(isAdmin || isTech) && <NavItem to="/monitoramento" icon={Activity} label="Monitoramento IoT" />}
           <NavItem to="/equipment" icon={Layers} label="Equipamentos" />
           <NavItem to="/systems" icon={Settings} label="Sistemas" />
           <NavItem to="/os" icon={FileText} label="Ordens de Serviço" />
@@ -264,6 +288,8 @@ const AppContent: React.FC = () => {
           <Routes>
             <Route path="/" element={<Dashboard data={data} updateData={updateData} />} />
             {(isAdmin || isTech) && <Route path="/condos" element={<Condos data={data} updateData={updateData} />} />}
+            <Route path="/reservatorios" element={<WaterLevel data={data} updateData={updateData} />} />
+            {(isAdmin || isTech) && <Route path="/monitoramento" element={<Monitoring data={data} updateData={updateData} />} />}
             <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} />} />
             <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} />} />
             <Route path="/os" element={<ServiceOrders data={data} updateData={updateData} />} />
