@@ -46,7 +46,7 @@ const AppContent: React.FC = () => {
     dataRef.current = data;
   }, [data]);
 
-  // Busca dados da nuvem
+  // Função inteligente de mesclagem para evitar perda de dados
   const fetchAllData = useCallback(async (currentLocalData: AppData) => {
     if (!navigator.onLine || !isSupabaseActive || isSyncingRef.current) return currentLocalData;
     
@@ -63,16 +63,23 @@ const AppContent: React.FC = () => {
         supabase.from('monitoring_alerts').select('*')
       ]);
 
+      // Regra de Ouro: Só substitui local se a nuvem tiver dados. 
+      // Se a nuvem retornar vazio [], mas o local tiver dados, mantemos o local para posterior upload.
+      const merge = (cloud: any[] | null, local: any[]) => {
+        if (cloud && cloud.length > 0) return cloud;
+        return local;
+      };
+
       const cloudData: AppData = {
         ...currentLocalData,
-        users: resUsers.data || currentLocalData.users,
-        condos: resCondos.data || currentLocalData.condos,
-        equipments: resEquips.data || currentLocalData.equipments,
-        systems: resSystems.data || currentLocalData.systems,
-        serviceOrders: (resOS.data || []).sort((a: any, b: any) => 
-          new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
-        ),
-        appointments: resAppts.data || [],
+        users: merge(resUsers.data, currentLocalData.users),
+        condos: merge(resCondos.data, currentLocalData.condos),
+        equipments: merge(resEquips.data, currentLocalData.equipments),
+        systems: merge(resSystems.data, currentLocalData.systems),
+        serviceOrders: (resOS.data && resOS.data.length > 0) 
+          ? resOS.data.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+          : currentLocalData.serviceOrders,
+        appointments: merge(resAppts.data, currentLocalData.appointments),
         waterLevels: resLevels.data || [],
         monitoringAlerts: resAlerts.data || [],
       };
@@ -80,13 +87,12 @@ const AppContent: React.FC = () => {
       setSyncStatus('synced');
       return cloudData;
     } catch (error) {
-      console.error("Erro na busca de dados:", error);
+      console.error("Erro na sincronização Cloud:", error);
       setSyncStatus('error');
       return currentLocalData;
     }
   }, []);
 
-  // Inicialização
   useEffect(() => {
     const init = async () => {
       const local = getStore();
@@ -100,12 +106,16 @@ const AppContent: React.FC = () => {
 
     const handleOnline = () => {
       setIsOnline(true);
+      setSyncStatus('syncing');
       if (dataRef.current) fetchAllData(dataRef.current).then(updated => {
         setData(updated);
         saveStore(updated);
       });
     };
-    const handleOffline = () => setIsOnline(false);
+    const handleOffline = () => {
+      setIsOnline(false);
+      setSyncStatus('offline');
+    };
     
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
@@ -115,9 +125,7 @@ const AppContent: React.FC = () => {
     };
   }, [fetchAllData]);
 
-  // Função centralizada para salvar dados (AGORA MAIS ROBUSTA)
   const updateData = async (newData: AppData) => {
-    // 1. Salva local imediatamente para feedback instantâneo
     setData(newData);
     saveStore(newData);
 
@@ -126,19 +134,19 @@ const AppContent: React.FC = () => {
       setSyncStatus('syncing');
       
       try {
-        // Sincroniza todas as tabelas principais para garantir integridade
-        await Promise.all([
-          supabase.from('systems').upsert(newData.systems),
-          supabase.from('equipments').upsert(newData.equipments),
-          supabase.from('condos').upsert(newData.condos),
-          supabase.from('service_orders').upsert(newData.serviceOrders)
-        ]);
-        
+        // Envia dados para a nuvem. Upsert garante que se já existir ele atualiza, se não ele cria.
+        const syncPromises = [];
+        if (newData.systems.length > 0) syncPromises.push(supabase.from('systems').upsert(newData.systems));
+        if (newData.equipments.length > 0) syncPromises.push(supabase.from('equipments').upsert(newData.equipments));
+        if (newData.condos.length > 0) syncPromises.push(supabase.from('condos').upsert(newData.condos));
+        if (newData.serviceOrders.length > 0) syncPromises.push(supabase.from('service_orders').upsert(newData.serviceOrders));
+        if (newData.users.length > 0) syncPromises.push(supabase.from('users').upsert(newData.users.map(u => ({...u, password: u.password || ''}))));
+
+        await Promise.all(syncPromises);
         setSyncStatus('synced');
       } catch (err) {
         setSyncStatus('error');
-        console.error("Erro ao sincronizar com a nuvem:", err);
-        // Não revertemos o local aqui para permitir que o usuário continue trabalhando offline
+        console.error("Erro ao subir dados para nuvem:", err);
       } finally {
         isSyncingRef.current = false;
       }
@@ -151,7 +159,7 @@ const AppContent: React.FC = () => {
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-center">
         <Wrench size={48} className="text-blue-500 animate-bounce mb-6" />
         <h2 className="text-white font-black uppercase tracking-widest text-lg mb-2">SmartGestão</h2>
-        <p className="text-slate-400 text-sm font-bold animate-pulse">Carregando...</p>
+        <p className="text-slate-400 text-sm font-bold animate-pulse">Sincronizando Nuvem...</p>
       </div>
     );
   }
@@ -217,9 +225,9 @@ const AppContent: React.FC = () => {
 
           <div className="mt-auto pt-6 border-t border-slate-800">
              <div className="flex items-center justify-between text-[10px] font-black uppercase text-slate-500 mb-4 px-2">
-                <span>Status Cloud:</span>
-                <span className={syncStatus === 'error' ? 'text-red-500' : 'text-emerald-500'}>
-                   {syncStatus === 'syncing' ? 'Sincronizando...' : syncStatus === 'error' ? 'Erro' : 'OK'}
+                <span>Nuvem:</span>
+                <span className={`font-black ${syncStatus === 'error' ? 'text-red-500' : syncStatus === 'offline' ? 'text-amber-500' : 'text-emerald-500'}`}>
+                   {syncStatus === 'syncing' ? 'Sincronizando...' : syncStatus === 'error' ? 'Erro Conexão' : syncStatus === 'offline' ? 'Offline' : 'Sincronizado'}
                 </span>
              </div>
             <button 
@@ -245,7 +253,11 @@ const AppContent: React.FC = () => {
           <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} />} />
           <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} />} />
           <Route path="/os" element={<ServiceOrders data={data} updateData={updateData} />} />
-          <Route path="/reservatorios" element={<WaterLevel data={data} updateData={updateData} />} />
+          <Route path="/reservatorios" element={<WaterLevel data={data} updateData={updateData} onRefresh={async () => {
+             const updated = await fetchAllData(data);
+             setData(updated);
+             saveStore(updated);
+          }} />} />
           <Route path="/monitoring" element={<Monitoring data={data} updateData={updateData} />} />
           <Route path="/admin" element={<AdminSettings data={data} updateData={updateData} />} />
           <Route path="/login" element={<Navigate to="/" />} />
