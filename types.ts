@@ -1,4 +1,5 @@
 
+
 export enum UserRole {
   ADMIN = 'ADMIN',
   TECHNICIAN = 'TECHNICIAN',
@@ -68,6 +69,16 @@ export interface Equipment {
   photos: string[];
   last_maintenance: string;
   updated_at?: string;
+  // Added fields for Tuya/Cloud monitoring support used in Monitoring.tsx
+  tuya_device_id?: string;
+  monitoring_status?: 'normal' | 'atencao' | 'critico';
+  is_online?: boolean;
+  last_reading?: {
+    power: number;
+    current: number;
+    voltage: number;
+    timestamp: string;
+  };
 }
 
 export interface System {
@@ -115,21 +126,22 @@ export interface Appointment {
   updated_at?: string;
 }
 
-export interface MonitoringAlert {
-  id: string;
-  equipment_id: string;
-  message: string;
-  value: string;
-  is_resolved: boolean;
-  created_at: string;
-}
-
 export interface WaterLevel {
   id: number;
   condominio_id: string;
   nivel_cm: number;
   percentual: number;
   status: string;
+  created_at: string;
+}
+
+// Added interface for equipment monitoring alerts
+export interface MonitoringAlert {
+  id: string;
+  equipment_id: string;
+  message: string;
+  value: string;
+  is_resolved: boolean;
   created_at: string;
 }
 
@@ -149,9 +161,10 @@ export interface AppData {
   serviceOrders: ServiceOrder[];
   appointments: Appointment[];
   waterLevels: WaterLevel[];
-  monitoringAlerts: MonitoringAlert[];
   users: User[];
   equipmentTypes: EquipmentType[];
   systemTypes: SystemType[];
   currentUser: User | null;
+  // Added to support the monitoring dashboard and active alerts
+  monitoringAlerts: MonitoringAlert[];
 }

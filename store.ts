@@ -1,10 +1,10 @@
 
+
 import { AppData, UserRole } from './types';
 import { INITIAL_EQUIPMENT_TYPES, INITIAL_SYSTEM_TYPES } from './constants';
 
-const STORAGE_KEY = 'smart_gestao_data_v2';
+const STORAGE_KEY = 'smart_gestao_data_v3';
 
-// Adicionado monitoringAlerts para conformidade com a interface AppData atualizada
 const initialData: AppData = {
   condos: [],
   equipments: [],
@@ -12,7 +12,7 @@ const initialData: AppData = {
   serviceOrders: [],
   appointments: [],
   waterLevels: [],
-  monitoringAlerts: [],
+  monitoringAlerts: [], // Initialize monitoringAlerts array
   users: [
     { id: 'admin1', name: 'Admin Principal', role: UserRole.ADMIN, email: 'admin', password: '41414889Ai' },
     { id: 'tech1', name: 'Carlos Técnico', role: UserRole.TECHNICIAN, email: 'carlos@smartgestao.com', password: '123' }
@@ -45,7 +45,7 @@ export const getStore = (): AppData => {
     if (!parsedData.systems) parsedData.systems = [];
     if (!parsedData.serviceOrders) parsedData.serviceOrders = [];
     if (!parsedData.waterLevels) parsedData.waterLevels = [];
-    if (!parsedData.monitoringAlerts) parsedData.monitoringAlerts = [];
+    if (!parsedData.monitoringAlerts) parsedData.monitoringAlerts = []; // Ensure monitoringAlerts array exists
     if (!parsedData.users) parsedData.users = [];
     if (!parsedData.equipmentTypes) parsedData.equipmentTypes = INITIAL_EQUIPMENT_TYPES;
     if (!parsedData.systemTypes) parsedData.systemTypes = INITIAL_SYSTEM_TYPES;

@@ -28,7 +28,6 @@ import ServiceOrders from './pages/ServiceOrders';
 import AdminSettings from './pages/AdminSettings';
 import Login from './pages/Login';
 import WaterLevel from './pages/WaterLevel';
-import Monitoring from './pages/Monitoring';
 
 const AppContent: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
@@ -46,25 +45,21 @@ const AppContent: React.FC = () => {
     dataRef.current = data;
   }, [data]);
 
-  // Função inteligente de mesclagem para evitar perda de dados
   const fetchAllData = useCallback(async (currentLocalData: AppData) => {
     if (!navigator.onLine || !isSupabaseActive || isSyncingRef.current) return currentLocalData;
     
     setSyncStatus('syncing');
     try {
-      const [resUsers, resCondos, resEquips, resSystems, resOS, resAppts, resLevels, resAlerts] = await Promise.all([
+      const [resUsers, resCondos, resEquips, resSystems, resOS, resAppts, resLevels] = await Promise.all([
         supabase.from('users').select('*'),
         supabase.from('condos').select('*'),
         supabase.from('equipments').select('*'),
         supabase.from('systems').select('*'),
         supabase.from('service_orders').select('*'),
         supabase.from('appointments').select('*'),
-        supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(100),
-        supabase.from('monitoring_alerts').select('*')
+        supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(100)
       ]);
 
-      // Regra de Ouro: Só substitui local se a nuvem tiver dados. 
-      // Se a nuvem retornar vazio [], mas o local tiver dados, mantemos o local para posterior upload.
       const merge = (cloud: any[] | null, local: any[]) => {
         if (cloud && cloud.length > 0) return cloud;
         return local;
@@ -81,7 +76,6 @@ const AppContent: React.FC = () => {
           : currentLocalData.serviceOrders,
         appointments: merge(resAppts.data, currentLocalData.appointments),
         waterLevels: resLevels.data || [],
-        monitoringAlerts: resAlerts.data || [],
       };
       
       setSyncStatus('synced');
@@ -134,7 +128,6 @@ const AppContent: React.FC = () => {
       setSyncStatus('syncing');
       
       try {
-        // Envia dados para a nuvem. Upsert garante que se já existir ele atualiza, se não ele cria.
         const syncPromises = [];
         if (newData.systems.length > 0) syncPromises.push(supabase.from('systems').upsert(newData.systems));
         if (newData.equipments.length > 0) syncPromises.push(supabase.from('equipments').upsert(newData.equipments));
@@ -217,7 +210,6 @@ const AppContent: React.FC = () => {
             <NavItem to="/systems" icon={Wrench} label="Sistemas" />
             <NavItem to="/os" icon={FileText} label="Ordens de Serviço" />
             <NavItem to="/reservatorios" icon={Droplets} label="Reservatórios" />
-            <NavItem to="/monitoring" icon={Activity} label="Monitoramento Tuya" />
             {data.currentUser?.role === UserRole.ADMIN && (
               <NavItem to="/admin" icon={Settings} label="Administração" />
             )}
@@ -258,7 +250,6 @@ const AppContent: React.FC = () => {
              setData(updated);
              saveStore(updated);
           }} />} />
-          <Route path="/monitoring" element={<Monitoring data={data} updateData={updateData} />} />
           <Route path="/admin" element={<AdminSettings data={data} updateData={updateData} />} />
           <Route path="/login" element={<Navigate to="/" />} />
         </Routes>
