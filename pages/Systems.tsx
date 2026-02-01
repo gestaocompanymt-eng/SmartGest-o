@@ -1,14 +1,16 @@
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Settings, Monitor, Activity, Edit2, Trash2, X, Cpu, CheckCircle2, Circle, Layers, FilePlus, MapPin } from 'lucide-react';
-import { System, SystemType, Condo, UserRole, Equipment } from '../types';
+import { Plus, Settings, Monitor, Activity, Edit2, Trash2, X, Cpu, CheckCircle2, Circle, Layers, FilePlus, MapPin, Droplets, Save } from 'lucide-react';
+import { System, SystemType, Condo, UserRole, Equipment, MonitoringPoint } from '../types';
 
 const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
   const navigate = useNavigate();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSys, setEditingSys] = useState<System | null>(null);
   const [managingSys, setManagingSys] = useState<System | null>(null);
+  const [points, setPoints] = useState<MonitoringPoint[]>([]);
+  const [selectedTypeId, setSelectedTypeId] = useState('');
 
   const user = data.currentUser;
   const isAdmin = user?.role === UserRole.ADMIN;
@@ -19,41 +21,58 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
     ? data.systems.filter((s: System) => s.condo_id === user?.condo_id)
     : data.systems;
 
+  const openModal = (sys: System | null) => {
+    setEditingSys(sys);
+    setSelectedTypeId(sys?.type_id || '1');
+    setPoints(sys?.monitoring_points || []);
+    setIsModalOpen(true);
+  };
+
+  const addPoint = () => {
+    setPoints([...points, { id: Math.random().toString(36).substr(2, 5), name: `Ponto ${points.length + 1}`, device_id: '' }]);
+  };
+
+  const removePoint = (idx: number) => {
+    setPoints(points.filter((_, i) => i !== idx));
+  };
+
+  const updatePoint = (idx: number, field: keyof MonitoringPoint, value: string) => {
+    const newPoints = [...points];
+    newPoints[idx] = { ...newPoints[idx], [field]: value };
+    setPoints(newPoints);
+  };
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+    
+    const validPoints = points.filter(p => p.device_id.trim() !== "");
+
     const sysData: System = {
       id: editingSys?.id || Math.random().toString(36).substr(2, 9),
       condo_id: formData.get('condoId') as string,
-      type_id: formData.get('typeId') as string,
+      type_id: selectedTypeId,
       name: formData.get('name') as string,
       location: formData.get('location') as string,
       equipment_ids: editingSys?.equipment_ids || [], 
+      monitoring_points: selectedTypeId === '7' ? validPoints : undefined,
       parameters: formData.get('parameters') as string,
       observations: formData.get('observations') as string,
     };
 
-    if (editingSys) {
-      updateData({
-        ...data,
-        systems: data.systems.map((s: System) => s.id === editingSys.id ? sysData : s)
-      });
-    } else {
-      updateData({
-        ...data,
-        systems: [...data.systems, sysData]
-      });
-    }
+    const newSystems = editingSys
+      ? data.systems.map((s: System) => s.id === editingSys.id ? sysData : s)
+      : [...data.systems, sysData];
+
+    updateData({ ...data, systems: newSystems });
     setIsModalOpen(false);
     setEditingSys(null);
+    setPoints([]);
   };
 
   const deleteSystem = (id: string) => {
     if (confirm('Deseja realmente excluir este sistema?')) {
-      updateData({
-        ...data,
-        systems: data.systems.filter((s: System) => s.id !== id)
-      });
+      updateData({ ...data, systems: data.systems.filter((s: System) => s.id !== id) });
     }
   };
 
@@ -66,17 +85,8 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
       : [...system.equipment_ids, equipmentId];
 
     const updatedSystem = { ...system, equipment_ids: newEquipmentIds };
-    
-    updateData({
-      ...data,
-      systems: data.systems.map((s: System) => s.id === systemId ? updatedSystem : s)
-    });
-    
+    updateData({ ...data, systems: data.systems.map((s: System) => s.id === systemId ? updatedSystem : s) });
     setManagingSys(updatedSystem);
-  };
-
-  const handleOpenOS = (systemId: string) => {
-    navigate(`/os?systemId=${systemId}`);
   };
 
   return (
@@ -84,13 +94,10 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-900 leading-tight">Sistemas</h1>
-          <p className="text-sm text-slate-500">{isCondo ? 'Assuntos técnicos do seu condomínio.' : 'Conjuntos de equipamentos e parâmetros de automação.'}</p>
+          <p className="text-sm text-slate-500">Gestão de conjuntos técnicos e monitoramento IoT.</p>
         </div>
         {(isAdmin || isTech) && (
-          <button 
-            onClick={() => { setEditingSys(null); setIsModalOpen(true); }} 
-            className="w-full md:w-auto bg-slate-900 text-white px-6 py-4 md:py-2 rounded-xl flex items-center justify-center space-x-2 font-bold hover:bg-slate-800 active:scale-95 transition-all shadow-lg shadow-slate-900/10"
-          >
+          <button onClick={() => openModal(null)} className="w-full md:w-auto bg-slate-900 text-white px-6 py-2 rounded-xl flex items-center justify-center space-x-2 font-bold shadow-lg shadow-slate-900/10 active:scale-95 transition-all">
             <Plus size={20} />
             <span className="uppercase text-[10px] tracking-widest">Novo Sistema</span>
           </button>
@@ -101,19 +108,24 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
         {filteredSystems.map((sys: System) => {
           const condo = data.condos.find((c: Condo) => c.id === sys.condo_id);
           const type = data.systemTypes.find((t: SystemType) => t.id === sys.type_id);
-          const linkedEquipments = data.equipments.filter((e: Equipment) => sys.equipment_ids.includes(e.id));
+          const isMonitoring = sys.type_id === '7';
+          const pointsCount = sys.monitoring_points?.length || 0;
           
           return (
             <div key={sys.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col md:flex-row group hover:border-blue-400 transition-all">
-              <div className="md:w-1/3 bg-slate-900 p-6 md:p-8 flex flex-col items-center justify-center text-white space-y-4 shrink-0">
-                <div className="p-4 bg-blue-600 rounded-2xl shadow-xl shadow-blue-600/20">
-                  <Monitor size={32} />
+              <div className={`md:w-1/3 p-6 md:p-8 flex flex-col items-center justify-center text-white space-y-4 shrink-0 ${isMonitoring ? 'bg-blue-600' : 'bg-slate-900'}`}>
+                <div className={`p-4 rounded-2xl shadow-xl ${isMonitoring ? 'bg-white text-blue-600' : 'bg-blue-600 text-white'}`}>
+                  {isMonitoring ? <Droplets size={32} /> : <Monitor size={32} />}
                 </div>
                 <div className="text-center">
-                  <p className="text-[9px] font-black uppercase tracking-[0.2em] text-blue-400 mb-1">Status</p>
-                  <div className="flex items-center justify-center space-x-1.5 text-emerald-400">
+                  <p className={`text-[9px] font-black uppercase tracking-[0.2em] mb-1 ${isMonitoring ? 'text-blue-100' : 'text-blue-400'}`}>
+                    {isMonitoring ? 'Telemetria' : 'Status'}
+                  </p>
+                  <div className="flex items-center justify-center space-x-1.5 text-white">
                     <Activity size={14} className="animate-pulse" />
-                    <span className="text-xs font-black uppercase tracking-widest">Ativo</span>
+                    <span className="text-xs font-black uppercase tracking-widest">
+                      {isMonitoring ? `${pointsCount} Pontos` : 'Ativo'}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -124,57 +136,43 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
                       {type?.name || 'Sistema Operacional'}
                     </span>
                     <h3 className="text-lg font-black text-slate-900 leading-tight truncate">{sys.name}</h3>
-                    <div className="flex flex-col mt-0.5">
-                      <p className="text-[10px] font-black text-blue-600 uppercase tracking-tight truncate">{condo?.name || 'Local Indefinido'}</p>
-                      <p className="text-[9px] text-slate-400 font-bold flex items-center mt-0.5"><MapPin size={10} className="mr-1" /> {sys.location}</p>
-                    </div>
+                    <p className="text-[10px] font-black text-blue-600 uppercase tracking-tight truncate mt-1">{condo?.name || 'Local Indefinido'}</p>
                    </div>
                    {(isAdmin || isTech) && (
                      <div className="flex space-x-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0">
-                        <button onClick={() => { setEditingSys(sys); setIsModalOpen(true); }} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
-                          <Edit2 size={16} />
-                        </button>
-                        <button onClick={() => deleteSystem(sys.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
-                          <Trash2 size={16} />
-                        </button>
+                        <button onClick={() => openModal(sys)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"><Edit2 size={16} /></button>
+                        <button onClick={() => deleteSystem(sys.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={16} /></button>
                      </div>
                    )}
                 </div>
 
+                {isMonitoring && sys.monitoring_points && (
+                   <div className="flex flex-wrap gap-2 mb-4">
+                      {sys.monitoring_points.map((p, i) => (
+                        <span key={i} className="text-[8px] font-black bg-blue-50 text-blue-600 px-2 py-1 rounded border border-blue-100 uppercase">
+                          {p.name}: {p.device_id}
+                        </span>
+                      ))}
+                   </div>
+                )}
+
                 <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100 mb-4 flex-1">
-                  <div className="flex items-center text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                    <Cpu size={14} className="mr-1.5" /> Parâmetros de Controle
-                  </div>
+                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center">
+                    <MapPin size={10} className="mr-1" /> {sys.location}
+                  </p>
                   <p className="text-xs font-bold text-slate-700 leading-relaxed italic line-clamp-2">
-                    {sys.parameters || 'Nenhum parâmetro configurado.'}
+                    {sys.parameters || 'Parâmetros não definidos.'}
                   </p>
                 </div>
 
                 <div className="mt-auto pt-4 border-t border-slate-100 flex justify-between items-center">
-                  <div className="flex -space-x-2">
-                    {linkedEquipments.length > 0 ? (
-                      linkedEquipments.slice(0, 3).map((eq) => (
-                        <div key={eq.id} className="w-8 h-8 rounded-full bg-blue-100 border-2 border-white flex items-center justify-center text-[8px] font-black text-blue-600 uppercase">
-                          {eq.manufacturer.charAt(0)}
-                        </div>
-                      ))
-                    ) : (
-                      <div className="w-8 h-8 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-[8px] font-black text-slate-400">?</div>
-                    )}
-                  </div>
-                  <div className="flex space-x-2">
-                    <button 
-                      onClick={() => handleOpenOS(sys.id)}
-                      className="text-[10px] font-black text-emerald-600 hover:bg-emerald-50 px-3 py-2 rounded-xl transition-all uppercase tracking-widest active:scale-95 flex items-center"
-                    >
+                   <div className="flex space-x-2">
+                    <button onClick={() => navigate(`/os?systemId=${sys.id}`)} className="text-[10px] font-black text-emerald-600 hover:bg-emerald-50 px-3 py-2 rounded-xl transition-all uppercase tracking-widest active:scale-95 flex items-center">
                       <FilePlus size={14} className="mr-1.5" /> Abrir OS
                     </button>
                     {(isAdmin || isTech) && (
-                      <button 
-                        onClick={() => setManagingSys(sys)}
-                        className="text-[10px] font-black text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-xl transition-all uppercase tracking-widest active:scale-95"
-                      >
-                        Gerenciar
+                      <button onClick={() => setManagingSys(sys)} className="text-[10px] font-black text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-xl transition-all uppercase tracking-widest active:scale-95">
+                        Ativos
                       </button>
                     )}
                   </div>
@@ -183,108 +181,90 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
             </div>
           );
         })}
-        {filteredSystems.length === 0 && (
-          <div className="col-span-full py-20 bg-white border-2 border-dashed border-slate-200 rounded-3xl flex flex-col items-center">
-            <Monitor size={50} className="text-slate-200 mb-4" />
-            <p className="text-slate-400 font-bold uppercase text-xs tracking-widest text-center px-4">Não há sistemas cadastrados para seu condomínio.</p>
-          </div>
-        )}
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white md:rounded-2xl w-full h-full md:h-auto md:max-w-lg overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-300 flex flex-col">
-            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10 shrink-0">
-              <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">{editingSys ? 'Editar Configuração' : 'Novo Sistema'}</h2>
-              <button onClick={() => { setIsModalOpen(false); setEditingSys(null); }} className="p-2.5 bg-slate-50 text-slate-400 hover:text-slate-600 rounded-xl">
-                <X size={24} />
-              </button>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+              <h2 className="text-lg font-black uppercase tracking-tight">{editingSys ? 'Editar Sistema' : 'Novo Sistema'}</h2>
+              <button onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm"><X size={24} /></button>
             </div>
-            <form onSubmit={handleSubmit} className="p-5 md:p-8 space-y-6 overflow-y-auto flex-1 scroll-touch">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Condomínio Vinculado</label>
-                <select required name="condoId" defaultValue={editingSys?.condo_id} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none">
-                  <option value="">Selecione o empreendimento...</option>
-                  {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+            <form onSubmit={handleSubmit} className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                 <div className="space-y-1">
+                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Condomínio</label>
+                    <select required name="condoId" defaultValue={editingSys?.condo_id} className="w-full px-4 py-3 bg-slate-50 border rounded-xl font-bold outline-none text-xs">
+                       <option value="">Selecione...</option>
+                       {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                 </div>
+                 <div className="space-y-1">
+                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Tipo</label>
+                    <select 
+                      required 
+                      value={selectedTypeId} 
+                      onChange={(e) => setSelectedTypeId(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 border rounded-xl font-bold outline-none text-xs"
+                    >
+                       {data.systemTypes.map((t: SystemType) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                 </div>
               </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Tipo de Sistema</label>
-                <select required name="typeId" defaultValue={editingSys?.type_id} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none">
-                  {data.systemTypes.map((t: SystemType) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
+
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Nome do Sistema</label>
+                <input required name="name" defaultValue={editingSys?.name} placeholder="Ex: Monitoramento de Reservatórios" className="w-full px-4 py-3 bg-slate-50 border rounded-xl font-bold outline-none text-xs" />
               </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Nome do Sistema</label>
-                <input required name="name" defaultValue={editingSys?.name} placeholder="Ex: Central de Água Quente - Bloco A" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none font-bold text-slate-700" />
+
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Localização</label>
+                <input required name="location" defaultValue={editingSys?.location} placeholder="Ex: Subsolo 1 - Área Técnica" className="w-full px-4 py-3 bg-slate-50 border rounded-xl font-medium outline-none text-xs" />
               </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Localização Técnica</label>
-                <input required name="location" defaultValue={editingSys?.location} placeholder="Ex: Subsolo 1 - Área Técnica" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none font-bold text-slate-700" />
+
+              {/* Seção IoT específica para Sistema de Monitoramento (ID 7) */}
+              {selectedTypeId === '7' && (
+                <div className="space-y-4 bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
+                  <div className="flex justify-between items-center border-b border-blue-100 pb-2">
+                     <h4 className="text-[10px] font-black text-blue-600 uppercase flex items-center">
+                        <Droplets size={14} className="mr-2" /> Dispositivos de Nível (ESP32)
+                     </h4>
+                     <button type="button" onClick={addPoint} className="text-[9px] font-black text-white bg-blue-600 px-3 py-1.5 rounded-lg flex items-center active:scale-95">
+                       <Plus size={12} className="mr-1" /> Add Ponto
+                     </button>
+                  </div>
+                  <div className="space-y-3">
+                    {points.map((p, i) => (
+                      <div key={i} className="grid grid-cols-12 gap-2 items-end">
+                        <div className="col-span-6 space-y-1">
+                           <label className="text-[8px] font-black text-slate-400 uppercase">Nome Local</label>
+                           <input value={p.name} onChange={(e) => updatePoint(i, 'name', e.target.value)} className="w-full px-3 py-2 bg-white border rounded-lg text-xs font-bold" placeholder="Ex: Superior" />
+                        </div>
+                        <div className="col-span-5 space-y-1">
+                           <label className="text-[8px] font-black text-blue-500 uppercase">ID Placa</label>
+                           <input value={p.device_id} onChange={(e) => updatePoint(i, 'device_id', e.target.value)} className="w-full px-3 py-2 bg-white border border-blue-200 rounded-lg text-xs font-black text-blue-600" placeholder="Ex: box_001" />
+                        </div>
+                        <div className="col-span-1">
+                           <button type="button" onClick={() => removePoint(i)} className="p-2 text-red-500"><Trash2 size={16} /></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Parâmetros / Observações</label>
+                <textarea name="parameters" defaultValue={editingSys?.parameters} rows={3} className="w-full px-4 py-3 bg-slate-50 border rounded-xl text-xs font-medium outline-none"></textarea>
               </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Parâmetros de Controle</label>
-                <textarea name="parameters" defaultValue={editingSys?.parameters} rows={3} placeholder="Setpoints, pressões, temperaturas..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none font-medium text-slate-600"></textarea>
-              </div>
-              <div className="pt-6 flex flex-col-reverse md:flex-row gap-4 shrink-0">
-                <button type="button" onClick={() => { setIsModalOpen(false); setEditingSys(null); }} className="w-full px-6 py-4 border-2 border-slate-100 text-slate-500 font-black rounded-xl uppercase text-xs">Descartar</button>
-                <button type="submit" className="w-full px-6 py-4 bg-slate-900 text-white font-black rounded-xl uppercase text-xs tracking-widest shadow-xl shadow-slate-900/20 active:scale-95 transition-all">
-                  {editingSys ? 'Atualizar Sistema' : 'Salvar Sistema'}
+
+              <div className="flex gap-3 pt-6 sticky bottom-0 bg-white">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 border rounded-2xl font-black text-[10px] uppercase">Cancelar</button>
+                <button type="submit" className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase flex items-center justify-center">
+                  <Save size={16} className="mr-2" /> Salvar Sistema
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {managingSys && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-0 md:p-6">
-          <div className="bg-white md:rounded-3xl w-full h-full md:h-auto md:max-h-[90vh] md:max-w-2xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-300 flex flex-col">
-            <div className="p-5 md:p-8 border-b border-slate-100 flex justify-between items-center bg-slate-900 text-white shrink-0">
-              <div>
-                <h2 className="text-xl font-black uppercase tracking-tight mb-1">Gerenciar Ativos</h2>
-                <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">{managingSys.name}</p>
-              </div>
-              <button onClick={() => setManagingSys(null)} className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl transition-colors">
-                <X size={24} />
-              </button>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto p-5 md:p-8 space-y-2 scroll-touch">
-              {data.equipments
-                .filter((e: Equipment) => e.condo_id === managingSys.condo_id)
-                .map((eq: Equipment) => {
-                  const isLinked = managingSys.equipment_ids.includes(eq.id);
-                  return (
-                    <button
-                      key={eq.id}
-                      onClick={() => toggleEquipmentInSystem(managingSys.id, eq.id)}
-                      className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all active:scale-[0.98] text-left ${
-                        isLinked ? 'border-blue-600 bg-blue-50/50' : 'border-slate-100 bg-slate-50'
-                      }`}
-                    >
-                      <div className="flex items-center space-x-4">
-                         <div className={`p-2.5 rounded-xl ${isLinked ? 'bg-blue-600 text-white' : 'bg-white text-slate-400 border border-slate-100'}`}>
-                           {isLinked ? <CheckCircle2 size={20} /> : <Circle size={20} />}
-                         </div>
-                         <div>
-                            <p className="text-sm font-black text-slate-900 leading-none mb-1">{eq.manufacturer} - {eq.model}</p>
-                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{eq.location}</p>
-                         </div>
-                      </div>
-                    </button>
-                  );
-                })}
-            </div>
-
-            <div className="p-5 md:p-8 bg-slate-50 border-t flex flex-col md:flex-row justify-between items-center gap-4 shrink-0">
-               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                 {managingSys.equipment_ids.length} Ativo(s) Vinculado(s)
-               </p>
-               <button onClick={() => setManagingSys(null)} className="w-full md:w-auto px-10 py-4 bg-slate-900 text-white font-black rounded-2xl uppercase text-xs tracking-widest active:scale-95">
-                 Finalizar
-               </button>
-            </div>
           </div>
         </div>
       )}

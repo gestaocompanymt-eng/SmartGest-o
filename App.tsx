@@ -66,7 +66,7 @@ const AppContent: React.FC = () => {
         map.set(id, {
           ...localItem, // Mantém dados locais como fallback
           ...cloudItem, // Sobrescreve com dados da nuvem
-          // REGRA DE OURO: Se a nuvem não tem pontos de monitoramento mas o local tem, MANTÉM O LOCAL
+          // REGRA DE OURO: Proteção para Sistemas de Monitoramento e Condos
           monitoring_points: (cloudItem.monitoring_points && cloudItem.monitoring_points.length > 0) 
             ? cloudItem.monitoring_points 
             : (localItem?.monitoring_points || [])
@@ -192,11 +192,9 @@ const AppContent: React.FC = () => {
   }, [fetchAllData]);
 
   const updateData = async (newData: AppData) => {
-    // Primeiro atualizamos o estado local e o cache para resposta imediata
     setData(newData);
     saveStore(newData);
 
-    // Depois tentamos sincronizar com a nuvem em background
     if (navigator.onLine && isSupabaseActive) {
       setSyncStatus('syncing');
       try {

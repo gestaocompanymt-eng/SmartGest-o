@@ -46,7 +46,7 @@ export interface Condo {
   manager: string;
   contract_type: ContractType;
   start_date: string;
-  monitoring_points: MonitoringPoint[]; // Suporte a múltiplos dispositivos
+  monitoring_points?: MonitoringPoint[]; // Mantido para compatibilidade, mas migrado para System
   updated_at?: string;
 }
 
@@ -86,6 +86,7 @@ export interface System {
   name: string;
   location: string;
   equipment_ids: string[];
+  monitoring_points?: MonitoringPoint[]; // Nova localização dos IDs IoT
   parameters: string;
   observations: string;
   updated_at?: string;
