@@ -21,7 +21,6 @@ import { getStore, saveStore } from './store';
 import { UserRole, AppData, WaterLevel as WaterLevelType } from './types';
 import { supabase, isSupabaseActive, subscribeToChanges } from './supabase';
 
-// Pages
 import Dashboard from './pages/Dashboard';
 import Condos from './pages/Condos';
 import EquipmentPage from './pages/Equipment';
@@ -45,6 +44,26 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     dataRef.current = data;
   }, [data]);
+
+  const performDatabaseMaintenance = useCallback(async () => {
+    if (!navigator.onLine || !isSupabaseActive) return;
+    if (dataRef.current?.currentUser?.role !== UserRole.ADMIN) return;
+
+    try {
+      // Limpeza de dados com mais de 7 dias (aumentado para preservar mais histórico se houver poucas mudanças)
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      
+      await supabase
+        .from('nivel_caixa')
+        .delete()
+        .lt('created_at', sevenDaysAgo.toISOString());
+      
+      console.log('SmartGestão: Manutenção de rotina concluída.');
+    } catch (e) {
+      console.warn('SmartGestão: Falha na manutenção automática.');
+    }
+  }, []);
 
   const mergeData = useCallback((localItems: any[] = [], cloudItems: any[] = []) => {
     const map = new Map();
@@ -91,6 +110,7 @@ const AppContent: React.FC = () => {
     if (!navigator.onLine || !isSupabaseActive) return currentLocalData;
     setSyncStatus('syncing');
     try {
+      // Limite aumentado para 100: permite ver histórico de mudanças recentes
       const [resUsers, resCondos, resEquips, resSystems, resOS, resAppts, resLevels, resAlerts] = await Promise.all([
         supabase.from('users').select('*'),
         supabase.from('condos').select('*'),
@@ -101,6 +121,7 @@ const AppContent: React.FC = () => {
         supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(100),
         supabase.from('monitoring_alerts').select('*')
       ]);
+
       const cloudData: AppData = {
         ...currentLocalData,
         users: mergeData(currentLocalData.users, resUsers.data || []),
@@ -114,13 +135,15 @@ const AppContent: React.FC = () => {
         waterLevels: resLevels.data || [],
         monitoringAlerts: mergeData(currentLocalData.monitoringAlerts || [], resAlerts.data || []),
       };
+      
+      performDatabaseMaintenance();
       setSyncStatus('synced');
       return cloudData;
     } catch (error) {
       setSyncStatus('error');
       return currentLocalData;
     }
-  }, [mergeData]);
+  }, [mergeData, performDatabaseMaintenance]);
 
   useEffect(() => {
     const init = async () => {
@@ -132,6 +155,7 @@ const AppContent: React.FC = () => {
       setTimeout(() => setIsInitialSyncing(false), 800);
     };
     init();
+
     let subscription: any = null;
     if (isSupabaseActive) {
       subscription = subscribeToChanges('nivel_caixa', (payload) => {
@@ -139,6 +163,7 @@ const AppContent: React.FC = () => {
           const newLevel = payload.new as WaterLevelType;
           setData(prev => {
             if (!prev) return prev;
+            // Mantemos os 100 registros para histórico no dashboard/tela de níveis
             const updated = { ...prev, waterLevels: [newLevel, ...prev.waterLevels].slice(0, 100) };
             saveStore(updated);
             return updated;
@@ -146,6 +171,7 @@ const AppContent: React.FC = () => {
         }
       });
     }
+
     const handleOnline = () => {
       setIsOnline(true);
       if (dataRef.current) fetchAllData(dataRef.current).then(updated => {
@@ -182,6 +208,7 @@ const AppContent: React.FC = () => {
       </div>
     );
   }
+
   if (!data.currentUser && location.pathname !== '/login') {
     return <Login onLogin={(user) => {
       const newData = { ...data, currentUser: user };
@@ -220,6 +247,7 @@ const AppContent: React.FC = () => {
           {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
       </div>
+
       <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-slate-900 text-white transform transition-transform duration-300 md:relative md:translate-x-0 md:w-64 shrink-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-6 hidden md:block">
           <div className="flex items-center space-x-2 mb-8">
@@ -243,6 +271,7 @@ const AppContent: React.FC = () => {
           </button>
         </div>
       </aside>
+
       <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         <header className="bg-white border-b border-slate-200 h-16 hidden md:flex items-center justify-between px-8 shrink-0">
           <div className="flex items-center space-x-4 text-[10px] font-black uppercase tracking-widest text-emerald-500">

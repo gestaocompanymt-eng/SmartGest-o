@@ -7,44 +7,38 @@ import {
   Building2,
   Activity,
   Wifi,
-  ChevronRight
+  ChevronRight,
+  ShieldCheck,
+  History,
+  X,
+  ArrowDown,
+  ArrowUp
 } from 'lucide-react';
 import { AppData, UserRole, WaterLevel as WaterLevelType, Condo, System, MonitoringPoint } from '../types';
 
 const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; onRefresh?: () => Promise<void> }> = ({ data, updateData, onRefresh }) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [historyDeviceId, setHistoryDeviceId] = useState<string | null>(null);
+  
   const user = data.currentUser;
   const isCondoUser = user?.role === UserRole.CONDO_USER;
 
-  // Organiza os dados para exibição baseada nos Sistemas de Monitoramento
   const monitoringData = useMemo(() => {
     const condosMap = new Map();
-
-    // Filtramos sistemas do tipo 'Monitoramento' (ID 7) que tenham pontos cadastrados
     const monitoringSystems = data.systems.filter(s => 
       s.type_id === '7' && 
       (s.monitoring_points || []).length > 0 &&
       (!isCondoUser || s.condo_id === user?.condo_id)
     );
-
     monitoringSystems.forEach(sys => {
       const condo = data.condos.find(c => c.id === sys.condo_id);
       if (!condo) return;
-
       if (!condosMap.has(condo.id)) {
-        condosMap.set(condo.id, {
-          condo,
-          points: []
-        });
+        condosMap.set(condo.id, { condo, points: [] });
       }
-
       const entry = condosMap.get(condo.id);
-      // Mesclamos os pontos deste sistema à lista do condomínio
-      if (sys.monitoring_points) {
-        entry.points.push(...sys.monitoring_points);
-      }
+      if (sys.monitoring_points) { entry.points.push(...sys.monitoring_points); }
     });
-
     return Array.from(condosMap.values());
   }, [data.systems, data.condos, isCondoUser, user?.condo_id]);
 
@@ -68,6 +62,13 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
     return 'from-red-600 to-orange-400';
   };
 
+  const deviceHistory = useMemo(() => {
+    if (!historyDeviceId) return [];
+    return data.waterLevels
+      .filter(l => String(l.condominio_id || '').trim().toLowerCase() === historyDeviceId.trim().toLowerCase())
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }, [data.waterLevels, historyDeviceId]);
+
   return (
     <div className="space-y-8 pb-12 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -75,7 +76,7 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
           <h1 className="text-2xl font-black text-slate-900 leading-tight">Telemetria Integrada</h1>
           <div className="flex items-center mt-1">
              <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse mr-2"></span>
-             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Monitoramento via Sistemas de Automação</p>
+             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Monitoramento Profissional ESP32</p>
           </div>
         </div>
         <button 
@@ -98,16 +99,17 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
               <div>
                 <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight leading-none">{entry.condo.name}</h2>
                 <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1 italic">
-                   Configurado via Sistemas de Monitoramento
+                   Status dos Reservatórios via Sistemas Técnicos
                 </p>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {entry.points.map((point: MonitoringPoint) => {
-                const level = data.waterLevels.find(l => 
+                const levelsForPoint = data.waterLevels.filter(l => 
                   String(l.condominio_id || '').trim().toLowerCase() === String(point.device_id || '').trim().toLowerCase()
                 );
+                const level = levelsForPoint[0]; // O mais recente devido ao order by desc
                 const percent = level ? Math.min(100, Math.max(0, level.percentual)) : 0;
                 
                 return (
@@ -141,23 +143,36 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
                              </div>
                           </div>
 
-                          <div className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                             <div className="flex flex-col">
-                                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Status</span>
-                                <span className={`text-[10px] font-black uppercase ${getStatusColor(level.status).split(' ')[0]}`}>{level.status}</span>
-                             </div>
-                             <div className="text-right flex flex-col">
-                                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Última Leitura</span>
-                                <span className="text-[9px] font-bold text-slate-600 flex items-center justify-end mt-0.5">
-                                  <Clock size={12} className="mr-1 text-blue-500" /> {new Date(level.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                </span>
-                             </div>
+                          <div className="space-y-3">
+                            <div className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                               <div className="flex flex-col">
+                                  <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Status</span>
+                                  <span className={`text-[10px] font-black uppercase ${getStatusColor(level.status).split(' ')[0]}`}>{level.status}</span>
+                               </div>
+                               <div className="text-right flex flex-col">
+                                  <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Atualizado em</span>
+                                  <span className="text-[9px] font-bold text-slate-600 flex items-center justify-end mt-0.5">
+                                    <Clock size={12} className="mr-1 text-blue-500" /> {new Date(level.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                               </div>
+                            </div>
+                            <button 
+                              onClick={() => setHistoryDeviceId(point.device_id)}
+                              className="w-full flex items-center justify-center space-x-2 py-3 bg-slate-900 text-white rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-slate-800 transition-all active:scale-95"
+                            >
+                               <History size={14} />
+                               <span>Ver Histórico de Mudanças</span>
+                            </button>
+                            <div className="flex items-center justify-center space-x-2 py-2 bg-emerald-50/50 rounded-xl border border-dashed border-emerald-100">
+                               <ShieldCheck size={12} className="text-emerald-500" />
+                               <span className="text-[8px] font-black text-emerald-600 uppercase tracking-widest">Histórico Otimizado Ativo</span>
+                            </div>
                           </div>
                         </>
                       ) : (
                         <div className="py-12 flex flex-col items-center justify-center text-center space-y-3 bg-slate-50/50 rounded-[2rem] border-2 border-dashed border-slate-100">
                           <Activity size={24} className="text-amber-400 animate-pulse" />
-                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-4">Aguardando telemetria do dispositivo {point.device_id}</p>
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-4">Aguardando telemetria estável do dispositivo {point.device_id}</p>
                         </div>
                       )}
                     </div>
@@ -186,6 +201,57 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
             </div>
         )}
       </div>
+
+      {/* Modal de Histórico */}
+      {historyDeviceId && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
+           <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
+              <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+                 <div className="flex items-center space-x-3">
+                    <History size={20} className="text-blue-600" />
+                    <h2 className="text-lg font-black uppercase tracking-tight">Histórico de Mudanças</h2>
+                 </div>
+                 <button onClick={() => setHistoryDeviceId(null)} className="p-2 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm">
+                   <X size={24} />
+                 </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-3">
+                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-4">Dispositivo: {historyDeviceId}</p>
+                 
+                 {deviceHistory.length > 0 ? deviceHistory.map((h, i) => {
+                    const prevLevel = deviceHistory[i + 1]?.nivel_cm;
+                    const diff = prevLevel ? h.nivel_cm - prevLevel : 0;
+                    
+                    return (
+                      <div key={h.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:bg-white transition-colors">
+                         <div className="flex items-center space-x-4">
+                            <div className={`p-2 rounded-xl ${diff > 0 ? 'bg-emerald-50 text-emerald-600' : diff < 0 ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>
+                               {diff > 0 ? <ArrowUp size={16} /> : diff < 0 ? <ArrowDown size={16} /> : <Activity size={16} />}
+                            </div>
+                            <div>
+                               <p className="text-sm font-black text-slate-900">{h.nivel_cm} cm ({h.percentual}%)</p>
+                               <p className="text-[10px] font-bold text-slate-400 uppercase">
+                                 {new Date(h.created_at).toLocaleDateString()} às {new Date(h.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                               </p>
+                            </div>
+                         </div>
+                         <div className="text-right">
+                            <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-full ${getStatusColor(h.status)}`}>
+                               {h.status}
+                            </span>
+                         </div>
+                      </div>
+                    );
+                 }) : (
+                   <div className="py-12 text-center text-slate-400 italic text-sm">Nenhum histórico de mudança registrado.</div>
+                 )}
+              </div>
+              <div className="p-6 border-t bg-slate-50">
+                 <button onClick={() => setHistoryDeviceId(null)} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs tracking-widest">Fechar Histórico</button>
+              </div>
+           </div>
+        </div>
+      )}
     </div>
   );
 };

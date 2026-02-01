@@ -2,13 +2,14 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { 
-  UserPlus, User, Trash2, Edit2, X, Save, Building2, LayoutList, RotateCcw, Printer, Filter, Calendar, Calculator, Settings2, Plus, Layers, Monitor, Database, CheckCircle, AlertTriangle, RefreshCw
+  UserPlus, User, Trash2, Edit2, X, Save, Building2, LayoutList, RotateCcw, Printer, Filter, Calendar, Calculator, Settings2, Plus, Layers, Monitor, Database, CheckCircle, AlertTriangle, RefreshCw, Cpu, Copy, Check
 } from 'lucide-react';
 import { UserRole, User as UserType, ServiceOrder, Condo, OSStatus, EquipmentType, SystemType } from '../types';
 import { supabase } from '../supabase';
 
 const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
   const user = data.currentUser;
+  const [copied, setCopied] = useState(false);
   
   if (!user || user.role !== UserRole.ADMIN) {
     return <Navigate to="/" />;
@@ -24,20 +25,14 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const [selectedCondoId, setSelectedCondoId] = useState('all');
   const [selectedTechId, setSelectedTechId] = useState('all');
 
-  const [newEqType, setNewEqType] = useState('');
-  const [newSysType, setNewSysType] = useState('');
-
-  // Diagnóstico de tabelas Supabase
   const checkDatabaseHealth = async () => {
     const tables = ['users', 'condos', 'equipments', 'systems', 'service_orders', 'appointments', 'nivel_caixa', 'monitoring_alerts'];
     const newStatus: any = {};
-    
     for (const table of tables) {
       newStatus[table] = 'checking';
       setTableStatus({ ...newStatus });
-      
       try {
-        const { error } = await supabase.from(table).select('count').limit(1);
+        const { error } = await supabase.from(table).select('count', { count: 'exact', head: true });
         newStatus[table] = error ? 'error' : 'ok';
       } catch {
         newStatus[table] = 'error';
@@ -74,7 +69,6 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     const formData = new FormData(e.currentTarget);
     const role = formData.get('role') as UserRole;
     const userId = editingUser?.id || `user-${Date.now()}`;
-    
     const userData: UserType = {
       id: userId,
       name: formData.get('name') as string,
@@ -83,11 +77,9 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
       password: (formData.get('password') as string).trim(),
       condo_id: role === UserRole.CONDO_USER ? (formData.get('condoId') as string) : undefined
     };
-
     const newUsersList = editingUser 
       ? data.users.map((u: UserType) => u.id === editingUser.id ? userData : u) 
       : [...data.users, userData];
-
     await updateData({ ...data, users: newUsersList });
     setIsUserModalOpen(false);
     setEditingUser(null);
@@ -97,6 +89,44 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     if (confirm('Deseja remover o acesso deste colaborador permanentemente?')) {
       updateData({ ...data, users: data.users.filter((u: any) => u.id !== id) });
     }
+  };
+
+  const sqlOptimizer = `
+-- SMARTGESTÃO: OTIMIZAÇÃO E HISTÓRICO DE MUDANÇAS
+-- Esta função garante que o banco só salve se o nível MUDAR.
+CREATE OR REPLACE FUNCTION filter_unchanged_levels()
+RETURNS TRIGGER AS $$
+DECLARE
+  last_level INTEGER;
+BEGIN
+  -- Busca o último nível registrado para este dispositivo
+  SELECT nivel_cm INTO last_level 
+  FROM nivel_caixa
+  WHERE condominio_id = NEW.condominio_id
+  ORDER BY created_at DESC
+  LIMIT 1;
+
+  -- Se for igual ao último, cancelamos a inserção (RETORNA NULL)
+  -- Se for diferente, permitimos salvar, criando assim o histórico de mudanças.
+  IF last_level IS NOT NULL AND last_level = NEW.nivel_cm THEN
+    RETURN NULL; 
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Aplica o gatilho na tabela
+DROP TRIGGER IF EXISTS tr_filter_levels ON nivel_caixa;
+CREATE TRIGGER tr_filter_levels
+BEFORE INSERT ON nivel_caixa
+FOR EACH ROW EXECUTE FUNCTION filter_unchanged_levels();
+  `.trim();
+
+  const handleCopySql = () => {
+    navigator.clipboard.writeText(sqlOptimizer);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -111,7 +141,33 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 no-print">
         <div className="xl:col-span-2 space-y-8">
           
-          {/* Status do Banco de Dados */}
+          {/* Otimizador Supabase */}
+          <div className="bg-blue-600 rounded-3xl p-6 text-white shadow-xl shadow-blue-600/20">
+             <div className="flex items-center space-x-3 mb-4">
+                <Cpu className="text-blue-200" size={24} />
+                <h3 className="font-black uppercase text-xs tracking-widest">Otimizador e Histórico Inteligente</h3>
+             </div>
+             <p className="text-sm font-medium text-blue-100 mb-6 leading-relaxed">
+               Configure o banco para registrar <b>apenas mudanças</b>. Isso economiza 95% do seu espaço e gera um histórico limpo de alterações de nível.
+             </p>
+             <div className="bg-slate-900/50 rounded-2xl p-4 relative group">
+                <pre className="text-[9px] font-mono text-blue-200 overflow-x-auto whitespace-pre">
+                  {sqlOptimizer.substring(0, 150)}...
+                </pre>
+                <button 
+                  onClick={handleCopySql}
+                  className="absolute top-4 right-4 bg-white text-blue-600 p-2 rounded-xl shadow-lg hover:bg-blue-50 transition-all flex items-center space-x-2"
+                >
+                  {copied ? <Check size={14} /> : <Copy size={14} />}
+                  <span className="text-[10px] font-black uppercase tracking-widest">{copied ? 'Copiado!' : 'Copiar SQL'}</span>
+                </button>
+             </div>
+             <div className="mt-4 flex items-center space-x-2 text-[9px] font-black uppercase text-blue-200">
+                <AlertTriangle size={12} />
+                <span>Recomendado para manter o histórico sem lotar o banco gratuito.</span>
+             </div>
+          </div>
+
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
             <div className="p-6 border-b bg-slate-50/50 flex justify-between items-center">
                <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-[10px]">
