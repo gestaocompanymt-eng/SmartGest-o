@@ -1,16 +1,16 @@
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Settings, Monitor, Activity, Edit2, Trash2, X, Cpu, CheckCircle2, Circle, Layers, FilePlus, MapPin, Droplets, Save } from 'lucide-react';
+import { Plus, Settings, Monitor, Activity, Edit2, Trash2, X, Cpu, CheckCircle2, Circle, Layers, FilePlus, MapPin, Droplets, Save, Loader2 } from 'lucide-react';
 import { System, SystemType, Condo, UserRole, Equipment, MonitoringPoint } from '../types';
 
 const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
   const navigate = useNavigate();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSys, setEditingSys] = useState<System | null>(null);
-  const [managingSys, setManagingSys] = useState<System | null>(null);
   const [points, setPoints] = useState<MonitoringPoint[]>([]);
   const [selectedTypeId, setSelectedTypeId] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   const user = data.currentUser;
   const isAdmin = user?.role === UserRole.ADMIN;
@@ -42,11 +42,16 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
     setPoints(newPoints);
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setIsSaving(true);
+    
     const formData = new FormData(e.currentTarget);
     
-    const validPoints = points.filter(p => p.device_id.trim() !== "");
+    // Filtra pontos válidos (que tenham ID da placa preenchido)
+    const validPoints = points
+      .filter(p => p.device_id && p.device_id.trim() !== "")
+      .map(p => ({ ...p, device_id: p.device_id.trim() }));
 
     const sysData: System = {
       id: editingSys?.id || Math.random().toString(36).substr(2, 9),
@@ -55,38 +60,33 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
       name: formData.get('name') as string,
       location: formData.get('location') as string,
       equipment_ids: editingSys?.equipment_ids || [], 
-      monitoring_points: selectedTypeId === '7' ? validPoints : undefined,
+      // CRÍTICO: Garante que pontos só existam se for o tipo 7 (Monitoramento)
+      monitoring_points: String(selectedTypeId) === '7' ? validPoints : undefined,
       parameters: formData.get('parameters') as string,
       observations: formData.get('observations') as string,
+      updated_at: new Date().toISOString()
     };
 
     const newSystems = editingSys
       ? data.systems.map((s: System) => s.id === editingSys.id ? sysData : s)
-      : [...data.systems, sysData];
+      : [sysData, ...data.systems];
 
-    updateData({ ...data, systems: newSystems });
-    setIsModalOpen(false);
-    setEditingSys(null);
-    setPoints([]);
+    try {
+      await updateData({ ...data, systems: newSystems });
+      setIsModalOpen(false);
+      setEditingSys(null);
+      setPoints([]);
+    } catch (err) {
+      alert("Erro ao salvar o sistema. Verifique sua conexão.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const deleteSystem = (id: string) => {
     if (confirm('Deseja realmente excluir este sistema?')) {
       updateData({ ...data, systems: data.systems.filter((s: System) => s.id !== id) });
     }
-  };
-
-  const toggleEquipmentInSystem = (systemId: string, equipmentId: string) => {
-    const system = data.systems.find((s: System) => s.id === systemId);
-    if (!system) return;
-
-    const newEquipmentIds = system.equipment_ids.includes(equipmentId)
-      ? system.equipment_ids.filter((id: string) => id !== equipmentId)
-      : [...system.equipment_ids, equipmentId];
-
-    const updatedSystem = { ...system, equipment_ids: newEquipmentIds };
-    updateData({ ...data, systems: data.systems.map((s: System) => s.id === systemId ? updatedSystem : s) });
-    setManagingSys(updatedSystem);
   };
 
   return (
@@ -108,7 +108,7 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
         {filteredSystems.map((sys: System) => {
           const condo = data.condos.find((c: Condo) => c.id === sys.condo_id);
           const type = data.systemTypes.find((t: SystemType) => t.id === sys.type_id);
-          const isMonitoring = sys.type_id === '7';
+          const isMonitoring = String(sys.type_id) === '7';
           const pointsCount = sys.monitoring_points?.length || 0;
           
           return (
@@ -146,7 +146,7 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
                    )}
                 </div>
 
-                {isMonitoring && sys.monitoring_points && (
+                {isMonitoring && sys.monitoring_points && sys.monitoring_points.length > 0 && (
                    <div className="flex flex-wrap gap-2 mb-4">
                       {sys.monitoring_points.map((p, i) => (
                         <span key={i} className="text-[8px] font-black bg-blue-50 text-blue-600 px-2 py-1 rounded border border-blue-100 uppercase">
@@ -170,11 +170,6 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
                     <button onClick={() => navigate(`/os?systemId=${sys.id}`)} className="text-[10px] font-black text-emerald-600 hover:bg-emerald-50 px-3 py-2 rounded-xl transition-all uppercase tracking-widest active:scale-95 flex items-center">
                       <FilePlus size={14} className="mr-1.5" /> Abrir OS
                     </button>
-                    {(isAdmin || isTech) && (
-                      <button onClick={() => setManagingSys(sys)} className="text-[10px] font-black text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-xl transition-all uppercase tracking-widest active:scale-95">
-                        Ativos
-                      </button>
-                    )}
                   </div>
                 </div>
               </div>
@@ -222,8 +217,7 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
                 <input required name="location" defaultValue={editingSys?.location} placeholder="Ex: Subsolo 1 - Área Técnica" className="w-full px-4 py-3 bg-slate-50 border rounded-xl font-medium outline-none text-xs" />
               </div>
 
-              {/* Seção IoT específica para Sistema de Monitoramento (ID 7) */}
-              {selectedTypeId === '7' && (
+              {String(selectedTypeId) === '7' && (
                 <div className="space-y-4 bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
                   <div className="flex justify-between items-center border-b border-blue-100 pb-2">
                      <h4 className="text-[10px] font-black text-blue-600 uppercase flex items-center">
@@ -249,6 +243,9 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
                         </div>
                       </div>
                     ))}
+                    {points.length === 0 && (
+                      <p className="text-[9px] text-slate-400 italic text-center py-2">Clique em "Add Ponto" para configurar os sensores IoT.</p>
+                    )}
                   </div>
                 </div>
               )}
@@ -260,8 +257,20 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
 
               <div className="flex gap-3 pt-6 sticky bottom-0 bg-white">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 border rounded-2xl font-black text-[10px] uppercase">Cancelar</button>
-                <button type="submit" className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase flex items-center justify-center">
-                  <Save size={16} className="mr-2" /> Salvar Sistema
+                <button 
+                  type="submit" 
+                  disabled={isSaving}
+                  className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase flex items-center justify-center disabled:opacity-50"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 size={16} className="mr-2 animate-spin" /> Salvando...
+                    </>
+                  ) : (
+                    <>
+                      <Save size={16} className="mr-2" /> Salvar Sistema
+                    </>
+                  )}
                 </button>
               </div>
             </form>

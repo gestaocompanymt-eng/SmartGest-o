@@ -48,11 +48,9 @@ const AppContent: React.FC = () => {
     dataRef.current = data;
   }, [data]);
 
-  // Fix: Added missing closing bracket for detectAnomaly
   const detectAnomaly = (newLevel: WaterLevelType, lastLevel?: WaterLevelType) => {
     if (!newLevel) return;
 
-    // 1. Alerta de Nível Crítico
     if (newLevel.percentual <= 20) {
       sendLocalNotification(
         "🚨 Nível Crítico!",
@@ -60,7 +58,6 @@ const AppContent: React.FC = () => {
       );
     }
 
-    // 2. Alerta de Transbordamento
     if (newLevel.percentual >= 98) {
       sendLocalNotification(
         "⚠️ Risco de Transbordamento",
@@ -68,7 +65,6 @@ const AppContent: React.FC = () => {
       );
     }
 
-    // 3. Alerta de Queda Brusca (Vazamento ou Consumo Excessivo)
     if (lastLevel && (lastLevel.percentual - newLevel.percentual) > 10) {
       sendLocalNotification(
         "💧 Queda Brusca de Nível",
@@ -164,6 +160,30 @@ const AppContent: React.FC = () => {
   const updateData = async (newData: AppData) => {
     setData(newData);
     saveStore(newData);
+
+    // Sincronização Cloud em tempo real para Tabelas Críticas
+    if (isOnline && isSupabaseActive) {
+      try {
+        // Exemplo para Sistemas (Onde ocorreu o erro do usuário)
+        if (newData.systems.length > 0) {
+          await supabase.from('systems').upsert(newData.systems);
+        }
+        // Exemplo para Equipamentos
+        if (newData.equipments.length > 0) {
+          await supabase.from('equipments').upsert(newData.equipments);
+        }
+        // Exemplo para Condomínios
+        if (newData.condos.length > 0) {
+          await supabase.from('condos').upsert(newData.condos);
+        }
+        // Exemplo para Ordens de Serviço
+        if (newData.serviceOrders.length > 0) {
+          await supabase.from('service_orders').upsert(newData.serviceOrders);
+        }
+      } catch (err) {
+        console.error("Erro ao sincronizar com a nuvem:", err);
+      }
+    }
   };
 
   if (!data) return null;
@@ -274,7 +294,6 @@ const AppContent: React.FC = () => {
             <Route path="/condominios" element={<Condos data={data} updateData={updateData} />} />
             <Route path="/equipamentos" element={<EquipmentPage data={data} updateData={updateData} />} />
             <Route path="/sistemas" element={<SystemsPage data={data} updateData={updateData} />} />
-            {/* Redirecionamento de legados */}
             <Route path="/equipment" element={<Navigate to="/equipamentos" />} />
             <Route path="/systems" element={<Navigate to="/sistemas" />} />
             <Route path="/login" element={<Navigate to="/" />} />
@@ -285,7 +304,6 @@ const AppContent: React.FC = () => {
   );
 };
 
-// Fixed: Added default export for the App component with Router wrapper
 const App: React.FC = () => {
   return (
     <HashRouter>
