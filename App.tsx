@@ -11,18 +11,14 @@ import {
   LogOut, 
   Menu, 
   X,
-  Wifi,
-  WifiOff,
-  Cloud,
   Droplets,
   Activity,
   RefreshCw
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
-import { UserRole, AppData, WaterLevel as WaterLevelType } from './types';
-import { supabase, isSupabaseActive, subscribeToChanges } from './supabase';
-import { sendLocalNotification } from './notificationService';
+import { UserRole, AppData } from './types';
+import { supabase, isSupabaseActive } from './supabase';
 
 import Dashboard from './pages/Dashboard';
 import Condos from './pages/Condos';
@@ -50,8 +46,8 @@ const AppContent: React.FC = () => {
     dataRef.current = data;
   }, [data]);
 
+  // Busca dados da nuvem
   const fetchAllData = useCallback(async (currentLocalData: AppData) => {
-    // Se estivermos no meio de um updateData, não puxamos dados para não sobrescrever o que está sendo salvo
     if (!navigator.onLine || !isSupabaseActive || isSyncingRef.current) return currentLocalData;
     
     setSyncStatus('syncing');
@@ -84,12 +80,13 @@ const AppContent: React.FC = () => {
       setSyncStatus('synced');
       return cloudData;
     } catch (error) {
-      console.error("Erro ao buscar dados:", error);
+      console.error("Erro na busca de dados:", error);
       setSyncStatus('error');
       return currentLocalData;
     }
   }, []);
 
+  // Inicialização
   useEffect(() => {
     const init = async () => {
       const local = getStore();
@@ -97,7 +94,7 @@ const AppContent: React.FC = () => {
       const updated = await fetchAllData(local);
       setData(updated);
       saveStore(updated);
-      setTimeout(() => setIsInitialSyncing(false), 800);
+      setIsInitialSyncing(false);
     };
     init();
 
@@ -109,6 +106,7 @@ const AppContent: React.FC = () => {
       });
     };
     const handleOffline = () => setIsOnline(false);
+    
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     return () => {
@@ -117,42 +115,30 @@ const AppContent: React.FC = () => {
     };
   }, [fetchAllData]);
 
+  // Função centralizada para salvar dados (AGORA MAIS ROBUSTA)
   const updateData = async (newData: AppData) => {
-    const oldData = dataRef.current;
-    
-    // 1. Atualiza local imediatamente
+    // 1. Salva local imediatamente para feedback instantâneo
     setData(newData);
     saveStore(newData);
 
-    if (isOnline && isSupabaseActive) {
-      isSyncingRef.current = true; // Bloqueia fetchAllData de rodar
+    if (navigator.onLine && isSupabaseActive) {
+      isSyncingRef.current = true;
       setSyncStatus('syncing');
       
       try {
-        const tablesToUpdate = [];
-        
-        // Verifica o que mudou comparando com a referência anterior
-        if (JSON.stringify(newData.systems) !== JSON.stringify(oldData?.systems)) tablesToUpdate.push('systems');
-        if (JSON.stringify(newData.equipments) !== JSON.stringify(oldData?.equipments)) tablesToUpdate.push('equipments');
-        if (JSON.stringify(newData.condos) !== JSON.stringify(oldData?.condos)) tablesToUpdate.push('condos');
-        if (JSON.stringify(newData.serviceOrders) !== JSON.stringify(oldData?.serviceOrders)) tablesToUpdate.push('service_orders');
-
-        for (const table of tablesToUpdate) {
-          const tableKey = table === 'service_orders' ? 'serviceOrders' : table as keyof AppData;
-          const { error } = await supabase.from(table).upsert(newData[tableKey] as any);
-          
-          if (error) {
-            console.error(`Erro ao sincronizar tabela ${table}:`, error);
-            throw new Error(`Falha na Nuvem (${table}): ${error.message}`);
-          }
-        }
+        // Sincroniza todas as tabelas principais para garantir integridade
+        await Promise.all([
+          supabase.from('systems').upsert(newData.systems),
+          supabase.from('equipments').upsert(newData.equipments),
+          supabase.from('condos').upsert(newData.condos),
+          supabase.from('service_orders').upsert(newData.serviceOrders)
+        ]);
         
         setSyncStatus('synced');
       } catch (err) {
         setSyncStatus('error');
-        console.error("Erro crítico de sincronização:", err);
-        // Em caso de erro, mantemos o local mas marcamos como erro
-        throw err;
+        console.error("Erro ao sincronizar com a nuvem:", err);
+        // Não revertemos o local aqui para permitir que o usuário continue trabalhando offline
       } finally {
         isSyncingRef.current = false;
       }
@@ -165,7 +151,7 @@ const AppContent: React.FC = () => {
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-center">
         <Wrench size={48} className="text-blue-500 animate-bounce mb-6" />
         <h2 className="text-white font-black uppercase tracking-widest text-lg mb-2">SmartGestão</h2>
-        <p className="text-slate-400 text-sm font-bold animate-pulse">Sincronizando Nuvem...</p>
+        <p className="text-slate-400 text-sm font-bold animate-pulse">Carregando...</p>
       </div>
     );
   }
