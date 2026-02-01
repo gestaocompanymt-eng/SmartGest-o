@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Droplets, 
   RefreshCw, 
@@ -15,7 +15,10 @@ import {
   ArrowUp,
   AlertCircle,
   TrendingUp,
-  Minus
+  Minus,
+  Bell,
+  BellOff,
+  BellRing
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -27,13 +30,29 @@ import {
   ResponsiveContainer 
 } from 'recharts';
 import { AppData, UserRole, WaterLevel as WaterLevelType, Condo, System, MonitoringPoint } from '../types';
+import { requestNotificationPermission, checkNotificationSupport } from '../notificationService';
 
 const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; onRefresh?: () => Promise<void> }> = ({ data, updateData, onRefresh }) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [historyDeviceId, setHistoryDeviceId] = useState<string | null>(null);
+  const [notifStatus, setNotifStatus] = useState<string>('default');
   
   const user = data.currentUser;
   const isCondoUser = user?.role === UserRole.CONDO_USER;
+
+  useEffect(() => {
+    const checkPerm = () => {
+      const support = checkNotificationSupport();
+      setNotifStatus(support.permission);
+    };
+    checkPerm();
+  }, []);
+
+  const handleEnableNotifications = async () => {
+    const granted = await requestNotificationPermission();
+    if (granted) setNotifStatus('granted');
+    else setNotifStatus('denied');
+  };
 
   const monitoringData = useMemo(() => {
     const condosMap = new Map();
@@ -107,15 +126,49 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Monitoramento Profissional em Tempo Real</p>
           </div>
         </div>
-        <button 
-          onClick={handleManualRefresh}
-          disabled={isRefreshing}
-          className="p-3 bg-white border border-slate-200 rounded-2xl shadow-sm hover:bg-slate-50 transition-all active:scale-95 flex items-center space-x-2"
-        >
-          <RefreshCw size={18} className={`${isRefreshing ? 'animate-spin' : ''} text-blue-600`} />
-          <span className="text-[10px] font-black uppercase tracking-widest text-slate-600">Sincronizar</span>
-        </button>
+        <div className="flex gap-2 w-full md:w-auto">
+          <button 
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            className="flex-1 md:flex-none p-3 bg-white border border-slate-200 rounded-2xl shadow-sm hover:bg-slate-50 transition-all active:scale-95 flex items-center justify-center space-x-2"
+          >
+            <RefreshCw size={18} className={`${isRefreshing ? 'animate-spin' : ''} text-blue-600`} />
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-600">Sync</span>
+          </button>
+          <button 
+            onClick={handleEnableNotifications}
+            className={`p-3 rounded-2xl shadow-sm transition-all active:scale-95 flex items-center space-x-2 ${
+              notifStatus === 'granted' ? 'bg-emerald-50 border-emerald-200 text-emerald-600' : 
+              notifStatus === 'denied' ? 'bg-red-50 border-red-200 text-red-400' :
+              'bg-blue-600 text-white'
+            } border`}
+          >
+            {notifStatus === 'granted' ? <BellRing size={18} /> : notifStatus === 'denied' ? <BellOff size={18} /> : <Bell size={18} />}
+            <span className="text-[10px] font-black uppercase tracking-widest">{notifStatus === 'granted' ? 'Alertas OK' : 'Ativar Alertas'}</span>
+          </button>
+        </div>
       </div>
+
+      {/* Alerta de Configuração de Notificação */}
+      {notifStatus !== 'granted' && (
+        <div className="bg-slate-900 rounded-3xl p-6 text-white shadow-xl flex flex-col md:flex-row items-center justify-between gap-4 animate-in slide-in-from-top">
+          <div className="flex items-center space-x-4">
+             <div className="p-3 bg-blue-600 rounded-2xl shadow-lg shadow-blue-500/20">
+                <BellRing size={24} />
+             </div>
+             <div>
+                <p className="text-sm font-black uppercase tracking-tight">Ative as notificações do celular</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5 italic">Receba alertas de anomalias e vazamentos em tempo real</p>
+             </div>
+          </div>
+          <button 
+            onClick={handleEnableNotifications}
+            className="w-full md:w-auto px-8 py-3 bg-white text-slate-900 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-lg active:scale-95 transition-all"
+          >
+            Permitir Agora
+          </button>
+        </div>
+      )}
 
       <div className="space-y-12">
         {monitoringData.map((entry) => (

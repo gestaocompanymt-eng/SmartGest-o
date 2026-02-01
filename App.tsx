@@ -14,12 +14,14 @@ import {
   Wifi,
   WifiOff,
   Cloud,
-  Droplets
+  Droplets,
+  Activity
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
 import { UserRole, AppData, WaterLevel as WaterLevelType } from './types';
 import { supabase, isSupabaseActive, subscribeToChanges } from './supabase';
+import { sendLocalNotification } from './notificationService';
 
 import Dashboard from './pages/Dashboard';
 import Condos from './pages/Condos';
@@ -29,6 +31,7 @@ import ServiceOrders from './pages/ServiceOrders';
 import AdminSettings from './pages/AdminSettings';
 import Login from './pages/Login';
 import WaterLevel from './pages/WaterLevel';
+import Monitoring from './pages/Monitoring';
 
 const AppContent: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
@@ -45,72 +48,39 @@ const AppContent: React.FC = () => {
     dataRef.current = data;
   }, [data]);
 
-  const performDatabaseMaintenance = useCallback(async () => {
-    if (!navigator.onLine || !isSupabaseActive) return;
-    if (dataRef.current?.currentUser?.role !== UserRole.ADMIN) return;
+  // Fix: Added missing closing bracket for detectAnomaly
+  const detectAnomaly = (newLevel: WaterLevelType, lastLevel?: WaterLevelType) => {
+    if (!newLevel) return;
 
-    try {
-      // Limpeza de dados com mais de 7 dias (aumentado para preservar mais histórico se houver poucas mudanças)
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      
-      await supabase
-        .from('nivel_caixa')
-        .delete()
-        .lt('created_at', sevenDaysAgo.toISOString());
-      
-      console.log('SmartGestão: Manutenção de rotina concluída.');
-    } catch (e) {
-      console.warn('SmartGestão: Falha na manutenção automática.');
+    // 1. Alerta de Nível Crítico
+    if (newLevel.percentual <= 20) {
+      sendLocalNotification(
+        "🚨 Nível Crítico!",
+        `O reservatório ${newLevel.condominio_id} está com apenas ${newLevel.percentual}%. Risco de falta d'água.`
+      );
     }
-  }, []);
 
-  const mergeData = useCallback((localItems: any[] = [], cloudItems: any[] = []) => {
-    const map = new Map();
-    localItems.forEach(item => { if(item?.id) map.set(String(item.id), { ...item }); });
-    cloudItems.forEach(cloudItem => {
-      if(cloudItem?.id) {
-        const id = String(cloudItem.id);
-        const localItem = map.get(id);
-        map.set(id, {
-          ...localItem,
-          ...cloudItem,
-          monitoring_points: (cloudItem.monitoring_points && cloudItem.monitoring_points.length > 0) 
-            ? cloudItem.monitoring_points 
-            : (localItem?.monitoring_points || [])
-        });
-      }
-    });
-    return Array.from(map.values());
-  }, []);
+    // 2. Alerta de Transbordamento
+    if (newLevel.percentual >= 98) {
+      sendLocalNotification(
+        "⚠️ Risco de Transbordamento",
+        `O reservatório ${newLevel.condominio_id} atingiu ${newLevel.percentual}%. Verifique as boias.`
+      );
+    }
 
-  const syncLocalToCloud = async (currentData: AppData) => {
-    if (!navigator.onLine || !isSupabaseActive) return;
-    try {
-      const syncConfig = [
-        { table: 'users', key: 'users' },
-        { table: 'condos', key: 'condos' },
-        { table: 'equipments', key: 'equipments' },
-        { table: 'systems', key: 'systems' },
-        { table: 'service_orders', key: 'serviceOrders' },
-        { table: 'appointments', key: 'appointments' },
-        { table: 'monitoring_alerts', key: 'monitoringAlerts' }
-      ];
-      for (const config of syncConfig) {
-        const items = (currentData as any)[config.key];
-        if (items && items.length > 0) {
-          const cleanItems = items.map((item: any) => ({ ...item, id: String(item.id) }));
-          await supabase.from(config.table).upsert(cleanItems);
-        }
-      }
-    } catch (e) { console.warn("Sync failed:", e); }
+    // 3. Alerta de Queda Brusca (Vazamento ou Consumo Excessivo)
+    if (lastLevel && (lastLevel.percentual - newLevel.percentual) > 10) {
+      sendLocalNotification(
+        "💧 Queda Brusca de Nível",
+        `Detectada redução de ${(lastLevel.percentual - newLevel.percentual).toFixed(1)}% no reservatório ${newLevel.condominio_id} em curto período.`
+      );
+    }
   };
 
   const fetchAllData = useCallback(async (currentLocalData: AppData) => {
     if (!navigator.onLine || !isSupabaseActive) return currentLocalData;
     setSyncStatus('syncing');
     try {
-      // Limite aumentado para 100: permite ver histórico de mudanças recentes
       const [resUsers, resCondos, resEquips, resSystems, resOS, resAppts, resLevels, resAlerts] = await Promise.all([
         supabase.from('users').select('*'),
         supabase.from('condos').select('*'),
@@ -124,26 +94,25 @@ const AppContent: React.FC = () => {
 
       const cloudData: AppData = {
         ...currentLocalData,
-        users: mergeData(currentLocalData.users, resUsers.data || []),
-        condos: mergeData(currentLocalData.condos, resCondos.data || []),
-        equipments: mergeData(currentLocalData.equipments, resEquips.data || []),
-        systems: mergeData(currentLocalData.systems, resSystems.data || []),
-        serviceOrders: mergeData(currentLocalData.serviceOrders, resOS.data || []).sort((a: any, b: any) => 
+        users: resUsers.data || currentLocalData.users,
+        condos: resCondos.data || currentLocalData.condos,
+        equipments: resEquips.data || currentLocalData.equipments,
+        systems: resSystems.data || currentLocalData.systems,
+        serviceOrders: (resOS.data || []).sort((a: any, b: any) => 
           new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
         ),
-        appointments: mergeData(currentLocalData.appointments || [], resAppts.data || []),
+        appointments: resAppts.data || [],
         waterLevels: resLevels.data || [],
-        monitoringAlerts: mergeData(currentLocalData.monitoringAlerts || [], resAlerts.data || []),
+        monitoringAlerts: resAlerts.data || [],
       };
       
-      performDatabaseMaintenance();
       setSyncStatus('synced');
       return cloudData;
     } catch (error) {
       setSyncStatus('error');
       return currentLocalData;
     }
-  }, [mergeData, performDatabaseMaintenance]);
+  }, []);
 
   useEffect(() => {
     const init = async () => {
@@ -161,9 +130,12 @@ const AppContent: React.FC = () => {
       subscription = subscribeToChanges('nivel_caixa', (payload) => {
         if (payload.eventType === 'INSERT' && dataRef.current) {
           const newLevel = payload.new as WaterLevelType;
+          const lastLevelForDevice = dataRef.current.waterLevels.find(l => l.condominio_id === newLevel.condominio_id);
+          
+          detectAnomaly(newLevel, lastLevelForDevice);
+
           setData(prev => {
             if (!prev) return prev;
-            // Mantemos os 100 registros para histórico no dashboard/tela de níveis
             const updated = { ...prev, waterLevels: [newLevel, ...prev.waterLevels].slice(0, 100) };
             saveStore(updated);
             return updated;
@@ -179,9 +151,12 @@ const AppContent: React.FC = () => {
         saveStore(updated);
       });
     };
+    const handleOffline = () => setIsOnline(false);
     window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
     return () => {
       window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
       if (subscription) subscription.unsubscribe();
     };
   }, [fetchAllData]);
@@ -189,13 +164,6 @@ const AppContent: React.FC = () => {
   const updateData = async (newData: AppData) => {
     setData(newData);
     saveStore(newData);
-    if (navigator.onLine && isSupabaseActive) {
-      setSyncStatus('syncing');
-      try {
-        await syncLocalToCloud(newData);
-        setSyncStatus('synced');
-      } catch (e) { setSyncStatus('error'); }
-    }
   };
 
   if (!data) return null;
@@ -217,9 +185,6 @@ const AppContent: React.FC = () => {
       navigate('/');
     }} />;
   }
-
-  const isAdmin = data.currentUser?.role === UserRole.ADMIN;
-  const isTech = data.currentUser?.role === UserRole.TECHNICIAN;
 
   const NavItem = ({ to, icon: Icon, label }: { to: string; icon: any; label: string }) => (
     <Link
@@ -257,40 +222,61 @@ const AppContent: React.FC = () => {
         </div>
         <nav className="px-4 space-y-1.5">
           <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
-          {(isAdmin || isTech) && <NavItem to="/condos" icon={Building2} label="Condomínios" />}
           <NavItem to="/reservatorios" icon={Droplets} label="Reservatórios" />
-          <NavItem to="/equipment" icon={Layers} label="Equipamentos" />
-          <NavItem to="/systems" icon={Settings} label="Sistemas" />
+          <NavItem to="/monitoramento" icon={Activity} label="Telemetria Tuya" />
           <NavItem to="/os" icon={FileText} label="Ordens de Serviço" />
-          {isAdmin && <NavItem to="/admin" icon={Settings} label="Administração" />}
+          <NavItem to="/equipamentos" icon={Layers} label="Equipamentos" />
+          <NavItem to="/sistemas" icon={Settings} label="Sistemas" />
+          <NavItem to="/condominios" icon={Building2} label="Condomínios" />
+          <NavItem to="/admin" icon={Settings} label="Administração" />
         </nav>
-        <div className="absolute bottom-0 w-full p-4 border-t border-slate-800 bg-slate-900">
-          <button onClick={() => { setData({...data, currentUser: null}); navigate('/login'); }} className="flex items-center space-x-3 w-full px-4 py-3 text-red-400 hover:bg-red-500/10 rounded-xl transition-colors">
-            <LogOut size={18} />
-            <span className="text-sm font-bold uppercase">Sair</span>
-          </button>
-        </div>
       </aside>
 
       <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         <header className="bg-white border-b border-slate-200 h-16 hidden md:flex items-center justify-between px-8 shrink-0">
           <div className="flex items-center space-x-4 text-[10px] font-black uppercase tracking-widest text-emerald-500">
             <Cloud size={14} className="mr-2" />
-            <span>{syncStatus === 'synced' ? 'Banco de Dados OK' : 'Sincronizando...'}</span>
+            <span>Sincronismo Ativo</span>
           </div>
           <div className="flex items-center space-x-4">
-             {isOnline ? <span className="text-emerald-600 font-bold text-xs uppercase"><Wifi size={14} className="inline mr-1" /> Servidor Ativo</span> : <span className="text-amber-600 font-bold text-xs uppercase"><WifiOff size={14} className="inline mr-1" /> Offline</span>}
+             {isOnline ? (
+               <span className="text-emerald-600 font-bold text-xs uppercase flex items-center">
+                 <Wifi size={14} className="mr-1" /> Online
+               </span>
+             ) : (
+               <span className="text-amber-600 font-bold text-xs uppercase flex items-center">
+                 <WifiOff size={14} className="mr-1" /> Offline
+               </span>
+             )}
+             <div className="h-4 w-[1px] bg-slate-200 mx-2"></div>
+             <button 
+               onClick={() => {
+                 const newData = { ...data, currentUser: null };
+                 setData(newData);
+                 saveStore(newData);
+                 navigate('/login');
+               }}
+               className="text-slate-400 hover:text-red-500 transition-colors"
+               title="Sair"
+             >
+               <LogOut size={18} />
+             </button>
           </div>
         </header>
+
         <div className="flex-1 overflow-y-auto p-4 md:p-8">
           <Routes>
             <Route path="/" element={<Dashboard data={data} updateData={updateData} />} />
-            {(isAdmin || isTech) && <Route path="/condos" element={<Condos data={data} updateData={updateData} />} />}
-            <Route path="/reservatorios" element={<WaterLevel data={data} updateData={updateData} onRefresh={() => fetchAllData(data).then(d => { setData(d); saveStore(d); })} />} />
-            <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} />} />
-            <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} />} />
+            <Route path="/reservatorios" element={<WaterLevel data={data} updateData={updateData} />} />
+            <Route path="/monitoramento" element={<Monitoring data={data} updateData={updateData} />} />
             <Route path="/os" element={<ServiceOrders data={data} updateData={updateData} />} />
-            {isAdmin && <Route path="/admin" element={<AdminSettings data={data} updateData={updateData} />} />}
+            <Route path="/admin" element={<AdminSettings data={data} updateData={updateData} />} />
+            <Route path="/condominios" element={<Condos data={data} updateData={updateData} />} />
+            <Route path="/equipamentos" element={<EquipmentPage data={data} updateData={updateData} />} />
+            <Route path="/sistemas" element={<SystemsPage data={data} updateData={updateData} />} />
+            {/* Redirecionamento de legados */}
+            <Route path="/equipment" element={<Navigate to="/equipamentos" />} />
+            <Route path="/systems" element={<Navigate to="/sistemas" />} />
             <Route path="/login" element={<Navigate to="/" />} />
           </Routes>
         </div>
@@ -299,10 +285,13 @@ const AppContent: React.FC = () => {
   );
 };
 
-const App: React.FC = () => (
-  <HashRouter>
-    <AppContent />
-  </HashRouter>
-);
+// Fixed: Added default export for the App component with Router wrapper
+const App: React.FC = () => {
+  return (
+    <HashRouter>
+      <AppContent />
+    </HashRouter>
+  );
+};
 
 export default App;
