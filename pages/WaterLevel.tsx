@@ -10,11 +10,10 @@ import {
   ShieldCheck, 
   ChevronRight,
   TrendingUp,
-  BarChart3
+  BarChart3,
+  AlertTriangle
 } from 'lucide-react';
 import { 
-  LineChart, 
-  Line, 
   XAxis, 
   YAxis, 
   CartesianGrid, 
@@ -42,7 +41,7 @@ const WaterLevel: React.FC<WaterLevelProps> = ({ data, updateData, onRefresh }) 
 
   // Filtra as leituras para o gráfico (últimas 24 horas ou últimas 50 leituras)
   const chartData = useMemo(() => {
-    const levels = [...(data.waterLevels || [])].reverse(); // Ordem cronológica para o gráfico
+    const levels = [...(data.waterLevels || [])].reverse();
     const filtered = isCondoUser 
       ? levels.filter(l => String(l.condominio_id) === String(user?.condo_id))
       : levels;
@@ -61,8 +60,9 @@ const WaterLevel: React.FC<WaterLevelProps> = ({ data, updateData, onRefresh }) 
     const latestMap = new Map<string, WaterLevelType>();
     
     levels.forEach(level => {
-      if (!latestMap.has(level.condominio_id)) {
-        latestMap.set(level.condominio_id, level);
+      const cid = String(level.condominio_id);
+      if (!latestMap.has(cid)) {
+        latestMap.set(cid, level);
       }
     });
 
@@ -93,9 +93,9 @@ const WaterLevel: React.FC<WaterLevelProps> = ({ data, updateData, onRefresh }) 
 
   const getStatusColor = (status: string) => {
     const s = String(status || '').toLowerCase();
-    if (s.includes('cheio')) return 'text-emerald-500 bg-emerald-50 border-emerald-100';
+    if (s.includes('cheio') || s.includes('alto')) return 'text-emerald-500 bg-emerald-50 border-emerald-100';
     if (s.includes('médio')) return 'text-amber-500 bg-amber-50 border-amber-100';
-    if (s.includes('baixo')) return 'text-red-500 bg-red-50 border-red-100';
+    if (s.includes('baixo') || s.includes('crítico')) return 'text-red-500 bg-red-50 border-red-100';
     return 'text-blue-500 bg-blue-50 border-blue-100';
   };
 
@@ -142,13 +142,24 @@ const WaterLevel: React.FC<WaterLevelProps> = ({ data, updateData, onRefresh }) 
               <div className="p-6">
                 <div className="flex justify-between items-start mb-6">
                   <div>
-                    <h3 className="font-black text-slate-900 text-lg uppercase leading-tight group-hover:text-blue-600 transition-colors">{condo?.name || 'Reservatório Principal'}</h3>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate max-w-[180px]">{condo?.address || 'Condomínio Cliente'}</p>
+                    <h3 className="font-black text-slate-900 text-lg uppercase leading-tight group-hover:text-blue-600 transition-colors">
+                        {condo?.name || `Nova Caixa: ${level.condominio_id}`}
+                    </h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate max-w-[180px]">
+                        {condo?.address || 'Aguardando vinculação no sistema'}
+                    </p>
                   </div>
                   <div className={`p-3 rounded-2xl border ${getStatusColor(level.status)}`}>
                     <Droplets size={24} />
                   </div>
                 </div>
+
+                {!condo && (
+                   <div className="mb-4 p-3 bg-amber-50 border border-amber-100 rounded-xl flex items-center space-x-2">
+                      <AlertTriangle size={14} className="text-amber-500" />
+                      <span className="text-[9px] font-black text-amber-600 uppercase">ID de Dispositivo não vinculado</span>
+                   </div>
+                )}
 
                 <div className="relative h-56 w-full bg-slate-50 rounded-3xl overflow-hidden border-4 border-white shadow-inner mb-6">
                    <div className="absolute inset-0 bg-gradient-to-b from-slate-200/20 to-transparent"></div>
@@ -188,9 +199,20 @@ const WaterLevel: React.FC<WaterLevelProps> = ({ data, updateData, onRefresh }) 
             </div>
           );
         })}
+
+        {latestLevels.length === 0 && (
+            <div className="col-span-full py-20 bg-white border-2 border-dashed border-slate-200 rounded-[2rem] flex flex-col items-center justify-center text-center px-6">
+                <div className="p-6 bg-slate-50 rounded-full mb-4">
+                    <Droplets size={48} className="text-slate-300" />
+                </div>
+                <h3 className="text-lg font-black text-slate-900 uppercase">Aguardando Telemetria</h3>
+                <p className="text-xs text-slate-500 font-medium max-w-xs mt-2">
+                    Nenhum dado recebido do ESP32 até o momento. Certifique-se que o dispositivo está ligado e configurado com o WiFi correto.
+                </p>
+            </div>
+        )}
       </div>
 
-      {/* Gráfico de Tendência */}
       {chartData.length > 2 && (
         <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm">
           <div className="flex items-center justify-between mb-8">
@@ -241,73 +263,6 @@ const WaterLevel: React.FC<WaterLevelProps> = ({ data, updateData, onRefresh }) 
           </div>
         </div>
       )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-slate-900 rounded-[2rem] p-8 text-white shadow-2xl">
-          <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center space-x-3">
-              <Activity size={24} className="text-blue-400" />
-              <h4 className="text-sm font-black uppercase tracking-widest">Logs de Telemetria</h4>
-            </div>
-            <span className="text-[9px] font-black bg-blue-500/20 text-blue-400 px-3 py-1 rounded-full border border-blue-500/20 uppercase tracking-tighter">HTTPS Secured</span>
-          </div>
-          <div className="space-y-3 max-h-64 overflow-y-auto pr-2 custom-scrollbar">
-            {data.waterLevels.slice(0, 15).map((l, i) => {
-              const condo = data.condos.find(c => String(c.id) === String(l.condominio_id));
-              return (
-                <div key={l.id || i} className="flex items-center justify-between border-b border-white/5 pb-3 group hover:bg-white/5 transition-colors p-2 rounded-xl">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-[10px] font-black text-blue-400">
-                      {l.percentual}%
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-black uppercase text-white leading-none">{condo?.name || 'Cliente Externo'}</p>
-                      <p className="text-[8px] font-bold text-slate-500 mt-1 uppercase">{l.status} • {l.nivel_cm}cm</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[8px] font-black text-blue-400 uppercase">{new Date(l.created_at).toLocaleTimeString()}</p>
-                    <p className="text-[7px] text-slate-600 font-bold uppercase">{new Date(l.created_at).toLocaleDateString()}</p>
-                  </div>
-                </div>
-              );
-            })}
-            {data.waterLevels.length === 0 && (
-              <p className="text-slate-500 text-[10px] font-bold uppercase italic text-center py-8">Aguardando dados de telemetria...</p>
-            )}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-[2rem] p-8 border border-slate-200 shadow-sm flex flex-col justify-between">
-           <div className="space-y-6">
-              <div className="flex items-center space-x-3">
-                <ShieldCheck size={24} className="text-emerald-500" />
-                <h4 className="text-sm font-black text-slate-900 uppercase tracking-widest">Status da Conexão</h4>
-              </div>
-              <div className="space-y-4">
-                 <div className="flex justify-between items-center border-b pb-4">
-                    <span className="text-xs font-bold text-slate-500 uppercase">Segurança (RLS)</span>
-                    <span className="text-xs font-black text-emerald-600 flex items-center"><ShieldCheck size={14} className="mr-1" /> ATIVA</span>
-                 </div>
-                 <div className="flex justify-between items-center border-b pb-4">
-                    <span className="text-xs font-bold text-slate-500 uppercase">Tempo Real</span>
-                    <span className="text-xs font-black text-blue-600">HABILITADO</span>
-                 </div>
-                 <div className="flex justify-between items-center">
-                    <span className="text-xs font-bold text-slate-500 uppercase">Endpoint Supabase</span>
-                    <span className="text-[10px] font-black text-slate-900 bg-slate-100 px-2 py-1 rounded uppercase tracking-tighter truncate max-w-[150px]">rlldyyipyapkehtxwvqk</span>
-                 </div>
-              </div>
-           </div>
-           
-           <button 
-            onClick={() => navigate('/admin')}
-            className="mt-8 w-full py-4 bg-slate-50 border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-100 transition-all flex items-center justify-center"
-           >
-             Gerenciar Thresholds de Alerta <ChevronRight size={14} className="ml-1" />
-           </button>
-        </div>
-      </div>
 
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }

@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
-import { Building2, AlertTriangle, CheckCircle2, Clock, Calendar, Plus, Edit2, Trash2, X } from 'lucide-react';
+// Added missing WifiOff import from lucide-react
+import { Building2, AlertTriangle, CheckCircle2, Clock, Calendar, Plus, Edit2, Trash2, X, Droplets, Activity, WifiOff } from 'lucide-react';
 import { AppData, OSStatus, OSType, UserRole, Appointment, Condo, User } from '../types';
 import { useNavigate } from 'react-router-dom';
 
@@ -28,6 +29,15 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
     }
     return [...appts].sort((a, b) => new Date(`${a.date}T${a.time}`).getTime() - new Date(`${b.date}T${b.time}`).getTime());
   }, [data.appointments, isCondoUser, user?.condo_id]);
+
+  // Telemetria rápida para o Dashboard
+  const latestWaterLevel = useMemo(() => {
+    if (!data.waterLevels || data.waterLevels.length === 0) return null;
+    if (isCondoUser) {
+      return data.waterLevels.find(l => String(l.condominio_id) === String(user?.condo_id));
+    }
+    return data.waterLevels[0];
+  }, [data.waterLevels, isCondoUser, user?.condo_id]);
 
   const openOS = filteredOSList.filter((os: any) => os.status === OSStatus.OPEN).length;
   const criticalEquip = filteredEquipList.filter((eq: any) => eq.electrical_state === 'Crítico').length;
@@ -62,13 +72,13 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
   };
 
   const StatCard = ({ title, value, icon: Icon, color, trend }: any) => (
-    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:border-blue-300 transition-all group">
       <div className="flex justify-between items-start mb-3">
-        <div className={`p-2.5 rounded-xl ${color} text-white`}><Icon size={20} /></div>
+        <div className={`p-2.5 rounded-xl ${color} text-white shadow-lg shadow-current/10`}><Icon size={20} /></div>
         {trend && <span className="text-[10px] font-black uppercase bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full border border-emerald-100">{trend}</span>}
       </div>
       <div>
-        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{title}</p>
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 group-hover:text-slate-600 transition-colors">{title}</p>
         <h3 className="text-2xl font-black text-slate-900 leading-none">{value}</h3>
       </div>
     </div>
@@ -89,80 +99,99 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
         <StatCard title="Ativos Críticos" value={criticalEquip} icon={AlertTriangle} color="bg-red-500" trend={criticalEquip > 0 ? "Atenção" : "OK"} />
         <StatCard title="OS Aberta" value={openOS} icon={Clock} color="bg-blue-600" trend="HOJE" />
         <StatCard title="OS Finalizada" value={completedOS} icon={CheckCircle2} color="bg-emerald-500" />
-        {/* Fix: Changed StatStatCard to StatCard to resolve "Cannot find name 'StatStatCard'" error */}
         <StatCard title="Agenda" value={data.appointments.length} icon={Calendar} color="bg-slate-700" />
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-        <div className="px-5 py-4 border-b bg-slate-50/50 flex justify-between items-center">
-          <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest flex items-center"><Clock size={14} className="mr-2 text-blue-600" /> Atividades Recentes</h3>
-        </div>
-        <div className="divide-y divide-slate-100">
-          {filteredOSList.slice(0, 5).map((os: any) => (
-            <div key={os.id} className="px-5 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
-              <div className="flex items-center space-x-4 min-w-0">
-                <div className={`w-1 h-10 rounded-full shrink-0 ${os.type === OSType.CORRECTIVE ? 'bg-red-50' : 'bg-blue-500'}`}></div>
-                <div className="min-w-0">
-                  <p className="font-bold text-slate-900 text-sm truncate">{data.condos.find((c: any) => c.id === os.condo_id)?.name}</p>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">{os.type} • {new Date(os.created_at).toLocaleDateString()}</p>
-                </div>
-              </div>
-              <span className={`px-2 py-1 rounded text-[9px] font-black uppercase ${os.status === OSStatus.COMPLETED ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>{os.status}</span>
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div className="xl:col-span-2 space-y-6">
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+            <div className="px-5 py-4 border-b bg-slate-50/50 flex justify-between items-center">
+              <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest flex items-center"><Clock size={14} className="mr-2 text-blue-600" /> Atividades Recentes</h3>
             </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-        <div className="px-5 py-4 border-b bg-slate-900 text-white flex justify-between items-center">
-          <h3 className="text-xs font-black uppercase tracking-widest flex items-center"><Calendar size={16} className="mr-2 text-blue-400" /> Agenda de Visitas Técnicas</h3>
-          {isAdminOrTech && (
-            <button 
-              onClick={() => { setEditingAppointment(null); setIsAppointmentModalOpen(true); }}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest flex items-center shadow-lg shadow-blue-500/20 active:scale-95 transition-all"
-            >
-              <Plus size={14} className="mr-1" /> Agendar Visita
-            </button>
-          )}
-        </div>
-        <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[400px] overflow-y-auto">
-          {filteredAppointments.length > 0 ? filteredAppointments.map((appt) => {
-            const condo = data.condos.find(c => c.id === appt.condo_id);
-            return (
-              <div key={appt.id} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col justify-between hover:border-blue-300 transition-colors group">
-                <div className="space-y-3">
-                  <div className="flex justify-between items-start">
-                    <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${
-                        appt.status === 'Realizada' ? 'bg-emerald-100 text-emerald-700' : 
-                        appt.status === 'Cancelada' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
-                      }`}>
-                      {appt.status}
-                    </span>
-                    {isAdminOrTech && (
-                      <div className="flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => { setEditingAppointment(appt); setIsAppointmentModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-blue-600 bg-white rounded-lg shadow-sm border">
-                          <Edit2 size={12} />
-                        </button>
-                        <button onClick={() => deleteAppointment(appt.id)} className="p-1.5 text-slate-400 hover:text-red-600 bg-white rounded-lg shadow-sm border">
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs font-black text-slate-900 leading-tight">{condo?.name || 'Condomínio não encontrado'}</p>
-                    <div className="flex items-center text-[10px] text-slate-500 font-bold uppercase tracking-tight">
-                      <Clock size={12} className="mr-1 text-blue-500" /> {new Date(appt.date).toLocaleDateString()} às {appt.time}
+            <div className="divide-y divide-slate-100">
+              {filteredOSList.slice(0, 5).map((os: any) => (
+                <div key={os.id} className="px-5 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => navigate('/os')}>
+                  <div className="flex items-center space-x-4 min-w-0">
+                    <div className={`w-1 h-10 rounded-full shrink-0 ${os.type === OSType.CORRECTIVE ? 'bg-red-50' : 'bg-blue-500'}`}></div>
+                    <div className="min-w-0">
+                      <p className="font-bold text-slate-900 text-sm truncate">{data.condos.find((c: any) => c.id === os.condo_id)?.name}</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">{os.type} • {new Date(os.created_at).toLocaleDateString()}</p>
                     </div>
                   </div>
+                  <span className={`px-2 py-1 rounded text-[9px] font-black uppercase ${os.status === OSStatus.COMPLETED ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>{os.status}</span>
                 </div>
-              </div>
-            );
-          }) : (
-            <div className="col-span-full py-12 text-center text-slate-400 text-xs font-black uppercase tracking-widest">
-              Nenhum agendamento futuro.
+              ))}
             </div>
-          )}
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          {/* Widget de Telemetria IoT */}
+          <div className="bg-slate-900 rounded-3xl p-6 text-white shadow-xl shadow-blue-900/20 relative overflow-hidden">
+             <div className="absolute top-0 right-0 p-4 opacity-10">
+                <Activity size={80} />
+             </div>
+             <div className="relative z-10">
+                <div className="flex items-center justify-between mb-6">
+                   <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-400">Telemetria Live</h4>
+                   <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-ping"></span>
+                </div>
+                
+                {latestWaterLevel ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                       <div>
+                          <p className="text-3xl font-black">{latestWaterLevel.percentual}%</p>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Nível do Reservatório</p>
+                       </div>
+                       <div className="p-3 bg-blue-600 rounded-2xl">
+                          <Droplets size={24} />
+                       </div>
+                    </div>
+                    <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
+                       <div className="bg-blue-500 h-full transition-all duration-1000" style={{ width: `${latestWaterLevel.percentual}%` }}></div>
+                    </div>
+                    <button onClick={() => navigate('/reservatorios')} className="w-full py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">
+                       Ver Detalhes IoT
+                    </button>
+                  </div>
+                ) : (
+                  <div className="py-8 text-center space-y-3">
+                     <WifiOff size={32} className="mx-auto text-slate-600" />
+                     <p className="text-xs font-bold text-slate-500 uppercase">Aguardando Conexão ESP32</p>
+                  </div>
+                )}
+             </div>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+            <div className="px-5 py-4 border-b bg-slate-900 text-white flex justify-between items-center">
+              <h3 className="text-[10px] font-black uppercase tracking-widest flex items-center"><Calendar size={14} className="mr-2 text-blue-400" /> Agenda</h3>
+              {isAdminOrTech && (
+                <button 
+                  onClick={() => { setEditingAppointment(null); setIsAppointmentModalOpen(true); }}
+                  className="bg-blue-600 hover:bg-blue-700 text-white p-1.5 rounded-lg active:scale-95 transition-all"
+                >
+                  <Plus size={14} />
+                </button>
+              )}
+            </div>
+            <div className="p-4 space-y-3 max-h-[300px] overflow-y-auto">
+              {filteredAppointments.length > 0 ? filteredAppointments.slice(0, 3).map((appt) => {
+                const condo = data.condos.find(c => c.id === appt.condo_id);
+                return (
+                  <div key={appt.id} className="bg-slate-50 border border-slate-100 rounded-xl p-3">
+                    <p className="text-[10px] font-black text-slate-900 truncate uppercase">{condo?.name || '---'}</p>
+                    <div className="flex items-center text-[9px] text-slate-500 font-bold uppercase mt-1">
+                      <Clock size={10} className="mr-1 text-blue-500" /> {new Date(appt.date).toLocaleDateString()} • {appt.time}
+                    </div>
+                  </div>
+                );
+              }) : (
+                <p className="text-[10px] text-center text-slate-400 font-bold uppercase py-4">Vazio</p>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
