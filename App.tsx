@@ -15,7 +15,9 @@ import {
   WifiOff,
   Cloud,
   Droplets,
-  Activity
+  Activity,
+  // Added RefreshCw to imports to fix "Cannot find name 'RefreshCw'" error
+  RefreshCw
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
@@ -105,6 +107,7 @@ const AppContent: React.FC = () => {
       setSyncStatus('synced');
       return cloudData;
     } catch (error) {
+      console.error("Erro ao buscar dados:", error);
       setSyncStatus('error');
       return currentLocalData;
     }
@@ -158,30 +161,35 @@ const AppContent: React.FC = () => {
   }, [fetchAllData]);
 
   const updateData = async (newData: AppData) => {
+    // Atualiza local imediatamente para fluidez da UI
     setData(newData);
     saveStore(newData);
 
-    // Sincronização Cloud em tempo real para Tabelas Críticas
     if (isOnline && isSupabaseActive) {
+      setSyncStatus('syncing');
       try {
-        // Exemplo para Sistemas (Onde ocorreu o erro do usuário)
-        if (newData.systems.length > 0) {
-          await supabase.from('systems').upsert(newData.systems);
-        }
-        // Exemplo para Equipamentos
-        if (newData.equipments.length > 0) {
-          await supabase.from('equipments').upsert(newData.equipments);
-        }
-        // Exemplo para Condomínios
-        if (newData.condos.length > 0) {
-          await supabase.from('condos').upsert(newData.condos);
-        }
-        // Exemplo para Ordens de Serviço
-        if (newData.serviceOrders.length > 0) {
-          await supabase.from('service_orders').upsert(newData.serviceOrders);
+        // Realiza upsert das tabelas críticas
+        // Importante: tratamos erros individualmente para não quebrar todo o fluxo
+        const results = await Promise.all([
+          newData.systems.length > 0 ? supabase.from('systems').upsert(newData.systems) : Promise.resolve({ error: null }),
+          newData.equipments.length > 0 ? supabase.from('equipments').upsert(newData.equipments) : Promise.resolve({ error: null }),
+          newData.condos.length > 0 ? supabase.from('condos').upsert(newData.condos) : Promise.resolve({ error: null }),
+          newData.serviceOrders.length > 0 ? supabase.from('service_orders').upsert(newData.serviceOrders) : Promise.resolve({ error: null })
+        ]);
+
+        const firstError = results.find(r => r.error);
+        if (firstError) {
+          console.error("Erro na sincronização Cloud:", firstError.error);
+          setSyncStatus('error');
+          // Lançamos o erro para ser capturado pela página que chamou o updateData
+          throw new Error(firstError.error.message);
+        } else {
+          setSyncStatus('synced');
         }
       } catch (err) {
-        console.error("Erro ao sincronizar com a nuvem:", err);
+        setSyncStatus('error');
+        console.error("Erro crítico de sincronização:", err);
+        throw err; // Repassa para o componente (ex: SystemsPage)
       }
     }
   };
@@ -255,8 +263,14 @@ const AppContent: React.FC = () => {
       <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         <header className="bg-white border-b border-slate-200 h-16 hidden md:flex items-center justify-between px-8 shrink-0">
           <div className="flex items-center space-x-4 text-[10px] font-black uppercase tracking-widest text-emerald-500">
-            <Cloud size={14} className="mr-2" />
-            <span>Sincronismo Ativo</span>
+            {syncStatus === 'syncing' ? (
+              <RefreshCw size={14} className="mr-2 animate-spin text-blue-500" />
+            ) : (
+              <Cloud size={14} className={`mr-2 ${syncStatus === 'error' ? 'text-red-500' : 'text-emerald-500'}`} />
+            )}
+            <span className={syncStatus === 'error' ? 'text-red-500' : 'text-emerald-500'}>
+              {syncStatus === 'syncing' ? 'Sincronizando...' : syncStatus === 'error' ? 'Erro ao Sincronizar' : 'Cloud OK'}
+            </span>
           </div>
           <div className="flex items-center space-x-4">
              {isOnline ? (

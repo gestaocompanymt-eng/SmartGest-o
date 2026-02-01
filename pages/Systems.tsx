@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Settings, Monitor, Activity, Edit2, Trash2, X, Cpu, CheckCircle2, Circle, Layers, FilePlus, MapPin, Droplets, Save, Loader2 } from 'lucide-react';
+import { Plus, Settings, Monitor, Activity, Edit2, Trash2, X, Cpu, CheckCircle2, Circle, Layers, FilePlus, MapPin, Droplets, Save, Loader2, AlertTriangle } from 'lucide-react';
 import { System, SystemType, Condo, UserRole, Equipment, MonitoringPoint } from '../types';
 
 const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
@@ -11,6 +11,7 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
   const [points, setPoints] = useState<MonitoringPoint[]>([]);
   const [selectedTypeId, setSelectedTypeId] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const user = data.currentUser;
   const isAdmin = user?.role === UserRole.ADMIN;
@@ -22,6 +23,7 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
     : data.systems;
 
   const openModal = (sys: System | null) => {
+    setSaveError(null);
     setEditingSys(sys);
     setSelectedTypeId(sys?.type_id || '1');
     setPoints(sys?.monitoring_points || []);
@@ -45,25 +47,38 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsSaving(true);
+    setSaveError(null);
     
     const formData = new FormData(e.currentTarget);
-    
-    // Filtra pontos válidos (que tenham ID da placa preenchido)
+    const condoId = formData.get('condoId') as string;
+    const name = formData.get('name') as string;
+
+    if (!condoId) {
+      setSaveError("Selecione um condomínio.");
+      setIsSaving(false);
+      return;
+    }
+
+    // Filtra pontos válidos
     const validPoints = points
       .filter(p => p.device_id && p.device_id.trim() !== "")
-      .map(p => ({ ...p, device_id: p.device_id.trim() }));
+      .map(p => ({ 
+        id: p.id || Math.random().toString(36).substr(2, 5),
+        name: p.name.trim(), 
+        device_id: p.device_id.trim() 
+      }));
 
     const sysData: System = {
-      id: editingSys?.id || Math.random().toString(36).substr(2, 9),
-      condo_id: formData.get('condoId') as string,
-      type_id: selectedTypeId,
-      name: formData.get('name') as string,
-      location: formData.get('location') as string,
+      id: editingSys?.id || `sys_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      condo_id: condoId,
+      type_id: String(selectedTypeId),
+      name: name.trim(),
+      location: (formData.get('location') as string || '').trim(),
       equipment_ids: editingSys?.equipment_ids || [], 
-      // CRÍTICO: Garante que pontos só existam se for o tipo 7 (Monitoramento)
-      monitoring_points: String(selectedTypeId) === '7' ? validPoints : undefined,
-      parameters: formData.get('parameters') as string,
-      observations: formData.get('observations') as string,
+      // Usamos [] em vez de null/undefined para garantir que o Postgres entenda como JSON vazio se for o caso
+      monitoring_points: String(selectedTypeId) === '7' ? validPoints : [],
+      parameters: (formData.get('parameters') as string || '').trim(),
+      observations: (formData.get('observations') as string || '').trim(),
       updated_at: new Date().toISOString()
     };
 
@@ -72,12 +87,16 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
       : [sysData, ...data.systems];
 
     try {
+      // O updateData agora lança exceção se a nuvem falhar
       await updateData({ ...data, systems: newSystems });
+      
+      // Sucesso
       setIsModalOpen(false);
       setEditingSys(null);
       setPoints([]);
-    } catch (err) {
-      alert("Erro ao salvar o sistema. Verifique sua conexão.");
+    } catch (err: any) {
+      console.error("Falha ao salvar sistema:", err);
+      setSaveError(err.message || "Erro de conexão com o servidor. Tente novamente.");
     } finally {
       setIsSaving(false);
     }
@@ -186,6 +205,14 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
               <button onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm"><X size={24} /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
+              
+              {saveError && (
+                <div className="bg-red-50 border border-red-100 p-4 rounded-xl flex items-start space-x-3 animate-in fade-in slide-in-from-top">
+                  <AlertTriangle className="text-red-500 shrink-0" size={18} />
+                  <p className="text-xs font-bold text-red-600 leading-relaxed">{saveError}</p>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                  <div className="space-y-1">
                     <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Condomínio</label>

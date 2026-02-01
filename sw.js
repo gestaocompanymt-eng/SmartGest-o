@@ -1,12 +1,12 @@
 
-const CACHE_NAME = 'smart-gestao-v26';
+const CACHE_NAME = 'smart-gestao-v27';
 
 // Instalação: Cacheia arquivos fundamentais
 self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// Ativação: Limpa caches antigos imediatamente
+// Ativação: Limpa caches antigos
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
@@ -18,15 +18,29 @@ self.addEventListener('activate', (event) => {
   return self.clients.claim();
 });
 
-// Fetch: Prioridade total para a Rede em chamadas de API
+// Ouvinte para cliques na notificação (Obrigatório para Mobile)
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      if (clientList.length > 0) {
+        let client = clientList[0];
+        for (let i = 0; i < clientList.length; i++) {
+          if (clientList[i].focused) {
+            client = clientList[i];
+          }
+        }
+        return client.focus();
+      }
+      return clients.openWindow('/');
+    })
+  );
+});
+
+// Fetch: Prioridade para rede
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-
-  // NUNCA cacheia chamadas ao Supabase para evitar disparidade entre celular e desktop
-  if (url.hostname.includes('supabase.co')) {
-    return; 
-  }
-
+  if (url.hostname.includes('supabase.co')) return; 
   if (event.request.method !== 'GET') return;
 
   event.respondWith(
