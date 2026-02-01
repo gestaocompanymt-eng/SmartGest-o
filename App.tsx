@@ -99,6 +99,26 @@ const AppContent: React.FC = () => {
     }
   }, []);
 
+  // Polling Effect para Telemetria em Tempo Real (A cada 30 segundos)
+  useEffect(() => {
+    let interval: any;
+    
+    if (data?.currentUser && navigator.onLine) {
+      interval = setInterval(async () => {
+        if (dataRef.current && !isSyncingRef.current) {
+          console.log("SmartGestão: Auto-refreshing telemetry...");
+          const updated = await fetchAllData(dataRef.current);
+          setData(updated);
+          saveStore(updated);
+        }
+      }, 30000); // 30 segundos
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [fetchAllData, !!data?.currentUser]);
+
   useEffect(() => {
     const init = async () => {
       const local = getStore();

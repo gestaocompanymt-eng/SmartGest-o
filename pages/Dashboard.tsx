@@ -1,6 +1,6 @@
 
 import React, { useMemo } from 'react';
-import { AlertTriangle, Clock, Calendar, Droplets, Activity, WifiOff, ChevronRight } from 'lucide-react';
+import { AlertTriangle, Clock, Calendar, Droplets, Activity, WifiOff, ChevronRight, RefreshCw } from 'lucide-react';
 import { AppData, OSStatus, OSType, UserRole } from '../types';
 import { useNavigate } from 'react-router-dom';
 
@@ -17,7 +17,6 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
     const levels = data.waterLevels || [];
     const criticalPoints = [];
     
-    // CORREÇÃO: Busca IDs dos sensores nos SISTEMAS (tipo 7) e não nos condomínios
     const allowedDeviceIds = new Set<string>();
     data.systems.forEach(s => {
       if (s.type_id === '7' && (!isCondoUser || s.condo_id === user?.condo_id)) {
@@ -30,12 +29,10 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
     });
 
     const processedIds = new Set();
-    // Pegamos a última leitura de cada sensor
     for(const l of levels) {
       const devId = String(l.condominio_id || '').trim().toLowerCase();
       
       if (allowedDeviceIds.has(devId) && !processedIds.has(devId)) {
-        // Se o nível for menor que 30, é crítico
         if (l.percentual < 30) {
           criticalPoints.push(l);
         }
@@ -121,7 +118,10 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
              </div>
              <div className="relative z-10">
                 <div className="flex items-center justify-between mb-6 md:mb-8">
-                   <h4 className="text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] text-blue-400">Live Telemetria</h4>
+                   <div className="flex items-center space-x-2">
+                     <h4 className="text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] text-blue-400">Live Telemetria</h4>
+                     <RefreshCw size={10} className="text-blue-500/50 animate-spin" />
+                   </div>
                    <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-ping"></span>
                 </div>
                 
