@@ -12,7 +12,7 @@ export enum ContractType {
 
 export enum OSType {
   PREVENTIVE = 'Preventiva',
-  CORRECTIVE = 'Corretiva',
+  CORRETIVE = 'Corretiva',
   SERVICE = 'Serviço Avulso'
 }
 
@@ -33,6 +33,12 @@ export interface SystemType {
   name: string;
 }
 
+export interface MonitoringPoint {
+  id: string;
+  name: string; // Ex: "Reservatório Superior", "Torre A - Inferior"
+  device_id: string; // O ID que vem do ESP32 (ex: box_001)
+}
+
 export interface Condo {
   id: string;
   name: string;
@@ -40,10 +46,10 @@ export interface Condo {
   manager: string;
   contract_type: ContractType;
   start_date: string;
+  monitoring_points: MonitoringPoint[]; // Suporte a múltiplos dispositivos
   updated_at?: string;
 }
 
-// Interface para telemetria de equipamento (Tuya/IoT)
 export interface Equipment {
   id: string;
   condo_id: string;
@@ -62,7 +68,6 @@ export interface Equipment {
   photos: string[];
   last_maintenance: string;
   updated_at?: string;
-  // Novos campos para suporte ao Monitoramento IoT/Tuya
   tuya_device_id?: string;
   is_online?: boolean;
   monitoring_status?: 'normal' | 'atencao' | 'critico';
@@ -118,7 +123,6 @@ export interface Appointment {
   updated_at?: string;
 }
 
-// Interface para alertas gerados pelo monitoramento Tuya
 export interface MonitoringAlert {
   id: string;
   equipment_id: string;
@@ -128,7 +132,6 @@ export interface MonitoringAlert {
   created_at: string;
 }
 
-// Interface para o monitoramento de nível de reservatório (nivel_caixa)
 export interface WaterLevel {
   id: number;
   condominio_id: string;

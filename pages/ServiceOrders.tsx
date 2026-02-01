@@ -207,7 +207,8 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
             <div key={os.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden transition-all">
               <div className="p-4 flex items-center justify-between cursor-pointer" onClick={() => setExpandedOS(isExpanded ? null : os.id)}>
                 <div className="flex items-center space-x-4 min-w-0">
-                  <div className={`p-2.5 rounded-xl ${os.type === OSType.CORRECTIVE ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>
+                  {/* Fixed typo: changed OSType.CORRECTIVE to OSType.CORRETIVE */}
+                  <div className={`p-2.5 rounded-xl ${os.type === OSType.CORRETIVE ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>
                     <FileText size={20} />
                   </div>
                   <div className="min-w-0">
