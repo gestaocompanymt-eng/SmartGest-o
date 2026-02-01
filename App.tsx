@@ -12,8 +12,8 @@ import {
   Menu, 
   X,
   Droplets,
-  Activity,
-  RefreshCw
+  RefreshCw,
+  Activity
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
@@ -28,6 +28,7 @@ import ServiceOrders from './pages/ServiceOrders';
 import AdminSettings from './pages/AdminSettings';
 import Login from './pages/Login';
 import WaterLevel from './pages/WaterLevel';
+import Monitoring from './pages/Monitoring';
 
 const AppContent: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
@@ -45,37 +46,62 @@ const AppContent: React.FC = () => {
     dataRef.current = data;
   }, [data]);
 
+  /**
+   * Função de União Inteligente (Merge por ID)
+   * Garante que sistemas novos criados no celular não sumam se o banco estiver atrasado.
+   */
+  const smartUnion = (local: any[], cloud: any[] | null) => {
+    if (!cloud) return local;
+    
+    const map = new Map();
+    // Primeiro colocamos tudo o que veio da nuvem
+    cloud.forEach(item => map.set(item.id, item));
+    // Depois mesclamos com o local, preservando o que for mais novo ou específico do local
+    local.forEach(item => {
+      if (!map.has(item.id)) {
+        map.set(item.id, item);
+      } else {
+        // Se ambos existem, comparamos updated_at se disponível
+        const cloudItem = map.get(item.id);
+        const localDate = new Date(item.updated_at || 0).getTime();
+        const cloudDate = new Date(cloudItem.updated_at || 0).getTime();
+        
+        if (localDate > cloudDate) {
+          map.set(item.id, item);
+        }
+      }
+    });
+    return Array.from(map.values());
+  };
+
   const fetchAllData = useCallback(async (currentLocalData: AppData) => {
     if (!navigator.onLine || !isSupabaseActive || isSyncingRef.current) return currentLocalData;
     
     setSyncStatus('syncing');
     try {
-      const [resUsers, resCondos, resEquips, resSystems, resOS, resAppts, resLevels] = await Promise.all([
+      const [resUsers, resCondos, resEquips, resSystems, resOS, resAppts, resLevels, resAlerts] = await Promise.all([
         supabase.from('users').select('*'),
         supabase.from('condos').select('*'),
         supabase.from('equipments').select('*'),
         supabase.from('systems').select('*'),
         supabase.from('service_orders').select('*'),
         supabase.from('appointments').select('*'),
-        supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(100)
+        supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(200),
+        supabase.from('monitoring_alerts').select('*')
       ]);
-
-      const merge = (cloud: any[] | null, local: any[]) => {
-        if (cloud && cloud.length > 0) return cloud;
-        return local;
-      };
 
       const cloudData: AppData = {
         ...currentLocalData,
-        users: merge(resUsers.data, currentLocalData.users),
-        condos: merge(resCondos.data, currentLocalData.condos),
-        equipments: merge(resEquips.data, currentLocalData.equipments),
-        systems: merge(resSystems.data, currentLocalData.systems),
-        serviceOrders: (resOS.data && resOS.data.length > 0) 
-          ? resOS.data.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
-          : currentLocalData.serviceOrders,
-        appointments: merge(resAppts.data, currentLocalData.appointments),
-        waterLevels: resLevels.data || [],
+        users: smartUnion(currentLocalData.users, resUsers.data),
+        condos: smartUnion(currentLocalData.condos, resCondos.data),
+        equipments: smartUnion(currentLocalData.equipments, resEquips.data),
+        systems: smartUnion(currentLocalData.systems, resSystems.data),
+        serviceOrders: smartUnion(currentLocalData.serviceOrders, resOS.data).sort((a: any, b: any) => 
+          new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+        ),
+        appointments: smartUnion(currentLocalData.appointments, resAppts.data),
+        waterLevels: resLevels.data || currentLocalData.waterLevels,
+        monitoringAlerts: smartUnion(currentLocalData.monitoringAlerts, resAlerts.data),
       };
       
       setSyncStatus('synced');
@@ -129,11 +155,13 @@ const AppContent: React.FC = () => {
       
       try {
         const syncPromises = [];
+        // Enviamos tudo usando upsert para garantir que o banco tenha a versão mais atual do celular
         if (newData.systems.length > 0) syncPromises.push(supabase.from('systems').upsert(newData.systems));
         if (newData.equipments.length > 0) syncPromises.push(supabase.from('equipments').upsert(newData.equipments));
         if (newData.condos.length > 0) syncPromises.push(supabase.from('condos').upsert(newData.condos));
         if (newData.serviceOrders.length > 0) syncPromises.push(supabase.from('service_orders').upsert(newData.serviceOrders));
         if (newData.users.length > 0) syncPromises.push(supabase.from('users').upsert(newData.users.map(u => ({...u, password: u.password || ''}))));
+        if (newData.monitoringAlerts.length > 0) syncPromises.push(supabase.from('monitoring_alerts').upsert(newData.monitoringAlerts));
 
         await Promise.all(syncPromises);
         setSyncStatus('synced');
@@ -208,6 +236,7 @@ const AppContent: React.FC = () => {
             <NavItem to="/condos" icon={Building2} label="Condomínios" />
             <NavItem to="/equipment" icon={Layers} label="Equipamentos" />
             <NavItem to="/systems" icon={Wrench} label="Sistemas" />
+            <NavItem to="/monitoring" icon={Activity} label="Monitoramento" />
             <NavItem to="/os" icon={FileText} label="Ordens de Serviço" />
             <NavItem to="/reservatorios" icon={Droplets} label="Reservatórios" />
             {data.currentUser?.role === UserRole.ADMIN && (
@@ -244,6 +273,7 @@ const AppContent: React.FC = () => {
           <Route path="/condos" element={<Condos data={data} updateData={updateData} />} />
           <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} />} />
           <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} />} />
+          <Route path="/monitoring" element={<Monitoring data={data} updateData={updateData} />} />
           <Route path="/os" element={<ServiceOrders data={data} updateData={updateData} />} />
           <Route path="/reservatorios" element={<WaterLevel data={data} updateData={updateData} onRefresh={async () => {
              const updated = await fetchAllData(data);

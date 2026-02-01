@@ -1,5 +1,4 @@
 
-
 export enum UserRole {
   ADMIN = 'ADMIN',
   TECHNICIAN = 'TECHNICIAN',
@@ -36,8 +35,8 @@ export interface SystemType {
 
 export interface MonitoringPoint {
   id: string;
-  name: string; // Ex: "Reservatório Superior", "Torre A - Inferior"
-  device_id: string; // O ID que vem do ESP32 (ex: box_001)
+  name: string; 
+  device_id: string; 
 }
 
 export interface Condo {
@@ -49,6 +48,16 @@ export interface Condo {
   start_date: string;
   monitoring_points?: MonitoringPoint[]; 
   updated_at?: string;
+}
+
+// Added MonitoringAlert interface to fix import error in Monitoring.tsx
+export interface MonitoringAlert {
+  id: string;
+  equipment_id: string;
+  message: string;
+  value: string;
+  is_resolved: boolean;
+  created_at: string;
 }
 
 export interface Equipment {
@@ -69,7 +78,7 @@ export interface Equipment {
   photos: string[];
   last_maintenance: string;
   updated_at?: string;
-  // Added fields for Tuya/Cloud monitoring support used in Monitoring.tsx
+  // Added monitoring properties used in Monitoring.tsx
   tuya_device_id?: string;
   monitoring_status?: 'normal' | 'atencao' | 'critico';
   is_online?: boolean;
@@ -135,16 +144,6 @@ export interface WaterLevel {
   created_at: string;
 }
 
-// Added interface for equipment monitoring alerts
-export interface MonitoringAlert {
-  id: string;
-  equipment_id: string;
-  message: string;
-  value: string;
-  is_resolved: boolean;
-  created_at: string;
-}
-
 export interface User {
   id: string;
   name: string;
@@ -165,6 +164,6 @@ export interface AppData {
   equipmentTypes: EquipmentType[];
   systemTypes: SystemType[];
   currentUser: User | null;
-  // Added to support the monitoring dashboard and active alerts
+  // Added monitoringAlerts property used in Monitoring.tsx
   monitoringAlerts: MonitoringAlert[];
 }

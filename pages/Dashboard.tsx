@@ -1,25 +1,22 @@
 
-import React, { useState, useMemo } from 'react';
-import { Building2, AlertTriangle, CheckCircle2, Clock, Calendar, Plus, Edit2, Trash2, X, Droplets, Activity, WifiOff, ChevronRight } from 'lucide-react';
-import { AppData, OSStatus, OSType, UserRole, Appointment, Condo, User } from '../types';
+import React, { useMemo } from 'react';
+import { AlertTriangle, Clock, Calendar, Droplets, Activity, WifiOff, ChevronRight } from 'lucide-react';
+import { AppData, OSStatus, OSType, UserRole } from '../types';
 import { useNavigate } from 'react-router-dom';
 
-const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> = ({ data, updateData }) => {
+const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> = ({ data }) => {
   const navigate = useNavigate();
   const user = data.currentUser;
   const isCondoUser = user?.role === UserRole.CONDO_USER;
-  const isAdminOrTech = user?.role === UserRole.ADMIN || user?.role === UserRole.TECHNICIAN;
 
   const filteredOSList = useMemo(() => isCondoUser 
     ? data.serviceOrders.filter(os => os.condo_id === user?.condo_id)
     : data.serviceOrders, [data.serviceOrders, isCondoUser, user?.condo_id]);
 
-  // Busca pontos críticos de telemetria
   const telemetrySummary = useMemo(() => {
     const levels = data.waterLevels || [];
     const criticalPoints = [];
     
-    // Lista de IDs que pertencem ao usuário atual ou todos se admin
     const allowedDeviceIds = new Set();
     data.condos.forEach(c => {
       if (!isCondoUser || c.id === user?.condo_id) {
