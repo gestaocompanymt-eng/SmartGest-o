@@ -4,6 +4,7 @@ import { INITIAL_EQUIPMENT_TYPES, INITIAL_SYSTEM_TYPES } from './constants';
 
 const STORAGE_KEY = 'smart_gestao_data_v3';
 
+// Added monitoringAlerts to initialData
 const initialData: AppData = {
   condos: [],
   equipments: [],
@@ -45,6 +46,7 @@ export const getStore = (): AppData => {
     if (!parsedData.users) parsedData.users = [];
     if (!parsedData.equipmentTypes) parsedData.equipmentTypes = INITIAL_EQUIPMENT_TYPES;
     if (!parsedData.systemTypes) parsedData.systemTypes = INITIAL_SYSTEM_TYPES;
+    // Added fallback initialization for monitoringAlerts field
     if (!parsedData.monitoringAlerts) parsedData.monitoringAlerts = [];
     
     return parsedData;

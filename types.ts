@@ -50,16 +50,7 @@ export interface Condo {
   updated_at?: string;
 }
 
-// Added MonitoringAlert interface to fix import error in Monitoring.tsx
-export interface MonitoringAlert {
-  id: string;
-  equipment_id: string;
-  message: string;
-  value: string;
-  is_resolved: boolean;
-  created_at: string;
-}
-
+// Updated Equipment interface with Tuya monitoring fields
 export interface Equipment {
   id: string;
   condo_id: string;
@@ -78,10 +69,10 @@ export interface Equipment {
   photos: string[];
   last_maintenance: string;
   updated_at?: string;
-  // Added monitoring properties used in Monitoring.tsx
+  // Tuya Cloud integration fields
   tuya_device_id?: string;
-  monitoring_status?: 'normal' | 'atencao' | 'critico';
   is_online?: boolean;
+  monitoring_status?: 'normal' | 'atencao' | 'critico';
   last_reading?: {
     power: number;
     current: number;
@@ -144,6 +135,16 @@ export interface WaterLevel {
   created_at: string;
 }
 
+// Added MonitoringAlert interface to fix missing export error in Monitoring.tsx
+export interface MonitoringAlert {
+  id: string;
+  equipment_id: string;
+  message: string;
+  value: string | number;
+  is_resolved: boolean;
+  created_at: string;
+}
+
 export interface User {
   id: string;
   name: string;
@@ -164,6 +165,6 @@ export interface AppData {
   equipmentTypes: EquipmentType[];
   systemTypes: SystemType[];
   currentUser: User | null;
-  // Added monitoringAlerts property used in Monitoring.tsx
+  // Added monitoringAlerts array to AppData
   monitoringAlerts: MonitoringAlert[];
 }

@@ -11,9 +11,7 @@ import {
   LogOut, 
   Menu, 
   X,
-  Droplets,
-  RefreshCw,
-  Activity
+  Droplets
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
@@ -28,12 +26,10 @@ import ServiceOrders from './pages/ServiceOrders';
 import AdminSettings from './pages/AdminSettings';
 import Login from './pages/Login';
 import WaterLevel from './pages/WaterLevel';
-import Monitoring from './pages/Monitoring';
 
 const AppContent: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [data, setData] = useState<AppData | null>(null);
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error' | 'offline'>('synced');
   const [isInitialSyncing, setIsInitialSyncing] = useState(true);
   
@@ -48,24 +44,23 @@ const AppContent: React.FC = () => {
 
   /**
    * Função de União Inteligente (Merge por ID)
-   * Garante que sistemas novos criados no celular não sumam se o banco estiver atrasado.
+   * Impede que dados criados localmente (como novos sistemas) sumam se o banco estiver vazio ou desatualizado.
    */
   const smartUnion = (local: any[], cloud: any[] | null) => {
-    if (!cloud) return local;
+    if (!cloud || cloud.length === 0) return local;
     
     const map = new Map();
-    // Primeiro colocamos tudo o que veio da nuvem
+    // Prioriza o que vem da nuvem como base
     cloud.forEach(item => map.set(item.id, item));
-    // Depois mesclamos com o local, preservando o que for mais novo ou específico do local
+    // Mescla com o local. Se o local tiver algo que a nuvem não tem (novo cadastro), mantém o local.
     local.forEach(item => {
       if (!map.has(item.id)) {
         map.set(item.id, item);
       } else {
-        // Se ambos existem, comparamos updated_at se disponível
         const cloudItem = map.get(item.id);
         const localDate = new Date(item.updated_at || 0).getTime();
         const cloudDate = new Date(cloudItem.updated_at || 0).getTime();
-        
+        // Se a versão local for mais recente, mantém a local para posterior upload
         if (localDate > cloudDate) {
           map.set(item.id, item);
         }
@@ -79,6 +74,7 @@ const AppContent: React.FC = () => {
     
     setSyncStatus('syncing');
     try {
+      // Added fetching monitoring_alerts from Supabase
       const [resUsers, resCondos, resEquips, resSystems, resOS, resAppts, resLevels, resAlerts] = await Promise.all([
         supabase.from('users').select('*'),
         supabase.from('condos').select('*'),
@@ -101,7 +97,7 @@ const AppContent: React.FC = () => {
         ),
         appointments: smartUnion(currentLocalData.appointments, resAppts.data),
         waterLevels: resLevels.data || currentLocalData.waterLevels,
-        monitoringAlerts: smartUnion(currentLocalData.monitoringAlerts, resAlerts.data),
+        monitoringAlerts: smartUnion(currentLocalData.monitoringAlerts || [], resAlerts.data)
       };
       
       setSyncStatus('synced');
@@ -125,23 +121,18 @@ const AppContent: React.FC = () => {
     init();
 
     const handleOnline = () => {
-      setIsOnline(true);
       setSyncStatus('syncing');
       if (dataRef.current) fetchAllData(dataRef.current).then(updated => {
         setData(updated);
         saveStore(updated);
       });
     };
-    const handleOffline = () => {
-      setIsOnline(false);
-      setSyncStatus('offline');
-    };
     
     window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+    window.addEventListener('offline', () => setSyncStatus('offline'));
     return () => {
       window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('offline', () => setSyncStatus('offline'));
     };
   }, [fetchAllData]);
 
@@ -155,13 +146,13 @@ const AppContent: React.FC = () => {
       
       try {
         const syncPromises = [];
-        // Enviamos tudo usando upsert para garantir que o banco tenha a versão mais atual do celular
         if (newData.systems.length > 0) syncPromises.push(supabase.from('systems').upsert(newData.systems));
         if (newData.equipments.length > 0) syncPromises.push(supabase.from('equipments').upsert(newData.equipments));
         if (newData.condos.length > 0) syncPromises.push(supabase.from('condos').upsert(newData.condos));
         if (newData.serviceOrders.length > 0) syncPromises.push(supabase.from('service_orders').upsert(newData.serviceOrders));
         if (newData.users.length > 0) syncPromises.push(supabase.from('users').upsert(newData.users.map(u => ({...u, password: u.password || ''}))));
-        if (newData.monitoringAlerts.length > 0) syncPromises.push(supabase.from('monitoring_alerts').upsert(newData.monitoringAlerts));
+        // Sync monitoring_alerts table
+        if (newData.monitoringAlerts?.length > 0) syncPromises.push(supabase.from('monitoring_alerts').upsert(newData.monitoringAlerts));
 
         await Promise.all(syncPromises);
         setSyncStatus('synced');
@@ -180,7 +171,7 @@ const AppContent: React.FC = () => {
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-center">
         <Wrench size={48} className="text-blue-500 animate-bounce mb-6" />
         <h2 className="text-white font-black uppercase tracking-widest text-lg mb-2">SmartGestão</h2>
-        <p className="text-slate-400 text-sm font-bold animate-pulse">Sincronizando Nuvem...</p>
+        <p className="text-slate-400 text-sm font-bold animate-pulse">Carregando...</p>
       </div>
     );
   }
@@ -236,7 +227,6 @@ const AppContent: React.FC = () => {
             <NavItem to="/condos" icon={Building2} label="Condomínios" />
             <NavItem to="/equipment" icon={Layers} label="Equipamentos" />
             <NavItem to="/systems" icon={Wrench} label="Sistemas" />
-            <NavItem to="/monitoring" icon={Activity} label="Monitoramento" />
             <NavItem to="/os" icon={FileText} label="Ordens de Serviço" />
             <NavItem to="/reservatorios" icon={Droplets} label="Reservatórios" />
             {data.currentUser?.role === UserRole.ADMIN && (
@@ -273,7 +263,6 @@ const AppContent: React.FC = () => {
           <Route path="/condos" element={<Condos data={data} updateData={updateData} />} />
           <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} />} />
           <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} />} />
-          <Route path="/monitoring" element={<Monitoring data={data} updateData={updateData} />} />
           <Route path="/os" element={<ServiceOrders data={data} updateData={updateData} />} />
           <Route path="/reservatorios" element={<WaterLevel data={data} updateData={updateData} onRefresh={async () => {
              const updated = await fetchAllData(data);

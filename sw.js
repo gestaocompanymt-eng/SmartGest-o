@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'smart-gestao-v30';
+const CACHE_NAME = 'smart-gestao-v31';
 
 // Instalação: Cacheia arquivos fundamentais
 self.addEventListener('install', (event) => {
@@ -22,29 +22,9 @@ self.addEventListener('activate', (event) => {
   return self.clients.claim();
 });
 
-// Ouvinte para cliques na notificação
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      if (clientList.length > 0) {
-        let client = clientList[0];
-        for (let i = 0; i < clientList.length; i++) {
-          if (clientList[i].focused) {
-            client = clientList[i];
-          }
-        }
-        return client.focus();
-      }
-      return clients.openWindow('/');
-    })
-  );
-});
-
 // Fetch: Prioridade para rede para evitar dados defasados
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  // Não cacheia chamadas do Supabase para garantir tempo real
   if (url.hostname.includes('supabase.co')) return; 
   if (event.request.method !== 'GET') return;
 
