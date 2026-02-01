@@ -51,6 +51,7 @@ const AppContent: React.FC = () => {
   }, [data]);
 
   const fetchAllData = useCallback(async (currentLocalData: AppData) => {
+    // Se estivermos no meio de um updateData, não puxamos dados para não sobrescrever o que está sendo salvo
     if (!navigator.onLine || !isSupabaseActive || isSyncingRef.current) return currentLocalData;
     
     setSyncStatus('syncing');
@@ -119,17 +120,18 @@ const AppContent: React.FC = () => {
   const updateData = async (newData: AppData) => {
     const oldData = dataRef.current;
     
-    // 1. Atualiza local imediatamente para UI não travar
+    // 1. Atualiza local imediatamente
     setData(newData);
     saveStore(newData);
 
     if (isOnline && isSupabaseActive) {
-      isSyncingRef.current = true;
+      isSyncingRef.current = true; // Bloqueia fetchAllData de rodar
       setSyncStatus('syncing');
       
       try {
         const tablesToUpdate = [];
         
+        // Verifica o que mudou comparando com a referência anterior
         if (JSON.stringify(newData.systems) !== JSON.stringify(oldData?.systems)) tablesToUpdate.push('systems');
         if (JSON.stringify(newData.equipments) !== JSON.stringify(oldData?.equipments)) tablesToUpdate.push('equipments');
         if (JSON.stringify(newData.condos) !== JSON.stringify(oldData?.condos)) tablesToUpdate.push('condos');
@@ -141,12 +143,6 @@ const AppContent: React.FC = () => {
           
           if (error) {
             console.error(`Erro ao sincronizar tabela ${table}:`, error);
-            setSyncStatus('error');
-            // Reverte local se falhar na nuvem para não dar falso positivo
-            if (oldData) {
-              setData(oldData);
-              saveStore(oldData);
-            }
             throw new Error(`Falha na Nuvem (${table}): ${error.message}`);
           }
         }
@@ -155,6 +151,7 @@ const AppContent: React.FC = () => {
       } catch (err) {
         setSyncStatus('error');
         console.error("Erro crítico de sincronização:", err);
+        // Em caso de erro, mantemos o local mas marcamos como erro
         throw err;
       } finally {
         isSyncingRef.current = false;

@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Settings, Monitor, Activity, Edit2, Trash2, X, Cpu, CheckCircle2, Circle, Layers, FilePlus, MapPin, Droplets, Save, Loader2, AlertTriangle } from 'lucide-react';
+import { Plus, Settings, Monitor, Activity, Edit2, Trash2, X, Cpu, CheckCircle2, Circle, Layers, FilePlus, MapPin, Droplets, Save, Loader2, AlertTriangle, Info } from 'lucide-react';
 import { System, SystemType, Condo, UserRole, Equipment, MonitoringPoint } from '../types';
 
 const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
@@ -59,14 +59,20 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
       return;
     }
 
-    // Limpeza de pontos: remove vazios
+    // Limpeza de pontos: garante que o ID ESP32 não esteja vazio
     const validPoints = points
       .filter(p => p.device_id && p.device_id.trim() !== "")
       .map(p => ({ 
         id: p.id || Math.random().toString(36).substr(2, 5),
-        name: p.name.trim() || 'Ponto de Nível', 
-        device_id: p.device_id.trim() 
+        name: p.name.trim() || 'Reservatório', 
+        device_id: p.device_id.trim().toUpperCase() // Padroniza para caixa alta
       }));
+
+    if (selectedTypeId === '7' && validPoints.length === 0) {
+      setSaveError("Adicione pelo menos um Ponto com ID ESP32 válido.");
+      setIsSaving(false);
+      return;
+    }
 
     const sysData: System = {
       id: editingSys?.id || `sys-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
@@ -81,13 +87,12 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
       updated_at: new Date().toISOString()
     };
 
-    const newSystems = editingSys
+    const newSystemsList = editingSys
       ? data.systems.map((s: System) => s.id === editingSys.id ? sysData : s)
       : [sysData, ...data.systems];
 
     try {
-      await updateData({ ...data, systems: newSystems });
-      
+      await updateData({ ...data, systems: newSystemsList });
       setIsModalOpen(false);
       setEditingSys(null);
       setPoints([]);
@@ -109,7 +114,7 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-900 leading-tight">Sistemas</h1>
-          <p className="text-sm text-slate-500">Gestão de conjuntos técnicos e telemetria.</p>
+          <p className="text-sm text-slate-500">Gestão de conjuntos técnicos e monitoramento.</p>
         </div>
         {(isAdmin || isTech) && (
           <button onClick={() => openModal(null)} className="w-full md:w-auto bg-slate-900 text-white px-6 py-2.5 rounded-xl flex items-center justify-center space-x-2 font-black uppercase text-[10px] tracking-widest shadow-lg active:scale-95 transition-all">
@@ -124,12 +129,11 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
           const condo = data.condos.find((c: Condo) => c.id === sys.condo_id);
           const type = data.systemTypes.find((t: SystemType) => t.id === sys.type_id);
           const isMonitoring = sys.type_id === '7';
-          const pointsCount = sys.monitoring_points?.length || 0;
           
           return (
             <div key={sys.id} className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col md:flex-row group hover:border-blue-400 transition-all">
-              <div className={`md:w-32 p-6 flex flex-col items-center justify-center text-white shrink-0 ${isMonitoring ? 'bg-blue-600' : 'bg-slate-900'}`}>
-                <div className={`p-4 rounded-2xl ${isMonitoring ? 'bg-white text-blue-600' : 'bg-blue-500 text-white shadow-xl shadow-blue-500/20'}`}>
+              <div className={`md:w-32 p-6 flex flex-col items-center justify-center text-white shrink-0 ${isMonitoring ? 'bg-blue-600 shadow-xl shadow-blue-500/20' : 'bg-slate-900'}`}>
+                <div className={`p-4 rounded-2xl ${isMonitoring ? 'bg-white text-blue-600' : 'bg-blue-500 text-white'}`}>
                   {isMonitoring ? <Droplets size={24} /> : <Settings size={24} />}
                 </div>
               </div>
@@ -145,17 +149,17 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
                    </div>
                    {(isAdmin || isTech) && (
                      <div className="flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => openModal(sys)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"><Edit2 size={16} /></button>
-                        <button onClick={() => deleteSystem(sys.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={16} /></button>
+                        <button onClick={() => openModal(sys)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"><Edit2 size={16} /></button>
+                        <button onClick={() => deleteSystem(sys.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={16} /></button>
                      </div>
                    )}
                 </div>
 
-                {isMonitoring && pointsCount > 0 && (
+                {isMonitoring && sys.monitoring_points && sys.monitoring_points.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mt-3 mb-4">
-                     {sys.monitoring_points?.map((p, i) => (
-                       <span key={i} className="text-[8px] font-black bg-blue-50 text-blue-600 px-2 py-0.5 rounded border border-blue-100 uppercase">
-                         {p.device_id}
+                     {sys.monitoring_points.map((p, i) => (
+                       <span key={i} className="text-[8px] font-black bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded border border-emerald-100 uppercase flex items-center">
+                         <Activity size={8} className="mr-1" /> {p.device_id}
                        </span>
                      ))}
                   </div>
@@ -173,6 +177,12 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
             </div>
           );
         })}
+        {filteredSystems.length === 0 && (
+          <div className="col-span-full py-20 bg-white border-2 border-dashed border-slate-200 rounded-3xl flex flex-col items-center justify-center text-center">
+            <Layers size={40} className="text-slate-200 mb-4" />
+            <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Nenhum sistema encontrado.</p>
+          </div>
+        )}
       </div>
 
       {isModalOpen && (
@@ -183,7 +193,7 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
               <button onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm"><X size={20} /></button>
             </div>
             
-            <form onSubmit={handleSubmit} className="p-6 space-y-5 max-h-[75vh] overflow-y-auto">
+            <form onSubmit={handleSubmit} className="p-6 space-y-5 max-h-[75vh] overflow-y-auto custom-scrollbar">
               {saveError && (
                 <div className="bg-red-50 border border-red-100 p-4 rounded-2xl flex items-start space-x-3 text-red-600">
                    <AlertTriangle size={18} className="shrink-0" />
@@ -194,14 +204,14 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                  <div className="space-y-1">
                     <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Condomínio</label>
-                    <select required name="condoId" defaultValue={editingSys?.condo_id} className="w-full px-4 py-3 bg-slate-50 border rounded-2xl font-bold outline-none text-xs">
+                    <select required name="condoId" defaultValue={editingSys?.condo_id} className="w-full px-4 py-3 bg-slate-50 border rounded-2xl font-bold outline-none text-xs focus:ring-2 focus:ring-blue-500/20">
                        <option value="">Selecione...</option>
                        {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                  </div>
                  <div className="space-y-1">
                     <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Tipo de Sistema</label>
-                    <select required value={selectedTypeId} onChange={(e) => setSelectedTypeId(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border rounded-2xl font-bold outline-none text-xs">
+                    <select required value={selectedTypeId} onChange={(e) => setSelectedTypeId(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border rounded-2xl font-bold outline-none text-xs focus:ring-2 focus:ring-blue-500/20">
                        {data.systemTypes.map((t: SystemType) => <option key={t.id} value={t.id}>{t.name}</option>)}
                     </select>
                  </div>
@@ -209,47 +219,60 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
 
               <div className="space-y-1">
                 <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Nome Identificador</label>
-                <input required name="name" defaultValue={editingSys?.name} placeholder="Ex: Central de Bombas de Incêndio" className="w-full px-4 py-3 bg-slate-50 border rounded-2xl font-bold outline-none text-xs" />
+                <input required name="name" defaultValue={editingSys?.name} placeholder="Ex: Central de Bombas de Incêndio" className="w-full px-4 py-3 bg-slate-50 border rounded-2xl font-bold outline-none text-xs focus:ring-2 focus:ring-blue-500/20" />
               </div>
 
               <div className="space-y-1">
                 <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Localização</label>
-                <input required name="location" defaultValue={editingSys?.location} placeholder="Ex: Subsolo 2 - Casa de Máquinas" className="w-full px-4 py-3 bg-slate-50 border rounded-2xl font-medium outline-none text-xs" />
+                <input required name="location" defaultValue={editingSys?.location} placeholder="Ex: Subsolo 2 - Casa de Máquinas" className="w-full px-4 py-3 bg-slate-50 border rounded-2xl font-medium outline-none text-xs focus:ring-2 focus:ring-blue-500/20" />
               </div>
 
               {selectedTypeId === '7' && (
                 <div className="space-y-4 bg-blue-50/50 p-5 rounded-3xl border border-blue-100">
                   <div className="flex justify-between items-center border-b border-blue-100 pb-3">
                      <h4 className="text-[10px] font-black text-blue-600 uppercase flex items-center">
-                        <Droplets size={14} className="mr-2" /> Sensores de Telemetria (ESP32)
+                        <Droplets size={14} className="mr-2" /> Sensores IoT de Nível
                      </h4>
-                     <button type="button" onClick={addPoint} className="text-[8px] font-black text-white bg-blue-600 px-3 py-1.5 rounded-lg flex items-center active:scale-95">
-                       <Plus size={12} className="mr-1" /> Adicionar
+                     <button type="button" onClick={addPoint} className="text-[8px] font-black text-white bg-blue-600 px-3 py-1.5 rounded-lg flex items-center active:scale-95 transition-all">
+                       <Plus size={12} className="mr-1" /> Adicionar Ponto
                      </button>
                   </div>
+                  
+                  <div className="bg-white/80 p-3 rounded-xl border border-blue-100 flex items-start space-x-2">
+                     <Info size={14} className="text-blue-600 shrink-0 mt-0.5" />
+                     <p className="text-[9px] font-bold text-slate-600 leading-relaxed uppercase">
+                       O <b>ID ESP32</b> é o código único colado no sensor físico. <br/>Ex: <code className="bg-blue-100 px-1 rounded">BOX-001</code>
+                     </p>
+                  </div>
+
                   <div className="space-y-3">
                     {points.map((p, i) => (
-                      <div key={i} className="flex gap-2 items-center">
-                        <input value={p.name} onChange={(e) => updatePoint(i, 'name', e.target.value)} className="flex-1 px-3 py-2 bg-white border rounded-xl text-[10px] font-bold" placeholder="Nome do Reservatório" />
-                        <input value={p.device_id} onChange={(e) => updatePoint(i, 'device_id', e.target.value)} className="w-24 px-3 py-2 bg-white border border-blue-200 rounded-xl text-[10px] font-black text-blue-600" placeholder="ID ESP32" />
-                        <button type="button" onClick={() => removePoint(i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Trash2 size={14} /></button>
+                      <div key={i} className="flex gap-2 items-center bg-white p-2 rounded-2xl border border-blue-100 shadow-sm">
+                        <input value={p.name} onChange={(e) => updatePoint(i, 'name', e.target.value)} className="flex-1 px-3 py-2 bg-slate-50 border-none rounded-xl text-[10px] font-bold outline-none" placeholder="Nome (Ex: Caixa Superior)" />
+                        <div className="relative">
+                           <input value={p.device_id} onChange={(e) => updatePoint(i, 'device_id', e.target.value)} className="w-28 px-3 py-2 bg-blue-50 border border-blue-200 rounded-xl text-[10px] font-black text-blue-600 placeholder:text-blue-300 outline-none uppercase" placeholder="ID ESP32" />
+                        </div>
+                        <button type="button" onClick={() => removePoint(i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={14} /></button>
                       </div>
                     ))}
+                    {points.length === 0 && (
+                      <p className="text-center py-4 text-[9px] font-bold text-slate-400 uppercase italic">Nenhum sensor configurado.</p>
+                    )}
                   </div>
                 </div>
               )}
 
               <div className="space-y-1">
-                <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Parâmetros / Observações</label>
-                <textarea name="parameters" defaultValue={editingSys?.parameters} rows={3} placeholder="Descreva os parâmetros ideais ou obs técnicas..." className="w-full px-4 py-3 bg-slate-50 border rounded-2xl text-xs font-medium outline-none"></textarea>
+                <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Observações Técnicas</label>
+                <textarea name="parameters" defaultValue={editingSys?.parameters} rows={2} placeholder="Parâmetros de operação ou detalhes técnicos..." className="w-full px-4 py-3 bg-slate-50 border rounded-2xl text-xs font-medium outline-none focus:ring-2 focus:ring-blue-500/20"></textarea>
               </div>
 
-              <div className="flex gap-3 pt-4 sticky bottom-0 bg-white">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 border rounded-2xl font-black text-[10px] uppercase text-slate-400">Cancelar</button>
+              <div className="flex gap-3 pt-4 sticky bottom-0 bg-white border-t mt-2">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 border rounded-2xl font-black text-[10px] uppercase text-slate-400 hover:bg-slate-50 transition-all">Cancelar</button>
                 <button 
                   type="submit" 
                   disabled={isSaving}
-                  className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase flex items-center justify-center disabled:opacity-50"
+                  className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase flex items-center justify-center disabled:opacity-50 active:scale-95 transition-all shadow-xl shadow-slate-900/10"
                 >
                   {isSaving ? (
                     <>
