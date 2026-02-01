@@ -16,7 +16,6 @@ import {
   Cloud,
   Droplets,
   Activity,
-  // Added RefreshCw to imports to fix "Cannot find name 'RefreshCw'" error
   RefreshCw
 } from 'lucide-react';
 
@@ -35,6 +34,7 @@ import Login from './pages/Login';
 import WaterLevel from './pages/WaterLevel';
 import Monitoring from './pages/Monitoring';
 
+// Internal component that uses routing hooks
 const AppContent: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [data, setData] = useState<AppData | null>(null);
@@ -42,6 +42,8 @@ const AppContent: React.FC = () => {
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error' | 'offline'>('synced');
   const [isInitialSyncing, setIsInitialSyncing] = useState(true);
   
+  // Lock to prevent fetchAllData from overwriting state during an updateData
+  const isSyncingRef = useRef(false);
   const navigate = useNavigate();
   const location = useLocation();
   const dataRef = useRef<AppData | null>(null);
@@ -76,7 +78,8 @@ const AppContent: React.FC = () => {
   };
 
   const fetchAllData = useCallback(async (currentLocalData: AppData) => {
-    if (!navigator.onLine || !isSupabaseActive) return currentLocalData;
+    if (!navigator.onLine || !isSupabaseActive || isSyncingRef.current) return currentLocalData;
+    
     setSyncStatus('syncing');
     try {
       const [resUsers, resCondos, resEquips, resSystems, resOS, resAppts, resLevels, resAlerts] = await Promise.all([
@@ -161,37 +164,52 @@ const AppContent: React.FC = () => {
   }, [fetchAllData]);
 
   const updateData = async (newData: AppData) => {
-    // Atualiza local imediatamente para fluidez da UI
+    const oldData = dataRef.current;
+    
+    // Updates locally immediately for UI fluidity
     setData(newData);
     saveStore(newData);
 
     if (isOnline && isSupabaseActive) {
+      isSyncingRef.current = true;
       setSyncStatus('syncing');
+      
       try {
-        // Realiza upsert das tabelas críticas
-        // Importante: tratamos erros individualmente para não quebrar todo o fluxo
-        const results = await Promise.all([
-          newData.systems.length > 0 ? supabase.from('systems').upsert(newData.systems) : Promise.resolve({ error: null }),
-          newData.equipments.length > 0 ? supabase.from('equipments').upsert(newData.equipments) : Promise.resolve({ error: null }),
-          newData.condos.length > 0 ? supabase.from('condos').upsert(newData.condos) : Promise.resolve({ error: null }),
-          newData.serviceOrders.length > 0 ? supabase.from('service_orders').upsert(newData.serviceOrders) : Promise.resolve({ error: null })
-        ]);
+        const changedTable = 
+          JSON.stringify(newData.systems) !== JSON.stringify(oldData?.systems) ? 'systems' :
+          JSON.stringify(newData.equipments) !== JSON.stringify(oldData?.equipments) ? 'equipments' :
+          JSON.stringify(newData.condos) !== JSON.stringify(oldData?.condos) ? 'condos' :
+          JSON.stringify(newData.serviceOrders) !== JSON.stringify(oldData?.serviceOrders) ? 'service_orders' : null;
 
-        const firstError = results.find(r => r.error);
-        if (firstError) {
-          console.error("Erro na sincronização Cloud:", firstError.error);
-          setSyncStatus('error');
-          // Lançamos o erro para ser capturado pela página que chamou o updateData
-          throw new Error(firstError.error.message);
-        } else {
-          setSyncStatus('synced');
+        if (changedTable) {
+          const { error } = await supabase.from(changedTable).upsert(newData[changedTable as keyof AppData]);
+          
+          if (error) {
+            setSyncStatus('error');
+            if (oldData) {
+              setData(oldData);
+              saveStore(oldData);
+            }
+            throw new Error(`Cloud Error (${changedTable}): ${error.message}`);
+          }
         }
+        
+        setSyncStatus('synced');
       } catch (err) {
         setSyncStatus('error');
-        console.error("Erro crítico de sincronização:", err);
-        throw err; // Repassa para o componente (ex: SystemsPage)
+        console.error("Critical sync error:", err);
+        throw err;
+      } finally {
+        isSyncingRef.current = false;
       }
     }
+  };
+
+  const handleLogout = () => {
+    const newData = { ...data!, currentUser: null };
+    setData(newData);
+    saveStore(newData);
+    navigate('/login');
   };
 
   if (!data) return null;
@@ -231,93 +249,90 @@ const AppContent: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row overflow-x-hidden">
+      {/* Mobile Bar */}
       <div className="md:hidden bg-slate-900 text-white p-4 flex justify-between items-center sticky top-0 z-50 h-16">
         <div className="flex items-center space-x-3">
           <Wrench size={18} className="text-blue-500" />
-          <span className="font-bold text-base tracking-tight uppercase">SmartGestão</span>
+          <span className="font-black text-lg uppercase">SmartGestão</span>
         </div>
-        <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 bg-slate-800 rounded-lg">
+        <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-800 rounded-lg">
           {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
       </div>
 
-      <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-slate-900 text-white transform transition-transform duration-300 md:relative md:translate-x-0 md:w-64 shrink-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="p-6 hidden md:block">
-          <div className="flex items-center space-x-2 mb-8">
+      {/* Sidebar */}
+      <aside className={`
+        fixed inset-y-0 left-0 z-40 w-72 bg-slate-900 text-white transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0
+        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+      `}>
+        <div className="h-full flex flex-col p-6">
+          <div className="hidden md:flex items-center space-x-3 mb-10 px-2">
             <Wrench size={24} className="text-blue-500" />
-            <span className="font-bold text-xl uppercase tracking-tighter">SmartGestão</span>
+            <span className="font-black text-xl tracking-tighter uppercase">SmartGestão</span>
+          </div>
+
+          <nav className="flex-1 space-y-2 overflow-y-auto pr-2 custom-scrollbar">
+            <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
+            <NavItem to="/condos" icon={Building2} label="Condomínios" />
+            <NavItem to="/equipment" icon={Layers} label="Equipamentos" />
+            <NavItem to="/systems" icon={Wrench} label="Sistemas" />
+            <NavItem to="/os" icon={FileText} label="Ordens de Serviço" />
+            <NavItem to="/reservatorios" icon={Droplets} label="Reservatórios" />
+            <NavItem to="/monitoring" icon={Activity} label="Monitoramento Tuya" />
+            {data.currentUser?.role === UserRole.ADMIN && (
+              <NavItem to="/admin" icon={Settings} label="Administração" />
+            )}
+          </nav>
+
+          <div className="mt-auto pt-6 border-t border-slate-800 space-y-4">
+            <div className="flex items-center space-x-3 px-2">
+              <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center font-black text-lg uppercase">
+                {data.currentUser?.name.charAt(0)}
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-bold truncate">{data.currentUser?.name}</p>
+                <p className="text-[10px] text-slate-500 font-bold uppercase">{data.currentUser?.role}</p>
+              </div>
+            </div>
+
+            <button 
+              onClick={handleLogout}
+              className="w-full flex items-center space-x-3 px-4 py-3.5 rounded-xl text-slate-400 hover:bg-red-500/10 hover:text-red-500 transition-all font-bold text-sm"
+            >
+              <LogOut size={20} />
+              <span>Sair da Conta</span>
+            </button>
           </div>
         </div>
-        <nav className="px-4 space-y-1.5">
-          <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
-          <NavItem to="/reservatorios" icon={Droplets} label="Reservatórios" />
-          <NavItem to="/monitoramento" icon={Activity} label="Telemetria Tuya" />
-          <NavItem to="/os" icon={FileText} label="Ordens de Serviço" />
-          <NavItem to="/equipamentos" icon={Layers} label="Equipamentos" />
-          <NavItem to="/sistemas" icon={Settings} label="Sistemas" />
-          <NavItem to="/condominios" icon={Building2} label="Condomínios" />
-          <NavItem to="/admin" icon={Settings} label="Administração" />
-        </nav>
       </aside>
 
-      <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
-        <header className="bg-white border-b border-slate-200 h-16 hidden md:flex items-center justify-between px-8 shrink-0">
-          <div className="flex items-center space-x-4 text-[10px] font-black uppercase tracking-widest text-emerald-500">
-            {syncStatus === 'syncing' ? (
-              <RefreshCw size={14} className="mr-2 animate-spin text-blue-500" />
-            ) : (
-              <Cloud size={14} className={`mr-2 ${syncStatus === 'error' ? 'text-red-500' : 'text-emerald-500'}`} />
-            )}
-            <span className={syncStatus === 'error' ? 'text-red-500' : 'text-emerald-500'}>
-              {syncStatus === 'syncing' ? 'Sincronizando...' : syncStatus === 'error' ? 'Erro ao Sincronizar' : 'Cloud OK'}
-            </span>
-          </div>
-          <div className="flex items-center space-x-4">
-             {isOnline ? (
-               <span className="text-emerald-600 font-bold text-xs uppercase flex items-center">
-                 <Wifi size={14} className="mr-1" /> Online
-               </span>
-             ) : (
-               <span className="text-amber-600 font-bold text-xs uppercase flex items-center">
-                 <WifiOff size={14} className="mr-1" /> Offline
-               </span>
-             )}
-             <div className="h-4 w-[1px] bg-slate-200 mx-2"></div>
-             <button 
-               onClick={() => {
-                 const newData = { ...data, currentUser: null };
-                 setData(newData);
-                 saveStore(newData);
-                 navigate('/login');
-               }}
-               className="text-slate-400 hover:text-red-500 transition-colors"
-               title="Sair"
-             >
-               <LogOut size={18} />
-             </button>
-          </div>
-        </header>
-
-        <div className="flex-1 overflow-y-auto p-4 md:p-8">
-          <Routes>
-            <Route path="/" element={<Dashboard data={data} updateData={updateData} />} />
-            <Route path="/reservatorios" element={<WaterLevel data={data} updateData={updateData} />} />
-            <Route path="/monitoramento" element={<Monitoring data={data} updateData={updateData} />} />
-            <Route path="/os" element={<ServiceOrders data={data} updateData={updateData} />} />
-            <Route path="/admin" element={<AdminSettings data={data} updateData={updateData} />} />
-            <Route path="/condominios" element={<Condos data={data} updateData={updateData} />} />
-            <Route path="/equipamentos" element={<EquipmentPage data={data} updateData={updateData} />} />
-            <Route path="/sistemas" element={<SystemsPage data={data} updateData={updateData} />} />
-            <Route path="/equipment" element={<Navigate to="/equipamentos" />} />
-            <Route path="/systems" element={<Navigate to="/sistemas" />} />
-            <Route path="/login" element={<Navigate to="/" />} />
-          </Routes>
-        </div>
+      {/* Main Content Area */}
+      <main className="flex-1 p-4 md:p-8 lg:p-12 overflow-y-auto">
+        <Routes>
+          <Route path="/" element={<Dashboard data={data} updateData={updateData} />} />
+          <Route path="/condos" element={<Condos data={data} updateData={updateData} />} />
+          <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} />} />
+          <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} />} />
+          <Route path="/os" element={<ServiceOrders data={data} updateData={updateData} />} />
+          <Route path="/reservatorios" element={<WaterLevel data={data} updateData={updateData} />} />
+          <Route path="/monitoring" element={<Monitoring data={data} updateData={updateData} />} />
+          <Route path="/admin" element={<AdminSettings data={data} updateData={updateData} />} />
+          <Route path="/login" element={<Navigate to="/" />} />
+        </Routes>
       </main>
+
+      {/* Mobile Overlay */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-30 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
     </div>
   );
 };
 
+// Fixed the import error in index.tsx by providing a default export App component
 const App: React.FC = () => {
   return (
     <HashRouter>
