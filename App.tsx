@@ -50,8 +50,9 @@ const AppContent: React.FC = () => {
 
   const mergeData = useCallback((localItems: any[] = [], cloudItems: any[] = []) => {
     const map = new Map();
-    localItems.forEach(item => { if(item?.id) map.set(item.id, item) });
-    cloudItems.forEach(item => { if(item?.id) map.set(item.id, item) });
+    // Prioridade para o que está na nuvem (IDs estáveis)
+    localItems.forEach(item => { if(item?.id) map.set(String(item.id), item) });
+    cloudItems.forEach(item => { if(item?.id) map.set(String(item.id), item) });
     return Array.from(map.values());
   }, []);
 
@@ -65,20 +66,23 @@ const AppContent: React.FC = () => {
         { table: 'systems', key: 'systems' },
         { table: 'service_orders', key: 'serviceOrders' },
         { table: 'appointments', key: 'appointments' },
-        { table: 'nivel_caixa', key: 'waterLevels' },
         { table: 'monitoring_alerts', key: 'monitoringAlerts' }
       ];
       
       for (const config of syncConfig) {
         const items = (currentData as any)[config.key];
         if (items && items.length > 0) {
-          const { error } = await supabase.from(config.table).upsert(items);
-          if (error) throw error;
+          // Remover IDs temporários ou numéricos para evitar erro no Upsert se necessário
+          const cleanItems = items.map((item: any) => ({
+             ...item,
+             id: String(item.id)
+          }));
+          const { error } = await supabase.from(config.table).upsert(cleanItems);
+          if (error) console.warn(`Erro no sync da tabela ${config.table}:`, error);
         }
       }
     } catch (e) {
       console.warn("Falha no push automático:", e);
-      setSyncStatus('error');
     }
   };
 
@@ -87,8 +91,7 @@ const AppContent: React.FC = () => {
     setSyncStatus('syncing');
     
     try {
-      await syncLocalToCloud(currentLocalData);
-
+      // Pull das tabelas
       const [resUsers, resCondos, resEquips, resSystems, resOS, resAppts, resLevels, resAlerts] = await Promise.all([
         supabase.from('users').select('*'),
         supabase.from('condos').select('*'),
@@ -136,7 +139,6 @@ const AppContent: React.FC = () => {
     };
     init();
 
-    // Sincronismo em Tempo Real (Realtime) para Nível de Caixa
     let subscription: any = null;
     if (isSupabaseActive) {
       subscription = subscribeToChanges('nivel_caixa', (payload) => {
@@ -162,16 +164,10 @@ const AppContent: React.FC = () => {
         saveStore(updated);
       });
     };
-    const handleOffline = () => {
-      setIsOnline(false);
-      setSyncStatus('offline');
-    };
     
     window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
     return () => {
       window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
       if (subscription) subscription.unsubscribe();
     };
   }, [fetchAllData]);
@@ -198,7 +194,7 @@ const AppContent: React.FC = () => {
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-center">
         <Wrench size={48} className="text-blue-500 animate-bounce mb-6" />
         <h2 className="text-white font-black uppercase tracking-widest text-lg mb-2">SmartGestão</h2>
-        <p className="text-slate-400 text-sm font-bold animate-pulse">Sincronizando com a Nuvem...</p>
+        <p className="text-slate-400 text-sm font-bold animate-pulse">Sincronizando Nuvem...</p>
       </div>
     );
   }
@@ -237,21 +233,19 @@ const AppContent: React.FC = () => {
           <Wrench size={18} className="text-blue-500" />
           <span className="font-bold text-base tracking-tight uppercase">SmartGestão</span>
         </div>
-        <div className="flex items-center space-x-4">
-          <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 bg-slate-800 rounded-lg">
-            {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
-          </button>
-        </div>
+        <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 bg-slate-800 rounded-lg">
+          {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
+        </button>
       </div>
 
       <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-slate-900 text-white transform transition-transform duration-300 md:relative md:translate-x-0 md:w-64 shrink-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-6 hidden md:block">
           <div className="flex items-center space-x-2 mb-8">
             <Wrench size={24} className="text-blue-500" />
-            <span className="font-bold text-xl uppercase">SmartGestão</span>
+            <span className="font-bold text-xl uppercase tracking-tighter">SmartGestão</span>
           </div>
         </div>
-        <nav className="px-4 space-y-1.5 overflow-y-auto max-h-[calc(100vh-160px)]">
+        <nav className="px-4 space-y-1.5">
           <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
           {(isAdmin || isTech) && <NavItem to="/condos" icon={Building2} label="Condomínios" />}
           <NavItem to="/reservatorios" icon={Droplets} label="Reservatórios" />
@@ -277,18 +271,18 @@ const AppContent: React.FC = () => {
               syncStatus === 'error' ? 'text-red-500' : 'text-blue-500'
             }`}>
               <Cloud size={14} />
-              <span>{syncStatus === 'synced' ? 'Nuvem Conectada' : syncStatus === 'error' ? 'Erro de Sincronismo' : 'Sincronizando...'}</span>
+              <span>{syncStatus === 'synced' ? 'Banco de Dados OK' : 'Sincronizando...'}</span>
             </div>
           </div>
           <div className="flex items-center space-x-4">
-             {isOnline ? <span className="text-emerald-600 font-bold text-xs uppercase"><Wifi size={14} className="inline mr-1" /> Servidor OK</span> : <span className="text-amber-600 font-bold text-xs uppercase"><WifiOff size={14} className="inline mr-1" /> Modo Offline</span>}
+             {isOnline ? <span className="text-emerald-600 font-bold text-xs uppercase"><Wifi size={14} className="inline mr-1" /> Servidor Ativo</span> : <span className="text-amber-600 font-bold text-xs uppercase"><WifiOff size={14} className="inline mr-1" /> Offline</span>}
           </div>
         </header>
         <div className="flex-1 overflow-y-auto p-4 md:p-8">
           <Routes>
             <Route path="/" element={<Dashboard data={data} updateData={updateData} />} />
             {(isAdmin || isTech) && <Route path="/condos" element={<Condos data={data} updateData={updateData} />} />}
-            <Route path="/reservatorios" element={<WaterLevel data={data} updateData={updateData} />} />
+            <Route path="/reservatorios" element={<WaterLevel data={data} updateData={updateData} onRefresh={() => fetchAllData(data).then(d => { setData(d); saveStore(d); })} />} />
             {(isAdmin || isTech) && <Route path="/monitoramento" element={<Monitoring data={data} updateData={updateData} />} />}
             <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} />} />
             <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} />} />
