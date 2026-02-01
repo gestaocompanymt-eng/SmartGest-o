@@ -6,7 +6,6 @@ import { generateTechnicalSummary } from '../geminiService';
 
 const Condos: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [reportCondo, setReportCondo] = useState<Condo | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingCondo, setEditingCondo] = useState<Condo | null>(null);
   const [points, setPoints] = useState<MonitoringPoint[]>([]);
@@ -42,7 +41,7 @@ const Condos: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, u
     setPoints(newPoints);
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     
@@ -63,7 +62,9 @@ const Condos: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, u
       ? data.condos.map((c: Condo) => c.id === editingCondo.id ? condoData : c)
       : [condoData, ...data.condos];
 
-    updateData({ ...data, condos: newCondos });
+    // Atualizamos os dados e fechamos o modal
+    await updateData({ ...data, condos: newCondos });
+    
     setIsModalOpen(false);
     setEditingCondo(null);
     setPoints([]);

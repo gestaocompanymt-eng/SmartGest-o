@@ -48,11 +48,32 @@ const AppContent: React.FC = () => {
     dataRef.current = data;
   }, [data]);
 
+  // Lógica de Mesclagem Inteligente: Protege campos locais que podem não existir na nuvem
   const mergeData = useCallback((localItems: any[] = [], cloudItems: any[] = []) => {
     const map = new Map();
-    // Prioridade para o que está na nuvem (IDs estáveis)
-    localItems.forEach(item => { if(item?.id) map.set(String(item.id), item) });
-    cloudItems.forEach(item => { if(item?.id) map.set(String(item.id), item) });
+    
+    // Primeiro, carregamos tudo o que está local
+    localItems.forEach(item => { 
+      if(item?.id) map.set(String(item.id), { ...item });
+    });
+
+    // Depois, sobrepomos com os dados da nuvem, mas preservando campos críticos
+    cloudItems.forEach(cloudItem => {
+      if(cloudItem?.id) {
+        const id = String(cloudItem.id);
+        const localItem = map.get(id);
+        
+        map.set(id, {
+          ...localItem, // Mantém dados locais como fallback
+          ...cloudItem, // Sobrescreve com dados da nuvem
+          // REGRA DE OURO: Se a nuvem não tem pontos de monitoramento mas o local tem, MANTÉM O LOCAL
+          monitoring_points: (cloudItem.monitoring_points && cloudItem.monitoring_points.length > 0) 
+            ? cloudItem.monitoring_points 
+            : (localItem?.monitoring_points || [])
+        });
+      }
+    });
+    
     return Array.from(map.values());
   }, []);
 
@@ -72,7 +93,6 @@ const AppContent: React.FC = () => {
       for (const config of syncConfig) {
         const items = (currentData as any)[config.key];
         if (items && items.length > 0) {
-          // Remover IDs temporários ou numéricos para evitar erro no Upsert se necessário
           const cleanItems = items.map((item: any) => ({
              ...item,
              id: String(item.id)
@@ -91,7 +111,6 @@ const AppContent: React.FC = () => {
     setSyncStatus('syncing');
     
     try {
-      // Pull das tabelas
       const [resUsers, resCondos, resEquips, resSystems, resOS, resAppts, resLevels, resAlerts] = await Promise.all([
         supabase.from('users').select('*'),
         supabase.from('condos').select('*'),
@@ -173,9 +192,11 @@ const AppContent: React.FC = () => {
   }, [fetchAllData]);
 
   const updateData = async (newData: AppData) => {
+    // Primeiro atualizamos o estado local e o cache para resposta imediata
     setData(newData);
     saveStore(newData);
 
+    // Depois tentamos sincronizar com a nuvem em background
     if (navigator.onLine && isSupabaseActive) {
       setSyncStatus('syncing');
       try {
