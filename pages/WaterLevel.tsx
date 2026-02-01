@@ -12,7 +12,8 @@ import {
   History,
   X,
   ArrowDown,
-  ArrowUp
+  ArrowUp,
+  AlertCircle
 } from 'lucide-react';
 import { AppData, UserRole, WaterLevel as WaterLevelType, Condo, System, MonitoringPoint } from '../types';
 
@@ -64,6 +65,7 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
 
   const deviceHistory = useMemo(() => {
     if (!historyDeviceId) return [];
+    // Filtra e ordena para mostrar a linha do tempo das mudanças
     return data.waterLevels
       .filter(l => String(l.condominio_id || '').trim().toLowerCase() === historyDeviceId.trim().toLowerCase())
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -99,7 +101,7 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
               <div>
                 <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight leading-none">{entry.condo.name}</h2>
                 <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1 italic">
-                   Status dos Reservatórios via Sistemas Técnicos
+                   Monitoramento via Sensores Ultrassônicos
                 </p>
               </div>
             </div>
@@ -109,7 +111,7 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
                 const levelsForPoint = data.waterLevels.filter(l => 
                   String(l.condominio_id || '').trim().toLowerCase() === String(point.device_id || '').trim().toLowerCase()
                 );
-                const level = levelsForPoint[0]; // O mais recente devido ao order by desc
+                const level = levelsForPoint[0]; 
                 const percent = level ? Math.min(100, Math.max(0, level.percentual)) : 0;
                 
                 return (
@@ -146,11 +148,11 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
                           <div className="space-y-3">
                             <div className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-100">
                                <div className="flex flex-col">
-                                  <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Status</span>
+                                  <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Status Atual</span>
                                   <span className={`text-[10px] font-black uppercase ${getStatusColor(level.status).split(' ')[0]}`}>{level.status}</span>
                                </div>
                                <div className="text-right flex flex-col">
-                                  <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Atualizado em</span>
+                                  <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Última Mudança</span>
                                   <span className="text-[9px] font-bold text-slate-600 flex items-center justify-end mt-0.5">
                                     <Clock size={12} className="mr-1 text-blue-500" /> {new Date(level.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                   </span>
@@ -158,21 +160,21 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
                             </div>
                             <button 
                               onClick={() => setHistoryDeviceId(point.device_id)}
-                              className="w-full flex items-center justify-center space-x-2 py-3 bg-slate-900 text-white rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-slate-800 transition-all active:scale-95"
+                              className="w-full flex items-center justify-center space-x-2 py-3 bg-slate-900 text-white rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-slate-800 transition-all active:scale-95 shadow-lg shadow-slate-900/10"
                             >
                                <History size={14} />
-                               <span>Ver Histórico de Mudanças</span>
+                               <span>Histórico de Mudanças</span>
                             </button>
-                            <div className="flex items-center justify-center space-x-2 py-2 bg-emerald-50/50 rounded-xl border border-dashed border-emerald-100">
+                            <div className="flex items-center justify-center space-x-2 py-2 bg-emerald-50 border border-dashed border-emerald-200 rounded-xl">
                                <ShieldCheck size={12} className="text-emerald-500" />
-                               <span className="text-[8px] font-black text-emerald-600 uppercase tracking-widest">Histórico Otimizado Ativo</span>
+                               <span className="text-[8px] font-black text-emerald-600 uppercase tracking-widest">Nível Estável - Filtro de Dados Ativo</span>
                             </div>
                           </div>
                         </>
                       ) : (
                         <div className="py-12 flex flex-col items-center justify-center text-center space-y-3 bg-slate-50/50 rounded-[2rem] border-2 border-dashed border-slate-100">
                           <Activity size={24} className="text-amber-400 animate-pulse" />
-                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-4">Aguardando telemetria estável do dispositivo {point.device_id}</p>
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-4">Aguardando telemetria inicial do dispositivo {point.device_id}</p>
                         </div>
                       )}
                     </div>
@@ -188,16 +190,10 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
                 <div className="p-8 bg-slate-50 rounded-full mb-6 text-slate-300">
                     <Droplets size={48} />
                 </div>
-                <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">Sem Sistemas de Monitoramento</h3>
+                <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">Configuração de Monitoramento</h3>
                 <p className="text-sm text-slate-500 font-medium max-w-sm mt-3 leading-relaxed">
-                    Cadastre um novo sistema do tipo "Monitoramento" e adicione os IDs das placas ESP32 para visualizar os níveis aqui.
+                    Vá em <b>Sistemas</b>, crie um "Sistema de Monitoramento" e adicione os IDs das suas placas ESP32.
                 </p>
-                <button 
-                  onClick={() => window.location.hash = '#/systems'}
-                  className="mt-8 px-8 py-3 bg-blue-600 text-white rounded-xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-blue-600/20"
-                >
-                  Configurar em Sistemas
-                </button>
             </div>
         )}
       </div>
@@ -205,49 +201,63 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
       {/* Modal de Histórico */}
       {historyDeviceId && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
-           <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
+           <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
               <div className="p-6 border-b flex justify-between items-center bg-slate-50">
                  <div className="flex items-center space-x-3">
-                    <History size={20} className="text-blue-600" />
-                    <h2 className="text-lg font-black uppercase tracking-tight">Histórico de Mudanças</h2>
+                    <div className="p-2 bg-blue-600 text-white rounded-xl"><History size={20} /></div>
+                    <div>
+                       <h2 className="text-lg font-black uppercase tracking-tight">Timeline de Mudanças</h2>
+                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Sensor: {historyDeviceId}</p>
+                    </div>
                  </div>
-                 <button onClick={() => setHistoryDeviceId(null)} className="p-2 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm">
+                 <button onClick={() => setHistoryDeviceId(null)} className="p-2 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm border">
                    <X size={24} />
                  </button>
               </div>
               <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-3">
-                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-4">Dispositivo: {historyDeviceId}</p>
+                 <div className="bg-amber-50 border border-amber-100 p-3 rounded-xl flex items-start space-x-2 mb-4">
+                    <AlertCircle size={14} className="text-amber-600 mt-0.5 shrink-0" />
+                    <p className="text-[9px] font-bold text-amber-800 uppercase leading-relaxed">
+                      Este histórico exibe apenas os momentos em que o nível da água foi alterado, ignorando leituras repetidas.
+                    </p>
+                 </div>
                  
                  {deviceHistory.length > 0 ? deviceHistory.map((h, i) => {
-                    const prevLevel = deviceHistory[i + 1]?.nivel_cm;
-                    const diff = prevLevel ? h.nivel_cm - prevLevel : 0;
+                    const nextItem = deviceHistory[i + 1];
+                    const diff = nextItem ? h.nivel_cm - nextItem.nivel_cm : 0;
                     
                     return (
-                      <div key={h.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:bg-white transition-colors">
+                      <div key={h.id} className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl hover:shadow-md transition-all group">
                          <div className="flex items-center space-x-4">
-                            <div className={`p-2 rounded-xl ${diff > 0 ? 'bg-emerald-50 text-emerald-600' : diff < 0 ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>
+                            <div className={`p-2 rounded-xl transition-colors ${diff > 0 ? 'bg-emerald-50 text-emerald-600' : diff < 0 ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-400'}`}>
                                {diff > 0 ? <ArrowUp size={16} /> : diff < 0 ? <ArrowDown size={16} /> : <Activity size={16} />}
                             </div>
                             <div>
-                               <p className="text-sm font-black text-slate-900">{h.nivel_cm} cm ({h.percentual}%)</p>
-                               <p className="text-[10px] font-bold text-slate-400 uppercase">
-                                 {new Date(h.created_at).toLocaleDateString()} às {new Date(h.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                               <div className="flex items-center space-x-2">
+                                  <p className="text-sm font-black text-slate-900">{h.nivel_cm} cm</p>
+                                  <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">{h.percentual}%</span>
+                               </div>
+                               <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">
+                                 {new Date(h.created_at).toLocaleDateString()} • {new Date(h.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                                </p>
                             </div>
                          </div>
                          <div className="text-right">
-                            <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-full ${getStatusColor(h.status)}`}>
+                            <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-full border ${getStatusColor(h.status)}`}>
                                {h.status}
                             </span>
                          </div>
                       </div>
                     );
                  }) : (
-                   <div className="py-12 text-center text-slate-400 italic text-sm">Nenhum histórico de mudança registrado.</div>
+                   <div className="py-20 text-center text-slate-300 italic flex flex-col items-center">
+                      <Droplets size={40} className="mb-2 opacity-20" />
+                      <p className="text-sm font-bold uppercase tracking-widest">Nenhuma mudança registrada</p>
+                   </div>
                  )}
               </div>
               <div className="p-6 border-t bg-slate-50">
-                 <button onClick={() => setHistoryDeviceId(null)} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs tracking-widest">Fechar Histórico</button>
+                 <button onClick={() => setHistoryDeviceId(null)} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-slate-900/20 active:scale-95 transition-all">Fechar</button>
               </div>
            </div>
         </div>

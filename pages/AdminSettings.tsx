@@ -91,32 +91,35 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     }
   };
 
+  // SQL OTIMIZADO PARA REGISTRAR APENAS MUDANÇAS
   const sqlOptimizer = `
--- SMARTGESTÃO: OTIMIZAÇÃO E HISTÓRICO DE MUDANÇAS
--- Esta função garante que o banco só salve se o nível MUDAR.
+-- SMARTGESTÃO: GATILHO DE ECONOMIA E HISTÓRICO
+-- Execute este código no SQL Editor do Supabase
+
 CREATE OR REPLACE FUNCTION filter_unchanged_levels()
 RETURNS TRIGGER AS $$
 DECLARE
-  last_level INTEGER;
+  last_val INTEGER;
 BEGIN
-  -- Busca o último nível registrado para este dispositivo
-  SELECT nivel_cm INTO last_level 
+  -- Busca o último nível registrado para este dispositivo específico
+  SELECT nivel_cm INTO last_val 
   FROM nivel_caixa
   WHERE condominio_id = NEW.condominio_id
   ORDER BY created_at DESC
   LIMIT 1;
 
-  -- Se for igual ao último, cancelamos a inserção (RETORNA NULL)
-  -- Se for diferente, permitimos salvar, criando assim o histórico de mudanças.
-  IF last_level IS NOT NULL AND last_level = NEW.nivel_cm THEN
+  -- Se o nível atual for igual ao último, aborte a inserção (retorna NULL)
+  -- Isso garante que o banco só registre quando houver ALTERAÇÃO.
+  IF last_val IS NOT NULL AND last_val = NEW.nivel_cm THEN
     RETURN NULL; 
   END IF;
   
+  -- Se for diferente, permite salvar e gera o registro no histórico
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
--- Aplica o gatilho na tabela
+-- Aplica o filtro na tabela de telemetria
 DROP TRIGGER IF EXISTS tr_filter_levels ON nivel_caixa;
 CREATE TRIGGER tr_filter_levels
 BEFORE INSERT ON nivel_caixa
@@ -141,18 +144,17 @@ FOR EACH ROW EXECUTE FUNCTION filter_unchanged_levels();
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 no-print">
         <div className="xl:col-span-2 space-y-8">
           
-          {/* Otimizador Supabase */}
           <div className="bg-blue-600 rounded-3xl p-6 text-white shadow-xl shadow-blue-600/20">
              <div className="flex items-center space-x-3 mb-4">
                 <Cpu className="text-blue-200" size={24} />
-                <h3 className="font-black uppercase text-xs tracking-widest">Otimizador e Histórico Inteligente</h3>
+                <h3 className="font-black uppercase text-xs tracking-widest">Otimizador de Telemetria</h3>
              </div>
              <p className="text-sm font-medium text-blue-100 mb-6 leading-relaxed">
-               Configure o banco para registrar <b>apenas mudanças</b>. Isso economiza 95% do seu espaço e gera um histórico limpo de alterações de nível.
+               Este script garante que o banco registre dados <b>apenas quando o nível mudar</b>. Copie e cole no SQL Editor do Supabase.
              </p>
              <div className="bg-slate-900/50 rounded-2xl p-4 relative group">
                 <pre className="text-[9px] font-mono text-blue-200 overflow-x-auto whitespace-pre">
-                  {sqlOptimizer.substring(0, 150)}...
+                  {sqlOptimizer.substring(0, 180)}...
                 </pre>
                 <button 
                   onClick={handleCopySql}
@@ -162,16 +164,12 @@ FOR EACH ROW EXECUTE FUNCTION filter_unchanged_levels();
                   <span className="text-[10px] font-black uppercase tracking-widest">{copied ? 'Copiado!' : 'Copiar SQL'}</span>
                 </button>
              </div>
-             <div className="mt-4 flex items-center space-x-2 text-[9px] font-black uppercase text-blue-200">
-                <AlertTriangle size={12} />
-                <span>Recomendado para manter o histórico sem lotar o banco gratuito.</span>
-             </div>
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
             <div className="p-6 border-b bg-slate-50/50 flex justify-between items-center">
                <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-[10px]">
-                <Database size={16} className="mr-2 text-blue-600" /> Integridade do Banco de Dados
+                <Database size={16} className="mr-2 text-blue-600" /> Status do Banco de Dados
               </h3>
               <button onClick={checkDatabaseHealth} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all">
                 <RefreshCw size={14} />
@@ -186,7 +184,7 @@ FOR EACH ROW EXECUTE FUNCTION filter_unchanged_levels();
                       {status === 'ok' && <CheckCircle size={12} className="text-emerald-500" />}
                       {status === 'error' && <AlertTriangle size={12} className="text-red-500" />}
                       <span className={`text-[10px] font-bold uppercase ${status === 'ok' ? 'text-emerald-600' : status === 'error' ? 'text-red-600' : 'text-blue-600'}`}>
-                        {status === 'ok' ? 'Conectado' : status === 'error' ? 'Erro' : 'Testando...'}
+                        {status === 'ok' ? 'OK' : status === 'error' ? 'Erro' : '...'}
                       </span>
                     </div>
                  </div>
@@ -195,72 +193,9 @@ FOR EACH ROW EXECUTE FUNCTION filter_unchanged_levels();
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-            <div className="p-6 border-b bg-slate-50/50 flex justify-between items-center">
-              <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-xs">
-                <LayoutList size={18} className="mr-2 text-blue-600" /> Relatórios Operacionais
-              </h3>
-            </div>
-            <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase">Data Início</label>
-                  <input type="date" value={reportStartDate} onChange={(e) => setReportStartDate(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase">Data Fim</label>
-                  <input type="date" value={reportEndDate} onChange={(e) => setReportEndDate(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase">Condomínio</label>
-                  <select value={selectedCondoId} onChange={(e) => setSelectedCondoId(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold">
-                    <option value="all">Todos</option>
-                    {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase">Técnico</label>
-                  <select value={selectedTechId} onChange={(e) => setSelectedTechId(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold">
-                    <option value="all">Todos</option>
-                    {data.users.filter((u:any) => u.role !== UserRole.CONDO_USER).map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              {filteredReportOrders.length > 0 ? (
-                <div className="space-y-6">
-                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100">
-                        <p className="text-[9px] font-black text-blue-400 uppercase mb-1">Total de Atendimentos</p>
-                        <p className="text-xl font-black text-blue-900">{totals.count}</p>
-                      </div>
-                      <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100">
-                        <p className="text-[9px] font-black text-emerald-400 uppercase mb-1">Mão de Obra Total</p>
-                        <p className="text-xl font-black text-emerald-900">{formatCurrency(totals.services)}</p>
-                      </div>
-                      <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
-                        <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Materiais Totais</p>
-                        <p className="text-xl font-black text-slate-900">{formatCurrency(totals.materials)}</p>
-                      </div>
-                   </div>
-                   <div className="flex justify-end">
-                      <button onClick={() => window.print()} className="bg-slate-900 text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center shadow-lg shadow-slate-900/20 active:scale-95">
-                        <Printer size={16} className="mr-2" /> Gerar Relatório
-                      </button>
-                   </div>
-                </div>
-              ) : (
-                <div className="py-12 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center text-slate-300">
-                   <Filter size={40} className="mb-2 opacity-20" />
-                   <p className="text-[10px] font-black uppercase tracking-widest">Nenhum dado para os filtros</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
             <div className="p-6 border-b flex justify-between items-center">
               <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-xs">
-                <User size={18} className="mr-2 text-blue-600" /> Equipe e Acessos
+                <User size={18} className="mr-2 text-blue-600" /> Colaboradores
               </h3>
               <button onClick={() => { setEditingUser(null); setSelectedRole(UserRole.TECHNICIAN); setIsUserModalOpen(true); }} className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline">+ Novo</button>
             </div>
@@ -284,15 +219,6 @@ FOR EACH ROW EXECUTE FUNCTION filter_unchanged_levels();
               ))}
             </div>
           </div>
-        </div>
-
-        <div className="space-y-8">
-           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm p-6">
-              <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-[0.2em] mb-4">Ações Globais</h3>
-              <button onClick={() => { if(confirm('Isso resetará apenas os dados LOCAIS. Os dados na nuvem permanecem. Continuar?')) { localStorage.clear(); window.location.reload(); } }} className="w-full py-4 border-2 border-red-100 text-red-500 font-black rounded-xl uppercase text-[10px] tracking-widest hover:bg-red-50 transition-all">
-                Limpar Cache Local
-              </button>
-           </div>
         </div>
       </div>
 
