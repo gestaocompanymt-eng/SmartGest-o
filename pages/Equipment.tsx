@@ -38,28 +38,18 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
       last_maintenance: editingEq?.last_maintenance || new Date().toISOString()
     };
 
-    if (editingEq) {
-      updateData({
-        ...data,
-        equipments: data.equipments.map((e: Equipment) => e.id === editingEq.id ? eqData : e)
-      });
-    } else {
-      updateData({
-        ...data,
-        equipments: [...data.equipments, eqData]
-      });
-    }
-    
+    const newEquipments = editingEq
+      ? data.equipments.map((e: Equipment) => e.id === editingEq.id ? eqData : e)
+      : [...data.equipments, eqData];
+
+    updateData({ ...data, equipments: newEquipments });
     setIsModalOpen(false);
     setEditingEq(null);
   };
 
   const deleteEquipment = (id: string) => {
     if (confirm('Excluir este equipamento permanentemente?')) {
-      updateData({
-        ...data,
-        equipments: data.equipments.filter((e: Equipment) => e.id !== id)
-      });
+      updateData({ ...data, equipments: data.equipments.filter((e: Equipment) => e.id !== id) });
     }
   };
 
@@ -122,7 +112,8 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                   Ruído: <span className={eq.noise === 'Normal' ? 'text-emerald-600 ml-1' : 'text-red-500 ml-1'}>{eq.noise}</span>
                 </div>
                 <div className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
-                  eq.electrical_state === 'Bom' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
+                  eq.electrical_state === 'Bom' ? 'bg-emerald-50 text-emerald-600' : 
+                  eq.electrical_state === 'Regular' ? 'bg-amber-50 text-amber-600' : 'bg-red-50 text-red-600'
                 }`}>
                   Elétrica: {eq.electrical_state}
                 </div>
@@ -168,6 +159,24 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                 <input required name="voltage" defaultValue={editingEq?.voltage} placeholder="Tensão" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
                 <input required type="number" step="0.1" name="nominalCurrent" defaultValue={editingEq?.nominal_current} placeholder="Corr. Nom." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
                 <input required type="number" step="0.1" name="measuredCurrent" defaultValue={editingEq?.measured_current} placeholder="Corr. Med." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                 <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-500 uppercase">Estado Elétrico</label>
+                    <select name="electricalState" defaultValue={editingEq?.electrical_state} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold">
+                      <option value="Bom">Bom</option>
+                      <option value="Regular">Regular</option>
+                      <option value="Crítico">Crítico</option>
+                    </select>
+                 </div>
+                 <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-500 uppercase">Ruído</label>
+                    <select name="noise" defaultValue={editingEq?.noise} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold">
+                      <option value="Normal">Normal</option>
+                      <option value="Anormal">Anormal</option>
+                    </select>
+                 </div>
               </div>
 
               <div className="space-y-1">

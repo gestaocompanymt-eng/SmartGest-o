@@ -14,8 +14,7 @@ import {
   Wifi,
   WifiOff,
   Cloud,
-  Droplets,
-  Activity
+  Droplets
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
@@ -31,7 +30,6 @@ import ServiceOrders from './pages/ServiceOrders';
 import AdminSettings from './pages/AdminSettings';
 import Login from './pages/Login';
 import WaterLevel from './pages/WaterLevel';
-import Monitoring from './pages/Monitoring';
 
 const AppContent: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
@@ -48,32 +46,22 @@ const AppContent: React.FC = () => {
     dataRef.current = data;
   }, [data]);
 
-  // Lógica de Mesclagem Inteligente: Protege campos locais que podem não existir na nuvem
   const mergeData = useCallback((localItems: any[] = [], cloudItems: any[] = []) => {
     const map = new Map();
-    
-    // Primeiro, carregamos tudo o que está local
-    localItems.forEach(item => { 
-      if(item?.id) map.set(String(item.id), { ...item });
-    });
-
-    // Depois, sobrepomos com os dados da nuvem, mas preservando campos críticos
+    localItems.forEach(item => { if(item?.id) map.set(String(item.id), { ...item }); });
     cloudItems.forEach(cloudItem => {
       if(cloudItem?.id) {
         const id = String(cloudItem.id);
         const localItem = map.get(id);
-        
         map.set(id, {
-          ...localItem, // Mantém dados locais como fallback
-          ...cloudItem, // Sobrescreve com dados da nuvem
-          // REGRA DE OURO: Proteção para Sistemas de Monitoramento e Condos
+          ...localItem,
+          ...cloudItem,
           monitoring_points: (cloudItem.monitoring_points && cloudItem.monitoring_points.length > 0) 
             ? cloudItem.monitoring_points 
             : (localItem?.monitoring_points || [])
         });
       }
     });
-    
     return Array.from(map.values());
   }, []);
 
@@ -89,27 +77,19 @@ const AppContent: React.FC = () => {
         { table: 'appointments', key: 'appointments' },
         { table: 'monitoring_alerts', key: 'monitoringAlerts' }
       ];
-      
       for (const config of syncConfig) {
         const items = (currentData as any)[config.key];
         if (items && items.length > 0) {
-          const cleanItems = items.map((item: any) => ({
-             ...item,
-             id: String(item.id)
-          }));
-          const { error } = await supabase.from(config.table).upsert(cleanItems);
-          if (error) console.warn(`Erro no sync da tabela ${config.table}:`, error);
+          const cleanItems = items.map((item: any) => ({ ...item, id: String(item.id) }));
+          await supabase.from(config.table).upsert(cleanItems);
         }
       }
-    } catch (e) {
-      console.warn("Falha no push automático:", e);
-    }
+    } catch (e) { console.warn("Sync failed:", e); }
   };
 
   const fetchAllData = useCallback(async (currentLocalData: AppData) => {
     if (!navigator.onLine || !isSupabaseActive) return currentLocalData;
     setSyncStatus('syncing');
-    
     try {
       const [resUsers, resCondos, resEquips, resSystems, resOS, resAppts, resLevels, resAlerts] = await Promise.all([
         supabase.from('users').select('*'),
@@ -121,7 +101,6 @@ const AppContent: React.FC = () => {
         supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(100),
         supabase.from('monitoring_alerts').select('*')
       ]);
-
       const cloudData: AppData = {
         ...currentLocalData,
         users: mergeData(currentLocalData.users, resUsers.data || []),
@@ -134,14 +113,10 @@ const AppContent: React.FC = () => {
         appointments: mergeData(currentLocalData.appointments || [], resAppts.data || []),
         waterLevels: resLevels.data || [],
         monitoringAlerts: mergeData(currentLocalData.monitoringAlerts || [], resAlerts.data || []),
-        equipmentTypes: currentLocalData.equipmentTypes,
-        systemTypes: currentLocalData.systemTypes
       };
-      
       setSyncStatus('synced');
       return cloudData;
     } catch (error) {
-      console.error("Erro fatal de sincronização:", error);
       setSyncStatus('error');
       return currentLocalData;
     }
@@ -157,7 +132,6 @@ const AppContent: React.FC = () => {
       setTimeout(() => setIsInitialSyncing(false), 800);
     };
     init();
-
     let subscription: any = null;
     if (isSupabaseActive) {
       subscription = subscribeToChanges('nivel_caixa', (payload) => {
@@ -165,17 +139,13 @@ const AppContent: React.FC = () => {
           const newLevel = payload.new as WaterLevelType;
           setData(prev => {
             if (!prev) return prev;
-            const updated = {
-              ...prev,
-              waterLevels: [newLevel, ...prev.waterLevels].slice(0, 100)
-            };
+            const updated = { ...prev, waterLevels: [newLevel, ...prev.waterLevels].slice(0, 100) };
             saveStore(updated);
             return updated;
           });
         }
       });
     }
-
     const handleOnline = () => {
       setIsOnline(true);
       if (dataRef.current) fetchAllData(dataRef.current).then(updated => {
@@ -183,7 +153,6 @@ const AppContent: React.FC = () => {
         saveStore(updated);
       });
     };
-    
     window.addEventListener('online', handleOnline);
     return () => {
       window.removeEventListener('online', handleOnline);
@@ -194,20 +163,16 @@ const AppContent: React.FC = () => {
   const updateData = async (newData: AppData) => {
     setData(newData);
     saveStore(newData);
-
     if (navigator.onLine && isSupabaseActive) {
       setSyncStatus('syncing');
       try {
         await syncLocalToCloud(newData);
         setSyncStatus('synced');
-      } catch (e) {
-        setSyncStatus('error');
-      }
+      } catch (e) { setSyncStatus('error'); }
     }
   };
 
   if (!data) return null;
-
   if (isInitialSyncing) {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-center">
@@ -217,7 +182,6 @@ const AppContent: React.FC = () => {
       </div>
     );
   }
-
   if (!data.currentUser && location.pathname !== '/login') {
     return <Login onLogin={(user) => {
       const newData = { ...data, currentUser: user };
@@ -256,7 +220,6 @@ const AppContent: React.FC = () => {
           {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
       </div>
-
       <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-slate-900 text-white transform transition-transform duration-300 md:relative md:translate-x-0 md:w-64 shrink-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-6 hidden md:block">
           <div className="flex items-center space-x-2 mb-8">
@@ -268,7 +231,6 @@ const AppContent: React.FC = () => {
           <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
           {(isAdmin || isTech) && <NavItem to="/condos" icon={Building2} label="Condomínios" />}
           <NavItem to="/reservatorios" icon={Droplets} label="Reservatórios" />
-          {(isAdmin || isTech) && <NavItem to="/monitoramento" icon={Activity} label="Monitoramento IoT" />}
           <NavItem to="/equipment" icon={Layers} label="Equipamentos" />
           <NavItem to="/systems" icon={Settings} label="Sistemas" />
           <NavItem to="/os" icon={FileText} label="Ordens de Serviço" />
@@ -281,17 +243,11 @@ const AppContent: React.FC = () => {
           </button>
         </div>
       </aside>
-
       <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         <header className="bg-white border-b border-slate-200 h-16 hidden md:flex items-center justify-between px-8 shrink-0">
-          <div className="flex items-center space-x-4">
-            <div className={`flex items-center space-x-2 text-[10px] font-black uppercase tracking-widest ${
-              syncStatus === 'synced' ? 'text-emerald-500' : 
-              syncStatus === 'error' ? 'text-red-500' : 'text-blue-500'
-            }`}>
-              <Cloud size={14} />
-              <span>{syncStatus === 'synced' ? 'Banco de Dados OK' : 'Sincronizando...'}</span>
-            </div>
+          <div className="flex items-center space-x-4 text-[10px] font-black uppercase tracking-widest text-emerald-500">
+            <Cloud size={14} className="mr-2" />
+            <span>{syncStatus === 'synced' ? 'Banco de Dados OK' : 'Sincronizando...'}</span>
           </div>
           <div className="flex items-center space-x-4">
              {isOnline ? <span className="text-emerald-600 font-bold text-xs uppercase"><Wifi size={14} className="inline mr-1" /> Servidor Ativo</span> : <span className="text-amber-600 font-bold text-xs uppercase"><WifiOff size={14} className="inline mr-1" /> Offline</span>}
@@ -302,7 +258,6 @@ const AppContent: React.FC = () => {
             <Route path="/" element={<Dashboard data={data} updateData={updateData} />} />
             {(isAdmin || isTech) && <Route path="/condos" element={<Condos data={data} updateData={updateData} />} />}
             <Route path="/reservatorios" element={<WaterLevel data={data} updateData={updateData} onRefresh={() => fetchAllData(data).then(d => { setData(d); saveStore(d); })} />} />
-            {(isAdmin || isTech) && <Route path="/monitoramento" element={<Monitoring data={data} updateData={updateData} />} />}
             <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} />} />
             <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} />} />
             <Route path="/os" element={<ServiceOrders data={data} updateData={updateData} />} />

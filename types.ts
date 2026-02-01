@@ -46,7 +46,7 @@ export interface Condo {
   manager: string;
   contract_type: ContractType;
   start_date: string;
-  monitoring_points?: MonitoringPoint[]; // Mantido para compatibilidade, mas migrado para System
+  monitoring_points?: MonitoringPoint[]; 
   updated_at?: string;
 }
 
@@ -68,15 +68,6 @@ export interface Equipment {
   photos: string[];
   last_maintenance: string;
   updated_at?: string;
-  tuya_device_id?: string;
-  is_online?: boolean;
-  monitoring_status?: 'normal' | 'atencao' | 'critico';
-  last_reading?: {
-    power: number;
-    current: number;
-    voltage: number;
-    timestamp: string;
-  };
 }
 
 export interface System {
@@ -86,7 +77,7 @@ export interface System {
   name: string;
   location: string;
   equipment_ids: string[];
-  monitoring_points?: MonitoringPoint[]; // Nova localização dos IDs IoT
+  monitoring_points?: MonitoringPoint[]; 
   parameters: string;
   observations: string;
   updated_at?: string;
