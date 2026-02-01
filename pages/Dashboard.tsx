@@ -17,28 +17,37 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
     const levels = data.waterLevels || [];
     const criticalPoints = [];
     
-    const allowedDeviceIds = new Set();
-    data.condos.forEach(c => {
-      if (!isCondoUser || c.id === user?.condo_id) {
-        c.monitoring_points?.forEach(p => allowedDeviceIds.add(p.device_id));
+    // CORREÇÃO: Busca IDs dos sensores nos SISTEMAS (tipo 7) e não nos condomínios
+    const allowedDeviceIds = new Set<string>();
+    data.systems.forEach(s => {
+      if (s.type_id === '7' && (!isCondoUser || s.condo_id === user?.condo_id)) {
+        s.monitoring_points?.forEach(p => {
+          if (p.device_id) {
+            allowedDeviceIds.add(p.device_id.trim().toLowerCase());
+          }
+        });
       }
     });
 
     const processedIds = new Set();
+    // Pegamos a última leitura de cada sensor
     for(const l of levels) {
-      if (allowedDeviceIds.has(String(l.condominio_id)) && !processedIds.has(String(l.condominio_id))) {
+      const devId = String(l.condominio_id || '').trim().toLowerCase();
+      
+      if (allowedDeviceIds.has(devId) && !processedIds.has(devId)) {
+        // Se o nível for menor que 30, é crítico
         if (l.percentual < 30) {
           criticalPoints.push(l);
         }
-        processedIds.add(String(l.condominio_id));
+        processedIds.add(devId);
       }
     }
 
     return {
       criticalCount: criticalPoints.length,
-      latest: levels.length > 0 ? levels[0] : null
+      latest: levels.length > 0 ? levels.find(l => allowedDeviceIds.has(String(l.condominio_id).trim().toLowerCase())) : null
     };
-  }, [data.waterLevels, data.condos, isCondoUser, user?.condo_id]);
+  }, [data.waterLevels, data.systems, isCondoUser, user?.condo_id]);
 
   const StatCard = ({ title, value, icon: Icon, color, trend }: any) => (
     <div className="bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm hover:border-blue-300 transition-all group">
@@ -64,12 +73,16 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
         </div>
       </div>
 
-      {/* Grid de estatísticas: 2 colunas no mobile, 4 no desktop */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
         <StatCard title="Ativos Críticos" value={data.equipments.filter(e => e.electrical_state === 'Crítico').length} icon={AlertTriangle} color="bg-red-500" />
         <StatCard title="OS Aberta" value={filteredOSList.filter(o => o.status === OSStatus.OPEN).length} icon={Clock} color="bg-blue-600" />
         <StatCard title="Agenda" value={data.appointments.length} icon={Calendar} color="bg-slate-700" />
-        <StatCard title="Reservatórios" value={telemetrySummary.criticalCount > 0 ? `ALERTA (${telemetrySummary.criticalCount})` : 'ESTÁVEL'} icon={Droplets} color={telemetrySummary.criticalCount > 0 ? 'bg-amber-500' : 'bg-emerald-500'} />
+        <StatCard 
+          title="Reservatórios" 
+          value={telemetrySummary.criticalCount > 0 ? `ALERTA (${telemetrySummary.criticalCount})` : 'ESTÁVEL'} 
+          icon={Droplets} 
+          color={telemetrySummary.criticalCount > 0 ? 'bg-amber-500' : 'bg-emerald-500'} 
+        />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -117,17 +130,17 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
                     <div className="flex items-center justify-between">
                        <div>
                           <p className="text-3xl md:text-4xl font-black">{telemetrySummary.latest.percentual}%</p>
-                          <p className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-tight mt-1">Última Leitura Geral</p>
+                          <p className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-tight mt-1">Status Geral</p>
                        </div>
-                       <div className={`p-3 md:p-4 rounded-2xl md:rounded-3xl ${telemetrySummary.criticalCount > 0 ? 'bg-red-500' : 'bg-blue-600 shadow-lg shadow-blue-600/30'}`}>
+                       <div className={`p-3 md:p-4 rounded-2xl md:rounded-3xl ${telemetrySummary.latest.percentual < 30 ? 'bg-red-500 animate-pulse' : 'bg-blue-600 shadow-lg shadow-blue-600/30'}`}>
                           <Droplets size={24} className="md:w-7 md:h-7" />
                        </div>
                     </div>
 
-                    {telemetrySummary.criticalCount > 0 && (
+                    {telemetrySummary.latest.percentual < 30 && (
                       <div className="bg-red-500/20 border border-red-500/50 p-3 rounded-xl flex items-center space-x-2">
                         <AlertTriangle size={14} className="text-red-400 shrink-0" />
-                        <span className="text-[8px] md:text-[9px] font-black uppercase text-red-100">Nível baixo detectado!</span>
+                        <span className="text-[8px] md:text-[9px] font-black uppercase text-red-100">Nível Crítico Detectado!</span>
                       </div>
                     )}
 
@@ -141,7 +154,7 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
                 ) : (
                   <div className="py-8 md:py-12 text-center space-y-4">
                      <WifiOff size={32} className="mx-auto text-slate-600 md:w-10 md:h-10" />
-                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Aguardando ESP32...</p>
+                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Aguardando Sinais IoT...</p>
                   </div>
                 )}
              </div>
