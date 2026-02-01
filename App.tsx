@@ -42,17 +42,10 @@ const AppContent: React.FC = () => {
     dataRef.current = data;
   }, [data]);
 
-  /**
-   * Função de União Inteligente (Merge por ID)
-   * Impede que dados criados localmente (como novos sistemas) sumam se o banco estiver vazio ou desatualizado.
-   */
   const smartUnion = (local: any[], cloud: any[] | null) => {
     if (!cloud || cloud.length === 0) return local;
-    
     const map = new Map();
-    // Prioriza o que vem da nuvem como base
     cloud.forEach(item => map.set(item.id, item));
-    // Mescla com o local. Se o local tiver algo que a nuvem não tem (novo cadastro), mantém o local.
     local.forEach(item => {
       if (!map.has(item.id)) {
         map.set(item.id, item);
@@ -60,7 +53,6 @@ const AppContent: React.FC = () => {
         const cloudItem = map.get(item.id);
         const localDate = new Date(item.updated_at || 0).getTime();
         const cloudDate = new Date(cloudItem.updated_at || 0).getTime();
-        // Se a versão local for mais recente, mantém a local para posterior upload
         if (localDate > cloudDate) {
           map.set(item.id, item);
         }
@@ -74,16 +66,14 @@ const AppContent: React.FC = () => {
     
     setSyncStatus('syncing');
     try {
-      // Added fetching monitoring_alerts from Supabase
-      const [resUsers, resCondos, resEquips, resSystems, resOS, resAppts, resLevels, resAlerts] = await Promise.all([
+      const [resUsers, resCondos, resEquips, resSystems, resOS, resAppts, resLevels] = await Promise.all([
         supabase.from('users').select('*'),
         supabase.from('condos').select('*'),
         supabase.from('equipments').select('*'),
         supabase.from('systems').select('*'),
         supabase.from('service_orders').select('*'),
         supabase.from('appointments').select('*'),
-        supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(200),
-        supabase.from('monitoring_alerts').select('*')
+        supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(200)
       ]);
 
       const cloudData: AppData = {
@@ -97,7 +87,7 @@ const AppContent: React.FC = () => {
         ),
         appointments: smartUnion(currentLocalData.appointments, resAppts.data),
         waterLevels: resLevels.data || currentLocalData.waterLevels,
-        monitoringAlerts: smartUnion(currentLocalData.monitoringAlerts || [], resAlerts.data)
+        monitoringAlerts: currentLocalData.monitoringAlerts || []
       };
       
       setSyncStatus('synced');
@@ -151,8 +141,6 @@ const AppContent: React.FC = () => {
         if (newData.condos.length > 0) syncPromises.push(supabase.from('condos').upsert(newData.condos));
         if (newData.serviceOrders.length > 0) syncPromises.push(supabase.from('service_orders').upsert(newData.serviceOrders));
         if (newData.users.length > 0) syncPromises.push(supabase.from('users').upsert(newData.users.map(u => ({...u, password: u.password || ''}))));
-        // Sync monitoring_alerts table
-        if (newData.monitoringAlerts?.length > 0) syncPromises.push(supabase.from('monitoring_alerts').upsert(newData.monitoringAlerts));
 
         await Promise.all(syncPromises);
         setSyncStatus('synced');
@@ -201,28 +189,30 @@ const AppContent: React.FC = () => {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row overflow-x-hidden">
-      <div className="md:hidden bg-slate-900 text-white p-4 flex justify-between items-center sticky top-0 z-50 h-16">
+    <div className="h-screen w-full flex flex-col md:flex-row bg-slate-50 overflow-hidden">
+      {/* Mobile Header - Fixo no topo */}
+      <header className="md:hidden bg-slate-900 text-white p-4 flex justify-between items-center z-50 h-16 shrink-0 shadow-lg">
         <div className="flex items-center space-x-3">
           <Wrench size={18} className="text-blue-500" />
-          <span className="font-black text-lg uppercase">SmartGestão</span>
+          <span className="font-black text-lg uppercase tracking-tight">SmartGestão</span>
         </div>
-        <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-800 rounded-lg">
+        <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-800 rounded-lg transition-colors">
           {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
-      </div>
+      </header>
 
+      {/* Sidebar - Fixa ou deslizante no mobile */}
       <aside className={`
-        fixed inset-y-0 left-0 z-40 w-72 bg-slate-900 text-white transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0
+        fixed inset-y-0 left-0 z-[60] w-72 bg-slate-900 text-white transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
-        <div className="h-full flex flex-col p-6">
+        <div className="h-full flex flex-col p-6 overflow-hidden">
           <div className="hidden md:flex items-center space-x-3 mb-10 px-2">
             <Wrench size={24} className="text-blue-500" />
             <span className="font-black text-xl tracking-tighter uppercase">SmartGestão</span>
           </div>
 
-          <nav className="flex-1 space-y-2 overflow-y-auto pr-2">
+          <nav className="flex-1 space-y-2 overflow-y-auto pr-2 custom-scrollbar">
             <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
             <NavItem to="/condos" icon={Building2} label="Condomínios" />
             <NavItem to="/equipment" icon={Layers} label="Equipamentos" />
@@ -257,29 +247,49 @@ const AppContent: React.FC = () => {
         </div>
       </aside>
 
-      <main className="flex-1 p-4 md:p-8 overflow-y-auto">
-        <Routes>
-          <Route path="/" element={<Dashboard data={data} updateData={updateData} />} />
-          <Route path="/condos" element={<Condos data={data} updateData={updateData} />} />
-          <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} />} />
-          <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} />} />
-          <Route path="/os" element={<ServiceOrders data={data} updateData={updateData} />} />
-          <Route path="/reservatorios" element={<WaterLevel data={data} updateData={updateData} onRefresh={async () => {
-             const updated = await fetchAllData(data);
-             setData(updated);
-             saveStore(updated);
-          }} />} />
-          <Route path="/admin" element={<AdminSettings data={data} updateData={updateData} />} />
-          <Route path="/login" element={<Navigate to="/" />} />
-        </Routes>
+      {/* Main Content Area - Rola independentemente */}
+      <main className="flex-1 flex flex-col overflow-hidden relative">
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth custom-scrollbar">
+          <Routes>
+            <Route path="/" element={<Dashboard data={data} updateData={updateData} />} />
+            <Route path="/condos" element={<Condos data={data} updateData={updateData} />} />
+            <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} />} />
+            <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} />} />
+            <Route path="/os" element={<ServiceOrders data={data} updateData={updateData} />} />
+            <Route path="/reservatorios" element={<WaterLevel data={data} updateData={updateData} onRefresh={async () => {
+               const updated = await fetchAllData(data);
+               setData(updated);
+               saveStore(updated);
+            }} />} />
+            <Route path="/admin" element={<AdminSettings data={data} updateData={updateData} />} />
+            <Route path="/login" element={<Navigate to="/" />} />
+          </Routes>
+        </div>
       </main>
 
+      {/* Overlay do Menu Mobile */}
       {isSidebarOpen && (
         <div 
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-30 md:hidden"
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[55] md:hidden transition-opacity duration-300"
           onClick={() => setSidebarOpen(false)}
         />
       )}
+
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
+        }
+      `}</style>
     </div>
   );
 };
