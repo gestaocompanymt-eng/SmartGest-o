@@ -34,7 +34,6 @@ import Login from './pages/Login';
 import WaterLevel from './pages/WaterLevel';
 import Monitoring from './pages/Monitoring';
 
-// Internal component that uses routing hooks
 const AppContent: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [data, setData] = useState<AppData | null>(null);
@@ -42,7 +41,6 @@ const AppContent: React.FC = () => {
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error' | 'offline'>('synced');
   const [isInitialSyncing, setIsInitialSyncing] = useState(true);
   
-  // Lock to prevent fetchAllData from overwriting state during an updateData
   const isSyncingRef = useRef(false);
   const navigate = useNavigate();
   const location = useLocation();
@@ -51,31 +49,6 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     dataRef.current = data;
   }, [data]);
-
-  const detectAnomaly = (newLevel: WaterLevelType, lastLevel?: WaterLevelType) => {
-    if (!newLevel) return;
-
-    if (newLevel.percentual <= 20) {
-      sendLocalNotification(
-        "🚨 Nível Crítico!",
-        `O reservatório ${newLevel.condominio_id} está com apenas ${newLevel.percentual}%. Risco de falta d'água.`
-      );
-    }
-
-    if (newLevel.percentual >= 98) {
-      sendLocalNotification(
-        "⚠️ Risco de Transbordamento",
-        `O reservatório ${newLevel.condominio_id} atingiu ${newLevel.percentual}%. Verifique as boias.`
-      );
-    }
-
-    if (lastLevel && (lastLevel.percentual - newLevel.percentual) > 10) {
-      sendLocalNotification(
-        "💧 Queda Brusca de Nível",
-        `Detectada redução de ${(lastLevel.percentual - newLevel.percentual).toFixed(1)}% no reservatório ${newLevel.condominio_id} em curto período.`
-      );
-    }
-  };
 
   const fetchAllData = useCallback(async (currentLocalData: AppData) => {
     if (!navigator.onLine || !isSupabaseActive || isSyncingRef.current) return currentLocalData;
@@ -127,25 +100,6 @@ const AppContent: React.FC = () => {
     };
     init();
 
-    let subscription: any = null;
-    if (isSupabaseActive) {
-      subscription = subscribeToChanges('nivel_caixa', (payload) => {
-        if (payload.eventType === 'INSERT' && dataRef.current) {
-          const newLevel = payload.new as WaterLevelType;
-          const lastLevelForDevice = dataRef.current.waterLevels.find(l => l.condominio_id === newLevel.condominio_id);
-          
-          detectAnomaly(newLevel, lastLevelForDevice);
-
-          setData(prev => {
-            if (!prev) return prev;
-            const updated = { ...prev, waterLevels: [newLevel, ...prev.waterLevels].slice(0, 100) };
-            saveStore(updated);
-            return updated;
-          });
-        }
-      });
-    }
-
     const handleOnline = () => {
       setIsOnline(true);
       if (dataRef.current) fetchAllData(dataRef.current).then(updated => {
@@ -159,14 +113,13 @@ const AppContent: React.FC = () => {
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
-      if (subscription) subscription.unsubscribe();
     };
   }, [fetchAllData]);
 
   const updateData = async (newData: AppData) => {
     const oldData = dataRef.current;
     
-    // Updates locally immediately for UI fluidity
+    // 1. Atualiza local imediatamente para UI não travar
     setData(newData);
     saveStore(newData);
 
@@ -175,41 +128,38 @@ const AppContent: React.FC = () => {
       setSyncStatus('syncing');
       
       try {
-        const changedTable = 
-          JSON.stringify(newData.systems) !== JSON.stringify(oldData?.systems) ? 'systems' :
-          JSON.stringify(newData.equipments) !== JSON.stringify(oldData?.equipments) ? 'equipments' :
-          JSON.stringify(newData.condos) !== JSON.stringify(oldData?.condos) ? 'condos' :
-          JSON.stringify(newData.serviceOrders) !== JSON.stringify(oldData?.serviceOrders) ? 'service_orders' : null;
+        const tablesToUpdate = [];
+        
+        if (JSON.stringify(newData.systems) !== JSON.stringify(oldData?.systems)) tablesToUpdate.push('systems');
+        if (JSON.stringify(newData.equipments) !== JSON.stringify(oldData?.equipments)) tablesToUpdate.push('equipments');
+        if (JSON.stringify(newData.condos) !== JSON.stringify(oldData?.condos)) tablesToUpdate.push('condos');
+        if (JSON.stringify(newData.serviceOrders) !== JSON.stringify(oldData?.serviceOrders)) tablesToUpdate.push('service_orders');
 
-        if (changedTable) {
-          const { error } = await supabase.from(changedTable).upsert(newData[changedTable as keyof AppData]);
+        for (const table of tablesToUpdate) {
+          const tableKey = table === 'service_orders' ? 'serviceOrders' : table as keyof AppData;
+          const { error } = await supabase.from(table).upsert(newData[tableKey] as any);
           
           if (error) {
+            console.error(`Erro ao sincronizar tabela ${table}:`, error);
             setSyncStatus('error');
+            // Reverte local se falhar na nuvem para não dar falso positivo
             if (oldData) {
               setData(oldData);
               saveStore(oldData);
             }
-            throw new Error(`Cloud Error (${changedTable}): ${error.message}`);
+            throw new Error(`Falha na Nuvem (${table}): ${error.message}`);
           }
         }
         
         setSyncStatus('synced');
       } catch (err) {
         setSyncStatus('error');
-        console.error("Critical sync error:", err);
+        console.error("Erro crítico de sincronização:", err);
         throw err;
       } finally {
         isSyncingRef.current = false;
       }
     }
-  };
-
-  const handleLogout = () => {
-    const newData = { ...data!, currentUser: null };
-    setData(newData);
-    saveStore(newData);
-    navigate('/login');
   };
 
   if (!data) return null;
@@ -249,7 +199,6 @@ const AppContent: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row overflow-x-hidden">
-      {/* Mobile Bar */}
       <div className="md:hidden bg-slate-900 text-white p-4 flex justify-between items-center sticky top-0 z-50 h-16">
         <div className="flex items-center space-x-3">
           <Wrench size={18} className="text-blue-500" />
@@ -260,7 +209,6 @@ const AppContent: React.FC = () => {
         </button>
       </div>
 
-      {/* Sidebar */}
       <aside className={`
         fixed inset-y-0 left-0 z-40 w-72 bg-slate-900 text-white transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
@@ -271,7 +219,7 @@ const AppContent: React.FC = () => {
             <span className="font-black text-xl tracking-tighter uppercase">SmartGestão</span>
           </div>
 
-          <nav className="flex-1 space-y-2 overflow-y-auto pr-2 custom-scrollbar">
+          <nav className="flex-1 space-y-2 overflow-y-auto pr-2">
             <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
             <NavItem to="/condos" icon={Building2} label="Condomínios" />
             <NavItem to="/equipment" icon={Layers} label="Equipamentos" />
@@ -284,19 +232,20 @@ const AppContent: React.FC = () => {
             )}
           </nav>
 
-          <div className="mt-auto pt-6 border-t border-slate-800 space-y-4">
-            <div className="flex items-center space-x-3 px-2">
-              <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center font-black text-lg uppercase">
-                {data.currentUser?.name.charAt(0)}
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm font-bold truncate">{data.currentUser?.name}</p>
-                <p className="text-[10px] text-slate-500 font-bold uppercase">{data.currentUser?.role}</p>
-              </div>
-            </div>
-
+          <div className="mt-auto pt-6 border-t border-slate-800">
+             <div className="flex items-center justify-between text-[10px] font-black uppercase text-slate-500 mb-4 px-2">
+                <span>Status Cloud:</span>
+                <span className={syncStatus === 'error' ? 'text-red-500' : 'text-emerald-500'}>
+                   {syncStatus === 'syncing' ? 'Sincronizando...' : syncStatus === 'error' ? 'Erro' : 'OK'}
+                </span>
+             </div>
             <button 
-              onClick={handleLogout}
+              onClick={() => {
+                const newData = { ...data!, currentUser: null };
+                setData(newData);
+                saveStore(newData);
+                navigate('/login');
+              }}
               className="w-full flex items-center space-x-3 px-4 py-3.5 rounded-xl text-slate-400 hover:bg-red-500/10 hover:text-red-500 transition-all font-bold text-sm"
             >
               <LogOut size={20} />
@@ -306,8 +255,7 @@ const AppContent: React.FC = () => {
         </div>
       </aside>
 
-      {/* Main Content Area */}
-      <main className="flex-1 p-4 md:p-8 lg:p-12 overflow-y-auto">
+      <main className="flex-1 p-4 md:p-8 overflow-y-auto">
         <Routes>
           <Route path="/" element={<Dashboard data={data} updateData={updateData} />} />
           <Route path="/condos" element={<Condos data={data} updateData={updateData} />} />
@@ -321,7 +269,6 @@ const AppContent: React.FC = () => {
         </Routes>
       </main>
 
-      {/* Mobile Overlay */}
       {isSidebarOpen && (
         <div 
           className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-30 md:hidden"
@@ -332,7 +279,6 @@ const AppContent: React.FC = () => {
   );
 };
 
-// Fixed the import error in index.tsx by providing a default export App component
 const App: React.FC = () => {
   return (
     <HashRouter>
