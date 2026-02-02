@@ -91,7 +91,6 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     }
   };
 
-  // SQL OTIMIZADO PARA REGISTRAR APENAS MUDANÇAS
   const sqlOptimizer = `
 -- SMARTGESTÃO: GATILHO DE ECONOMIA E HISTÓRICO
 -- Execute este código no SQL Editor do Supabase
@@ -101,25 +100,20 @@ RETURNS TRIGGER AS $$
 DECLARE
   last_val INTEGER;
 BEGIN
-  -- Busca o último nível registrado para este dispositivo específico
   SELECT nivel_cm INTO last_val 
   FROM nivel_caixa
   WHERE condominio_id = NEW.condominio_id
   ORDER BY created_at DESC
   LIMIT 1;
 
-  -- Se o nível atual for igual ao último, aborte a inserção (retorna NULL)
-  -- Isso garante que o banco só registre quando houver ALTERAÇÃO.
   IF last_val IS NOT NULL AND last_val = NEW.nivel_cm THEN
     RETURN NULL; 
   END IF;
   
-  -- Se for diferente, permite salvar e gera o registro no histórico
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
--- Aplica o filtro na tabela de telemetria
 DROP TRIGGER IF EXISTS tr_filter_levels ON nivel_caixa;
 CREATE TRIGGER tr_filter_levels
 BEFORE INSERT ON nivel_caixa
@@ -197,23 +191,31 @@ FOR EACH ROW EXECUTE FUNCTION filter_unchanged_levels();
               <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-xs">
                 <User size={18} className="mr-2 text-blue-600" /> Colaboradores
               </h3>
-              <button onClick={() => { setEditingUser(null); setSelectedRole(UserRole.TECHNICIAN); setIsUserModalOpen(true); }} className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline">+ Novo</button>
+              <button onClick={() => { 
+                setEditingUser(null); 
+                setSelectedRole(UserRole.TECHNICIAN); 
+                setIsUserModalOpen(true); 
+              }} className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline">+ Novo</button>
             </div>
             <div className="divide-y divide-slate-100">
-              {data.users.map((user: UserType) => (
-                <div key={user.id} className="p-4 flex items-center justify-between hover:bg-slate-50">
+              {data.users.map((u: UserType) => (
+                <div key={u.id} className="p-4 flex items-center justify-between hover:bg-slate-50">
                   <div className="flex items-center space-x-3">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white ${user.role === UserRole.ADMIN ? 'bg-slate-900' : 'bg-blue-600'}`}>
-                      {user.name.charAt(0)}
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white ${u.role === UserRole.ADMIN ? 'bg-slate-900' : 'bg-blue-600'}`}>
+                      {u.name.charAt(0)}
                     </div>
                     <div>
-                      <p className="font-bold text-slate-900 text-sm">{user.name}</p>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase">{user.role} • {user.email}</p>
+                      <p className="font-bold text-slate-900 text-sm">{u.name}</p>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase">{u.role} • {u.email}</p>
                     </div>
                   </div>
                   <div className="flex space-x-1">
-                    <button onClick={() => { setEditingUser(user); setSelectedRole(user.role); setIsUserModalOpen(true); }} className="p-2 text-slate-400 hover:text-blue-600"><Edit2 size={16} /></button>
-                    <button onClick={() => deleteUser(user.id)} className="p-2 text-slate-400 hover:text-red-600"><Trash2 size={16} /></button>
+                    <button onClick={() => { 
+                      setEditingUser(u); 
+                      setSelectedRole(u.role); 
+                      setIsUserModalOpen(true); 
+                    }} className="p-2 text-slate-400 hover:text-blue-600"><Edit2 size={16} /></button>
+                    <button onClick={() => deleteUser(u.id)} className="p-2 text-slate-400 hover:text-red-600"><Trash2 size={16} /></button>
                   </div>
                 </div>
               ))}
@@ -224,23 +226,68 @@ FOR EACH ROW EXECUTE FUNCTION filter_unchanged_levels();
 
       {isUserModalOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm no-print">
-          <div className="bg-white rounded-3xl w-full max-md overflow-hidden shadow-2xl">
-            <div className="p-6 border-b flex justify-between items-center">
-              <h2 className="text-lg font-black uppercase tracking-tight">{editingUser ? 'Editar' : 'Novo'} Acesso</h2>
-              <button onClick={() => setIsUserModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600"><X size={24} /></button>
+          <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
+            <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+              <h2 className="text-lg font-black uppercase tracking-tight text-slate-800">{editingUser ? 'Editar' : 'Novo'} Acesso</h2>
+              <button onClick={() => setIsUserModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm"><X size={24} /></button>
             </div>
             <form onSubmit={handleUserSubmit} className="p-6 space-y-5">
-              <input required name="name" defaultValue={editingUser?.name} placeholder="Nome" className="w-full px-4 py-3 bg-slate-50 border rounded-xl text-xs font-bold" />
-              <input required name="email" defaultValue={editingUser?.email} placeholder="Email" className="w-full px-4 py-3 bg-slate-50 border rounded-xl text-xs font-bold" />
-              <input required name="password" defaultValue={editingUser?.password} placeholder="Senha" className="w-full px-4 py-3 bg-slate-50 border rounded-xl text-xs font-bold" />
-              <select name="role" value={selectedRole} onChange={(e) => setSelectedRole(e.target.value as UserRole)} className="w-full px-4 py-3 bg-slate-50 border rounded-xl text-xs font-bold">
-                <option value={UserRole.ADMIN}>Administrador</option>
-                <option value={UserRole.TECHNICIAN}>Técnico</option>
-                <option value={UserRole.CONDO_USER}>Síndico</option>
-              </select>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Nome Completo</label>
+                <input required name="name" defaultValue={editingUser?.name} placeholder="Ex: João da Silva" className="w-full px-4 py-3 bg-slate-50 border rounded-xl text-xs font-bold outline-none" />
+              </div>
+              
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">E-mail de Acesso</label>
+                <input required name="email" defaultValue={editingUser?.email} placeholder="Ex: joao@smartgestao.com" className="w-full px-4 py-3 bg-slate-50 border rounded-xl text-xs font-bold outline-none" />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Senha</label>
+                <input required name="password" defaultValue={editingUser?.password} placeholder="••••••••" className="w-full px-4 py-3 bg-slate-50 border rounded-xl text-xs font-bold outline-none" />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Perfil de Usuário</label>
+                <select 
+                  name="role" 
+                  value={selectedRole} 
+                  onChange={(e) => setSelectedRole(e.target.value as UserRole)} 
+                  className="w-full px-4 py-3 bg-slate-50 border rounded-xl text-xs font-bold outline-none"
+                >
+                  <option value={UserRole.TECHNICIAN}>Técnico</option>
+                  <option value={UserRole.CONDO_USER}>Síndico</option>
+                  <option value={UserRole.ADMIN}>Administrador</option>
+                </select>
+              </div>
+
+              {selectedRole === UserRole.CONDO_USER && (
+                <div className="space-y-1 animate-in slide-in-from-top duration-200">
+                  <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest ml-1 flex items-center">
+                    <Building2 size={12} className="mr-1" /> Condomínio Vinculado
+                  </label>
+                  <select 
+                    required 
+                    name="condoId" 
+                    defaultValue={editingUser?.condo_id} 
+                    className="w-full px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl text-xs font-bold text-blue-700 outline-none"
+                  >
+                    <option value="">Selecione o Condomínio...</option>
+                    {data.condos.map((c: Condo) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                  <p className="text-[9px] text-slate-400 font-medium italic mt-1">
+                    * O síndico terá acesso restrito apenas aos dados deste condomínio.
+                  </p>
+                </div>
+              )}
+
               <div className="pt-4 flex gap-3">
-                <button type="button" onClick={() => setIsUserModalOpen(false)} className="flex-1 py-4 border rounded-2xl font-black text-xs uppercase">Voltar</button>
-                <button type="submit" className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase">Salvar</button>
+                <button type="button" onClick={() => setIsUserModalOpen(false)} className="flex-1 py-4 border rounded-2xl font-black text-[10px] uppercase text-slate-400">Cancelar</button>
+                <button type="submit" className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase shadow-xl shadow-slate-900/20 active:scale-95 transition-all">
+                  <Save size={16} className="inline mr-2" /> Salvar Acesso
+                </button>
               </div>
             </form>
           </div>
