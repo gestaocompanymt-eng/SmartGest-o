@@ -17,9 +17,10 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
   const isAdmin = user?.role === UserRole.ADMIN;
   const isTech = user?.role === UserRole.TECHNICIAN;
   const isCondo = user?.role === UserRole.CONDO_USER;
+  const userCondoId = user?.condo_id;
 
   const filteredSystems = isCondo
-    ? data.systems.filter((s: System) => s.condo_id === user?.condo_id)
+    ? data.systems.filter((s: System) => s.condo_id === userCondoId)
     : data.systems;
 
   const openModal = (sys: System | null) => {
@@ -30,44 +31,22 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
     setIsModalOpen(true);
   };
 
-  const addPoint = () => {
-    setPoints([...points, { id: Math.random().toString(36).substr(2, 5), name: `Reservatório ${points.length + 1}`, device_id: '' }]);
-  };
-
-  const removePoint = (idx: number) => {
-    setPoints(points.filter((_, i) => i !== idx));
-  };
-
-  const updatePoint = (idx: number, field: keyof MonitoringPoint, value: string) => {
-    const newPoints = [...points];
-    newPoints[idx] = { ...newPoints[idx], [field]: value };
-    setPoints(newPoints);
-  };
-
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsSaving(true);
     
     const formData = new FormData(e.currentTarget);
-    const condoId = formData.get('condoId') as string;
+    const condoId = isCondo ? userCondoId : (formData.get('condoId') as string);
     const name = formData.get('name') as string;
-
-    const validPoints = points
-      .filter(p => p.device_id && p.device_id.trim() !== "")
-      .map(p => ({ 
-        id: p.id || Math.random().toString(36).substr(2, 5),
-        name: p.name.trim() || 'Reservatório', 
-        device_id: p.device_id.trim().toUpperCase() 
-      }));
 
     const sysData: System = {
       id: editingSys?.id || `sys-${Date.now()}`,
-      condo_id: condoId,
+      condo_id: condoId || '',
       type_id: selectedTypeId,
       name: name.trim(),
       location: (formData.get('location') as string || '').trim(),
       equipment_ids: editingSys?.equipment_ids || [], 
-      monitoring_points: selectedTypeId === '7' ? validPoints : [],
+      monitoring_points: points,
       parameters: (formData.get('parameters') as string || '').trim(),
       observations: (formData.get('observations') as string || '').trim(),
       updated_at: new Date().toISOString()
@@ -83,7 +62,7 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
       setEditingSys(null);
       setPoints([]);
     } catch (err: any) {
-      setSaveError("Erro ao salvar. Verifique sua conexão.");
+      setSaveError("Erro ao salvar sistema.");
     } finally {
       setIsSaving(false);
     }
@@ -102,7 +81,7 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
           <h1 className="text-2xl font-black text-slate-900 leading-tight">Sistemas</h1>
           <p className="text-sm text-slate-500">Gestão técnica e monitoramento.</p>
         </div>
-        {(isAdmin || isTech) && (
+        {(isAdmin || isTech || isCondo) && (
           <button onClick={() => openModal(null)} className="w-full md:w-auto bg-slate-900 text-white px-6 py-2.5 rounded-xl flex items-center justify-center space-x-2 font-black uppercase text-[10px] tracking-widest shadow-lg">
             <Plus size={18} />
             <span>Novo Sistema</span>
@@ -129,23 +108,13 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
                     <h3 className="text-lg font-black text-slate-900 leading-tight truncate">{sys.name}</h3>
                     <p className="text-[10px] font-black text-blue-600 uppercase mt-1 truncate">{condo?.name || 'Local Indefinido'}</p>
                    </div>
-                   {(isAdmin || isTech) && (
+                   {(isAdmin || isTech || (isCondo && sys.condo_id === userCondoId)) && (
                      <div className="flex space-x-1">
                         <button onClick={() => openModal(sys)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors"><Edit2 size={16} /></button>
                         <button onClick={() => deleteSystem(sys.id)} className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={16} /></button>
                      </div>
                    )}
                 </div>
-
-                {isMonitoring && sys.monitoring_points && sys.monitoring_points.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mt-3 mb-4">
-                     {sys.monitoring_points.map((p, i) => (
-                       <span key={i} className="text-[8px] font-black bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded border border-emerald-100 uppercase">
-                         ID: {p.device_id}
-                       </span>
-                     ))}
-                  </div>
-                )}
 
                 <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
                    <div className="flex items-center text-[9px] font-black text-slate-400 uppercase tracking-widest">
@@ -159,12 +128,6 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
             </div>
           );
         })}
-        {filteredSystems.length === 0 && (
-          <div className="col-span-full py-20 bg-white border-2 border-dashed border-slate-200 rounded-3xl flex flex-col items-center justify-center text-center">
-            <Layers size={40} className="text-slate-200 mb-4" />
-            <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Nenhum sistema encontrado.</p>
-          </div>
-        )}
       </div>
 
       {isModalOpen && (
@@ -176,20 +139,19 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
             </div>
             
             <form onSubmit={handleSubmit} className="p-6 space-y-5">
-              {saveError && (
-                <div className="bg-red-50 border border-red-100 p-4 rounded-2xl flex items-start space-x-3 text-red-600">
-                   <AlertTriangle size={18} className="shrink-0" />
-                   <p className="text-[10px] font-bold uppercase">{saveError}</p>
-                </div>
-              )}
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                  <div className="space-y-1">
                     <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Condomínio</label>
-                    <select required name="condoId" defaultValue={editingSys?.condo_id} className="w-full px-4 py-3 bg-slate-50 border rounded-2xl font-bold outline-none text-xs">
-                       <option value="">Selecione...</option>
-                       {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
+                    {isCondo ? (
+                      <div className="w-full px-4 py-3 bg-slate-100 border rounded-2xl font-black text-xs text-slate-600">
+                        {data.condos.find((c: Condo) => c.id === userCondoId)?.name || 'VÍNCULO INDISPONÍVEL'}
+                      </div>
+                    ) : (
+                      <select required name="condoId" defaultValue={editingSys?.condo_id} className="w-full px-4 py-3 bg-slate-50 border rounded-2xl font-bold outline-none text-xs">
+                         <option value="">Selecione...</option>
+                         {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                    )}
                  </div>
                  <div className="space-y-1">
                     <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Tipo de Sistema</label>
@@ -204,43 +166,10 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
                 <input required name="name" defaultValue={editingSys?.name} placeholder="Ex: Central de Bombas" className="w-full px-4 py-3 bg-slate-50 border rounded-2xl font-bold outline-none text-xs" />
               </div>
 
-              <div className="space-y-1">
-                <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Localização</label>
-                <input required name="location" defaultValue={editingSys?.location} placeholder="Ex: Casa de Máquinas" className="w-full px-4 py-3 bg-slate-50 border rounded-2xl font-medium outline-none text-xs" />
-              </div>
-
-              {selectedTypeId === '7' && (
-                <div className="space-y-4 bg-blue-50/50 p-5 rounded-3xl border border-blue-100">
-                  <div className="flex justify-between items-center border-b border-blue-100 pb-3">
-                     <h4 className="text-[10px] font-black text-blue-600 uppercase flex items-center">
-                        <Droplets size={14} className="mr-2" /> Sensores de Nível
-                     </h4>
-                     <button type="button" onClick={addPoint} className="text-[8px] font-black text-white bg-blue-600 px-3 py-1.5 rounded-lg flex items-center">
-                       <Plus size={12} className="mr-1" /> Adicionar Ponto
-                     </button>
-                  </div>
-                  
-                  <div className="space-y-3">
-                    {points.map((p, i) => (
-                      <div key={i} className="flex gap-2 items-center bg-white p-2 rounded-2xl border border-blue-100">
-                        <input value={p.name} onChange={(e) => updatePoint(i, 'name', e.target.value)} className="flex-1 px-3 py-2 bg-slate-50 border-none rounded-xl text-[10px] font-bold outline-none" placeholder="Nome" />
-                        <input value={p.device_id} onChange={(e) => updatePoint(i, 'device_id', e.target.value)} className="w-28 px-3 py-2 bg-blue-50 border border-blue-200 rounded-xl text-[10px] font-black text-blue-600 uppercase outline-none" placeholder="ID ESP32" />
-                        <button type="button" onClick={() => removePoint(i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Trash2 size={14} /></button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               <div className="flex gap-3 pt-4">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 border rounded-2xl font-black text-[10px] uppercase text-slate-400">Cancelar</button>
-                <button 
-                  type="submit" 
-                  disabled={isSaving}
-                  className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase flex items-center justify-center disabled:opacity-50"
-                >
-                  {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} className="mr-2" />}
-                  {isSaving ? 'Salvando...' : 'Salvar Sistema'}
+                <button type="submit" className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase flex items-center justify-center">
+                  <Save size={16} className="mr-2" /> Salvar Sistema
                 </button>
               </div>
             </form>

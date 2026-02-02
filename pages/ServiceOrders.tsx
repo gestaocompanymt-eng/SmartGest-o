@@ -10,6 +10,7 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
   const user = data.currentUser;
   const isCondoUser = user?.role === UserRole.CONDO_USER;
   const isAdminOrTech = user?.role === UserRole.ADMIN || user?.role === UserRole.TECHNICIAN;
+  const userCondoId = user?.condo_id;
   const location = useLocation();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -20,7 +21,7 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
   const [expandedOS, setExpandedOS] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   
-  const [selectedCondoId, setSelectedCondoId] = useState(isCondoUser ? (user?.condo_id || '') : '');
+  const [selectedCondoId, setSelectedCondoId] = useState(isCondoUser ? (userCondoId || '') : '');
   const [assignmentType, setAssignmentType] = useState<'equipment' | 'system' | 'general'>('general');
   const [selectedEquipmentId, setSelectedEquipmentId] = useState('');
   const [selectedSystemId, setSelectedSystemId] = useState('');
@@ -37,12 +38,12 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
 
     if (systemId) {
       const sys = data.systems.find((s: System) => s.id === systemId);
-      if (sys) openNewOSWithSystem(sys);
+      if (sys && (!isCondoUser || sys.condo_id === userCondoId)) openNewOSWithSystem(sys);
     } else if (equipmentId) {
       const eq = data.equipments.find((e: Equipment) => e.id === equipmentId);
-      if (eq) openNewOSWithEquipment(eq, description || '');
+      if (eq && (!isCondoUser || eq.condo_id === userCondoId)) openNewOSWithEquipment(eq, description || '');
     }
-  }, [location.search, data.systems, data.equipments]);
+  }, [location.search, data.systems, data.equipments, isCondoUser, userCondoId]);
 
   const openNewOSWithSystem = (sys: System) => {
     setSelectedCondoId(sys.condo_id);
@@ -123,15 +124,16 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
     const formData = new FormData(e.currentTarget);
     
     const statusFromForm = formData.get('status') as OSStatus;
+    // Pega o ID do condomínio: se for síndico é o dele, se for global é o que foi selecionado
+    const condoId = isCondoUser ? (userCondoId || '') : (formData.get('condo_id') as string);
 
-    // Gerar ID único para novas OS
     const uniqueId = `OS-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
     const osData: ServiceOrder = {
       id: editingOS?.id || uniqueId,
       type: formData.get('type') as OSType,
       status: statusFromForm || editingOS?.status || OSStatus.OPEN,
-      condo_id: isCondoUser ? (user?.condo_id || '') : (formData.get('condo_id') as string),
+      condo_id: condoId,
       location: formData.get('location') as string,
       equipment_id: assignmentType === 'equipment' ? (formData.get('equipment_id') as string) : undefined,
       system_id: assignmentType === 'system' ? (formData.get('system_id') as string) : undefined,
@@ -162,7 +164,7 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
     setIsModalOpen(false);
     setEditingOS(null);
     setAssignmentType('general');
-    setSelectedCondoId(isCondoUser ? (user?.condo_id || '') : '');
+    setSelectedCondoId(isCondoUser ? (userCondoId || '') : '');
     setSelectedEquipmentId('');
     setSelectedSystemId('');
     setInitialDescription('');
@@ -173,7 +175,7 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
 
   const filteredOS = data.serviceOrders.filter((os: ServiceOrder) => {
     const matchStatus = filterStatus === 'all' || os.status === filterStatus;
-    const matchCondo = !isCondoUser || os.condo_id === user?.condo_id;
+    const matchCondo = isCondoUser ? os.condo_id === userCondoId : true;
     return matchStatus && matchCondo;
   });
 
@@ -207,7 +209,6 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
             <div key={os.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden transition-all">
               <div className="p-4 flex items-center justify-between cursor-pointer" onClick={() => setExpandedOS(isExpanded ? null : os.id)}>
                 <div className="flex items-center space-x-4 min-w-0">
-                  {/* Fixed typo: changed OSType.CORRECTIVE to OSType.CORRETIVE */}
                   <div className={`p-2.5 rounded-xl ${os.type === OSType.CORRETIVE ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>
                     <FileText size={20} />
                   </div>
@@ -217,12 +218,6 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                   </div>
                 </div>
                 <div className="flex items-center space-x-3">
-                  {(os.photos_before?.length > 0 || os.photos_after?.length > 0) && (
-                    <div className="hidden md:flex items-center text-slate-300">
-                      <ImageIcon size={14} />
-                      <span className="text-[9px] font-bold ml-1">{(os.photos_before?.length || 0) + (os.photos_after?.length || 0)}</span>
-                    </div>
-                  )}
                   <span className={`px-2 py-1 rounded text-[8px] font-black uppercase ${
                     os.status === OSStatus.COMPLETED ? 'bg-emerald-100 text-emerald-700' : 
                     os.status === OSStatus.CANCELLED ? 'bg-slate-100 text-slate-500' : 
@@ -237,50 +232,13 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                 <div className="px-4 pb-4 border-t pt-4 space-y-4 animate-in slide-in-from-top duration-200">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <p className="text-[10px] font-black text-slate-400 uppercase">Descrição da Ocorrência</p>
-                        {os.location && (
-                          <p className="text-[9px] font-black text-blue-600 flex items-center uppercase"><MapPin size={10} className="mr-1" /> {os.location}</p>
-                        )}
-                      </div>
+                      <p className="text-[10px] font-black text-slate-400 uppercase">Descrição da Ocorrência</p>
                       <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-xl italic">{os.problem_description}</p>
                     </div>
-                    {os.actions_performed && (
-                      <div className="space-y-2">
-                        <p className="text-[10px] font-black text-slate-400 uppercase">Ações Executadas</p>
-                        <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-xl">{os.actions_performed}</p>
-                      </div>
-                    )}
                   </div>
 
-                  {/* Galeria de Fotos Antes/Depois */}
-                  {(os.photos_before?.length > 0 || os.photos_after?.length > 0) && (
-                    <div className="space-y-4">
-                      {os.photos_before?.length > 0 && (
-                        <div className="space-y-2">
-                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Fotos: Antes / Diagnóstico</p>
-                          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                            {os.photos_before.map((img, i) => (
-                              <img key={i} src={img} className="h-24 w-24 object-cover rounded-xl border border-slate-100 shrink-0" alt="Antes" />
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {os.photos_after?.length > 0 && (
-                        <div className="space-y-2">
-                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Fotos: Após / Conclusão</p>
-                          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                            {os.photos_after.map((img, i) => (
-                              <img key={i} src={img} className="h-24 w-24 object-cover rounded-xl border border-emerald-100 shrink-0" alt="Depois" />
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
                   <div className="flex flex-wrap gap-3 pt-2">
-                    {isAdminOrTech && (
+                    {(isAdminOrTech || (isCondoUser && os.condo_id === userCondoId)) && (
                       <button 
                         onClick={() => { 
                           setEditingOS(os); 
@@ -291,14 +249,6 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                         className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-black uppercase px-4 py-2 rounded-xl flex items-center transition-colors"
                       >
                         <Edit2 size={14} className="mr-1.5" /> Editar / Finalizar
-                      </button>
-                    )}
-                    {isAdminOrTech && (
-                      <button 
-                        onClick={() => { setQuoteOS(os); setIsQuoteModalOpen(true); }}
-                        className="bg-emerald-50 hover:bg-emerald-100 text-emerald-600 text-[10px] font-black uppercase px-4 py-2 rounded-xl flex items-center transition-colors"
-                      >
-                        <Calculator size={14} className="mr-1.5" /> Gerar Orçamento
                       </button>
                     )}
                     <button 
@@ -325,89 +275,35 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
             <form onSubmit={handleSubmit} className="p-6 space-y-6 overflow-y-auto">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase">Status do Atendimento</label>
+                  <label className="text-[10px] font-black text-slate-500 uppercase">Status</label>
                   <select 
                     name="status" 
                     defaultValue={editingOS?.status || OSStatus.OPEN}
-                    className="w-full px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl font-black text-blue-700 text-xs focus:ring-2 focus:ring-blue-500/20"
+                    className="w-full px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl font-black text-blue-700 text-xs"
                   >
                     {Object.values(OSStatus).map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase">Tipo de Intervenção</label>
-                  <select required name="type" defaultValue={editingOS?.type} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs">
-                    {Object.values(OSType).map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-500 uppercase">Condomínio</label>
-                  <select 
-                    disabled={isCondoUser || !!editingOS}
-                    required 
-                    name="condo_id" 
-                    value={selectedCondoId} 
-                    onChange={(e) => setSelectedCondoId(e.target.value)} 
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs disabled:opacity-50"
-                  >
-                    <option value="">Selecione...</option>
-                    {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase">Local Exato</label>
-                  <input required name="location" defaultValue={editingOS?.location} placeholder="Ex: Casa de Máquinas" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs" />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase">Vincular a:</label>
-                  <select 
-                    value={assignmentType} 
-                    onChange={(e) => setAssignmentType(e.target.value as any)}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs"
-                  >
-                    <option value="general">Geral / Sem vínculo específico</option>
-                    <option value="equipment">Equipamento</option>
-                    <option value="system">Sistema</option>
-                  </select>
-                </div>
-                {assignmentType === 'equipment' && (
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-500 uppercase">Equipamento</label>
+                  {isCondoUser ? (
+                    <div className="w-full px-4 py-3 bg-slate-100 border rounded-xl font-black text-xs text-slate-600">
+                      {data.condos.find((c: Condo) => c.id === userCondoId)?.name || 'NÃO VINCULADO'}
+                    </div>
+                  ) : (
                     <select 
-                      name="equipment_id" 
-                      value={selectedEquipmentId} 
-                      onChange={(e) => setSelectedEquipmentId(e.target.value)}
+                      disabled={!!editingOS}
+                      required 
+                      name="condo_id" 
+                      value={selectedCondoId} 
+                      onChange={(e) => setSelectedCondoId(e.target.value)} 
                       className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs"
                     >
-                      <option value="">Selecione o equipamento...</option>
-                      {data.equipments.filter(e => e.condo_id === selectedCondoId).map(e => (
-                        <option key={e.id} value={e.id}>{e.manufacturer} - {e.model}</option>
-                      ))}
+                      <option value="">Selecione...</option>
+                      {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
-                  </div>
-                )}
-                {assignmentType === 'system' && (
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-500 uppercase">Sistema</label>
-                    <select 
-                      name="system_id" 
-                      value={selectedSystemId} 
-                      onChange={(e) => setSelectedSystemId(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs"
-                    >
-                      <option value="">Selecione o sistema...</option>
-                      {data.systems.filter(s => s.condo_id === selectedCondoId).map(s => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
 
               <div className="space-y-1">
@@ -415,172 +311,16 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                 <textarea required name="description" defaultValue={editingOS?.problem_description || initialDescription} rows={3} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"></textarea>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase flex items-center">
-                  <Camera size={14} className="mr-1.5" /> Registro Fotográfico (Antes)
-                </label>
-                <div className="grid grid-cols-4 md:grid-cols-6 gap-2">
-                  {photosBefore.map((img, idx) => (
-                    <div key={idx} className="relative aspect-square">
-                      <img src={img} className="w-full h-full object-cover rounded-xl border border-slate-200" alt="Preview" />
-                      <button type="button" onClick={() => removePhoto(idx, 'before')} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-1 shadow-md">
-                        <X size={10} />
-                      </button>
-                    </div>
-                  ))}
-                  <label className="aspect-square border-2 border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center text-slate-400 hover:border-blue-400 hover:text-blue-500 transition-all cursor-pointer">
-                    <Plus size={20} />
-                    <input type="file" multiple accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, 'before')} />
-                  </label>
-                </div>
-              </div>
-
-              {isAdminOrTech && (
-                <>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-blue-600 uppercase">Parecer Técnico / Resolução</label>
-                    <textarea name="actions" defaultValue={editingOS?.actions_performed} rows={3} placeholder="Descreva o que foi feito..." className="w-full px-4 py-3 bg-blue-50/50 border border-blue-100 rounded-xl text-xs font-medium"></textarea>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-emerald-600 uppercase flex items-center">
-                      <CheckCircle2 size={14} className="mr-1.5" /> Comprovação Visual (Depois)
-                    </label>
-                    <div className="grid grid-cols-4 md:grid-cols-6 gap-2">
-                      {photosAfter.map((img, idx) => (
-                        <div key={idx} className="relative aspect-square">
-                          <img src={img} className="w-full h-full object-cover rounded-xl border border-emerald-100" alt="Preview" />
-                          <button type="button" onClick={() => removePhoto(idx, 'after')} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-1 shadow-md">
-                            <X size={10} />
-                          </button>
-                        </div>
-                      ))}
-                      <label className="aspect-square border-2 border-dashed border-emerald-100 rounded-xl flex flex-col items-center justify-center text-emerald-400 hover:bg-emerald-50 transition-all cursor-pointer">
-                        <Plus size={20} />
-                        <input type="file" multiple accept="image/*" className="hidden" onChange={(e) => handleFileChange(e, 'after')} />
-                      </label>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-dashed border-slate-200">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black text-slate-500 uppercase">Mão de Obra (R$)</label>
-                      <input type="number" step="0.01" name="service_value" defaultValue={editingOS?.service_value} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl font-bold text-xs" />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black text-slate-500 uppercase">Materiais (R$)</label>
-                      <input type="number" step="0.01" name="material_value" defaultValue={editingOS?.material_value} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl font-bold text-xs" />
-                    </div>
-                  </div>
-                </>
-              )}
-
               <div className="pt-4 flex gap-3">
                 <button type="button" onClick={closeModal} className="flex-1 py-4 border rounded-2xl font-black text-xs uppercase">Descartar</button>
                 <button type="submit" disabled={saveStatus === 'saving'} className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-slate-900/20 active:scale-95">
-                  {saveStatus === 'saving' ? 'Salvando...' : 'Gravar Informações'}
+                  {saveStatus === 'saving' ? 'Salvando...' : 'Gravar OS'}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-
-      {isQuoteModalOpen && quoteOS && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/80 backdrop-blur-md p-0 md:p-6 overflow-hidden">
-          <div className="bg-white md:rounded-3xl w-full h-full md:h-auto md:max-h-[95vh] md:max-w-3xl flex flex-col shadow-2xl animate-in zoom-in-95 duration-200">
-            <div className="p-6 border-b flex justify-between items-center no-print">
-              <h3 className="font-black uppercase text-xs tracking-widest text-slate-900">Documento de Orçamento</h3>
-              <div className="flex space-x-2">
-                 <button onClick={() => window.print()} className="bg-blue-600 text-white px-5 py-2.5 rounded-xl font-black text-[10px] uppercase flex items-center shadow-lg shadow-blue-500/20 active:scale-95 transition-all">
-                   <Printer size={16} className="mr-2" /> Gerar PDF
-                 </button>
-                 <button onClick={() => setIsQuoteModalOpen(false)} className="p-2.5 bg-slate-100 rounded-xl hover:bg-slate-200 text-slate-600"><X size={20} /></button>
-              </div>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto p-8 md:p-12 space-y-8 print:p-0" id="quote-document">
-              <div className="flex justify-between items-start border-b-2 border-slate-900 pb-8">
-                <div>
-                   <div className="flex items-center space-x-2 mb-4">
-                     <Wrench size={32} className="text-blue-600" />
-                     <span className="font-black text-2xl uppercase tracking-tighter text-slate-900">SmartGestão</span>
-                   </div>
-                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Manutenção e Gestão Predial</p>
-                   <div className="space-y-1">
-                      <p className="text-[10px] text-slate-700 font-black uppercase tracking-widest">Contato: (65) 99699-5600</p>
-                   </div>
-                </div>
-                <div className="text-right">
-                  <h1 className="text-3xl font-black uppercase text-slate-900 leading-none mb-1">Orçamento</h1>
-                  <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Nº DOCUMENTO: {quoteOS.id}</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-8">
-                <div>
-                  <h4 className="text-[9px] font-black uppercase text-slate-400 tracking-[0.2em] mb-2">Cliente / Condomínio</h4>
-                  <p className="font-black text-slate-900 text-sm mb-1">{data.condos.find((c:any)=>c.id===quoteOS.condo_id)?.name}</p>
-                  <p className="text-[10px] text-slate-600 font-medium leading-relaxed">{data.condos.find((c:any)=>c.id===quoteOS.condo_id)?.address}</p>
-                </div>
-                <div className="text-right">
-                  <h4 className="text-[9px] font-black uppercase text-slate-400 tracking-[0.2em] mb-2">Local do Serviço</h4>
-                  <p className="font-black text-slate-900 text-sm uppercase">{quoteOS.location || 'Áreas Comuns'}</p>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
-                  <h4 className="text-[9px] font-black uppercase text-slate-400 tracking-[0.2em] mb-3">Escopo do Trabalho</h4>
-                  <p className="text-xs text-slate-700 leading-relaxed font-medium italic">{quoteOS.problem_description}</p>
-                </div>
-              </div>
-
-              <div className="border rounded-2xl overflow-hidden">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-900 text-white uppercase text-[9px] tracking-widest font-black">
-                    <tr>
-                      <th className="px-6 py-4">Item de Manutenção</th>
-                      <th className="px-6 py-4 text-right">Valor</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    <tr>
-                      <td className="px-6 py-4 font-bold text-slate-600">Serviços Técnicos Especializados</td>
-                      <td className="px-6 py-4 text-right font-black text-slate-900">{formatCurrency(quoteOS.service_value)}</td>
-                    </tr>
-                    <tr>
-                      <td className="px-6 py-4 font-bold text-slate-600">Componentes, Peças e Insumos</td>
-                      <td className="px-6 py-4 text-right font-black text-slate-900">{formatCurrency(quoteOS.material_value)}</td>
-                    </tr>
-                  </tbody>
-                  <tfoot className="bg-blue-50">
-                    <tr>
-                      <td className="px-6 py-5 font-black uppercase text-[10px] text-blue-900 tracking-widest">Valor Total Investimento</td>
-                      <td className="px-6 py-5 text-right text-xl font-black text-blue-900">
-                        {formatCurrency((quoteOS.service_value || 0) + (quoteOS.material_value || 0))}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <style>{`
-        @media print {
-          .no-print { display: none !important; }
-          body { background: white !important; margin: 0; padding: 0; }
-          #quote-document { position: absolute; top: 0; left: 0; width: 100%; padding: 2cm !important; }
-          .bg-slate-900 { background-color: #0f172a !important; color: white !important; -webkit-print-color-adjust: exact; }
-          .bg-blue-50 { background-color: #eff6ff !important; -webkit-print-color-adjust: exact; }
-          .bg-slate-50 { background-color: #f8fafc !important; -webkit-print-color-adjust: exact; }
-        }
-        .scrollbar-hide::-webkit-scrollbar { display: none; }
-        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-      `}</style>
     </div>
   );
 };

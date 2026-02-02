@@ -7,11 +7,25 @@ import { useNavigate } from 'react-router-dom';
 const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> = ({ data }) => {
   const navigate = useNavigate();
   const user = data.currentUser;
-  const isCondoUser = user?.role === UserRole.CONDO_USER;
+  const isRestricted = user?.role === UserRole.CONDO_USER;
+  const condoId = user?.condo_id;
 
-  const filteredOSList = useMemo(() => isCondoUser 
-    ? data.serviceOrders.filter(os => os.condo_id === user?.condo_id)
-    : data.serviceOrders, [data.serviceOrders, isCondoUser, user?.condo_id]);
+  // Filtro de OS: Síndico vê apenas a sua, Técnico/Admin vê todas
+  const filteredOSList = useMemo(() => isRestricted 
+    ? data.serviceOrders.filter(os => os.condo_id === condoId)
+    : data.serviceOrders, [data.serviceOrders, isRestricted, condoId]);
+
+  // Filtro de Ativos Críticos: Síndico vê apenas o seu, Técnico/Admin vê todos
+  const criticalEquipments = useMemo(() => isRestricted
+    ? data.equipments.filter(e => e.condo_id === condoId && e.electrical_state === 'Crítico')
+    : data.equipments.filter(e => e.electrical_state === 'Crítico'),
+  [data.equipments, isRestricted, condoId]);
+
+  // Filtro de Agenda: Síndico vê apenas o seu, Técnico/Admin vê todos
+  const filteredAppointments = useMemo(() => isRestricted
+    ? data.appointments.filter(a => a.condo_id === condoId)
+    : data.appointments,
+  [data.appointments, isRestricted, condoId]);
 
   const telemetrySummary = useMemo(() => {
     const levels = data.waterLevels || [];
@@ -19,7 +33,8 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
     
     const allowedDeviceIds = new Set<string>();
     data.systems.forEach(s => {
-      if (s.type_id === '7' && (!isCondoUser || s.condo_id === user?.condo_id)) {
+      // Regra de isolamento de dispositivos IoT: Técnico vê todos
+      if (s.type_id === '7' && (!isRestricted || s.condo_id === condoId)) {
         s.monitoring_points?.forEach(p => {
           if (p.device_id) {
             allowedDeviceIds.add(p.device_id.trim().toLowerCase());
@@ -44,7 +59,7 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
       criticalCount: criticalPoints.length,
       latest: levels.length > 0 ? levels.find(l => allowedDeviceIds.has(String(l.condominio_id).trim().toLowerCase())) : null
     };
-  }, [data.waterLevels, data.systems, isCondoUser, user?.condo_id]);
+  }, [data.waterLevels, data.systems, isRestricted, condoId]);
 
   const StatCard = ({ title, value, icon: Icon, color, trend }: any) => (
     <div className="bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm hover:border-blue-300 transition-all group">
@@ -65,15 +80,15 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
         <div>
           <h1 className="text-xl md:text-2xl font-black text-slate-900 leading-tight">Painel Operacional</h1>
           <p className="text-[10px] md:text-sm text-slate-500 font-medium italic">
-            {isCondoUser ? `Status do seu condomínio.` : `Gestão Técnica Integrada.`}
+            {isRestricted ? `Status do condomínio ${data.condos.find(c => c.id === condoId)?.name || ''}` : `Gestão Técnica Integrada.`}
           </p>
         </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
-        <StatCard title="Ativos Críticos" value={data.equipments.filter(e => e.electrical_state === 'Crítico').length} icon={AlertTriangle} color="bg-red-500" />
+        <StatCard title="Ativos Críticos" value={criticalEquipments.length} icon={AlertTriangle} color="bg-red-500" />
         <StatCard title="OS Aberta" value={filteredOSList.filter(o => o.status === OSStatus.OPEN).length} icon={Clock} color="bg-blue-600" />
-        <StatCard title="Agenda" value={data.appointments.length} icon={Calendar} color="bg-slate-700" />
+        <StatCard title="Agenda" value={filteredAppointments.length} icon={Calendar} color="bg-slate-700" />
         <StatCard 
           title="Reservatórios" 
           value={telemetrySummary.criticalCount > 0 ? `ALERTA (${telemetrySummary.criticalCount})` : 'ESTÁVEL'} 

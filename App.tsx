@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
-import { UserRole, AppData } from './types';
+import { UserRole, AppData, User } from './types';
 import { supabase, isSupabaseActive } from './supabase';
 
 import Dashboard from './pages/Dashboard';
@@ -62,18 +62,34 @@ const AppContent: React.FC = () => {
   };
 
   const fetchAllData = useCallback(async (currentLocalData: AppData) => {
-    if (!navigator.onLine || !isSupabaseActive || isSyncingRef.current) return currentLocalData;
+    if (!navigator.onLine || !isSupabaseActive || isSyncingRef.current || !currentLocalData.currentUser) return currentLocalData;
     
     setSyncStatus('syncing');
+    const user = currentLocalData.currentUser;
+    // REGRA: Somente CONDO_USER é restrito. ADMIN e TECHNICIAN são globais.
+    const isRestricted = user.role === UserRole.CONDO_USER;
+    const condoId = user.condo_id;
+
     try {
+      let qUsers = supabase.from('users').select('*');
+      let qCondos = supabase.from('condos').select('*');
+      let qEquips = supabase.from('equipments').select('*');
+      let qSystems = supabase.from('systems').select('*');
+      let qOS = supabase.from('service_orders').select('*');
+      let qAppts = supabase.from('appointments').select('*');
+      let qLevels = supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(300);
+
+      if (isRestricted && condoId) {
+        qUsers = qUsers.eq('condo_id', condoId);
+        qCondos = qCondos.eq('id', condoId);
+        qEquips = qEquips.eq('condo_id', condoId);
+        qSystems = qSystems.eq('condo_id', condoId);
+        qOS = qOS.eq('condo_id', condoId);
+        qAppts = qAppts.eq('condo_id', condoId);
+      }
+
       const [resUsers, resCondos, resEquips, resSystems, resOS, resAppts, resLevels] = await Promise.all([
-        supabase.from('users').select('*'),
-        supabase.from('condos').select('*'),
-        supabase.from('equipments').select('*'),
-        supabase.from('systems').select('*'),
-        supabase.from('service_orders').select('*'),
-        supabase.from('appointments').select('*'),
-        supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(200)
+        qUsers, qCondos, qEquips, qSystems, qOS, qAppts, qLevels
       ]);
 
       const cloudData: AppData = {
@@ -119,13 +135,11 @@ const AppContent: React.FC = () => {
 
   useEffect(() => {
     const init = async () => {
-      // 1. Carregar local imediatamente para evitar tela de loading
       const local = getStore();
       setData(local);
-      setIsInitialSyncing(false); // Libera o app para uso offline imediato
+      setIsInitialSyncing(false); 
       
-      // 2. Sincronizar em background
-      if (navigator.onLine) {
+      if (navigator.onLine && local.currentUser) {
         const updated = await fetchAllData(local);
         setData(updated);
         saveStore(updated);
@@ -135,10 +149,12 @@ const AppContent: React.FC = () => {
 
     const handleOnline = () => {
       setSyncStatus('syncing');
-      if (dataRef.current) fetchAllData(dataRef.current).then(updated => {
-        setData(updated);
-        saveStore(updated);
-      });
+      if (dataRef.current && dataRef.current.currentUser) {
+        fetchAllData(dataRef.current).then(updated => {
+          setData(updated);
+          saveStore(updated);
+        });
+      }
     };
     
     window.addEventListener('online', handleOnline);
@@ -182,7 +198,7 @@ const AppContent: React.FC = () => {
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-center">
         <Wrench size={48} className="text-blue-500 animate-bounce mb-6" />
         <h2 className="text-white font-black uppercase tracking-widest text-lg mb-2">SmartGestão</h2>
-        <p className="text-slate-400 text-sm font-bold animate-pulse">Iniciando módulos...</p>
+        <p className="text-slate-400 text-sm font-bold animate-pulse">Protegendo sua conexão...</p>
       </div>
     );
   }
@@ -195,6 +211,9 @@ const AppContent: React.FC = () => {
       navigate('/');
     }} />;
   }
+
+  // Define user for use in navigation items
+  const user = data.currentUser;
 
   const NavItem = ({ to, icon: Icon, label }: { to: string; icon: any; label: string }) => (
     <Link
@@ -235,7 +254,8 @@ const AppContent: React.FC = () => {
 
           <nav className="flex-1 space-y-2 overflow-y-auto pr-2 custom-scrollbar">
             <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
-            <NavItem to="/condos" icon={Building2} label="Condomínios" />
+            {/* Fix: use the local 'user' constant or data.currentUser instead of an undefined 'user' */}
+            <NavItem to="/condos" icon={Building2} label={user?.role === UserRole.CONDO_USER ? 'Meu Condomínio' : 'Condomínios'} />
             <NavItem to="/equipment" icon={Layers} label="Equipamentos" />
             <NavItem to="/systems" icon={Wrench} label="Sistemas" />
             <NavItem to="/os" icon={FileText} label="Ordens de Serviço" />

@@ -12,9 +12,10 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const isAdmin = user?.role === UserRole.ADMIN;
   const isTech = user?.role === UserRole.TECHNICIAN;
   const isCondo = user?.role === UserRole.CONDO_USER;
+  const userCondoId = user?.condo_id;
 
   const filteredEquipments = isCondo
-    ? data.equipments.filter((e: Equipment) => e.condo_id === user?.condo_id)
+    ? data.equipments.filter((e: Equipment) => e.condo_id === userCondoId)
     : data.equipments;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -43,9 +44,13 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+    
+    // Força o ID do condomínio apenas se for Síndico. Técnico e Admin usam o valor do select.
+    const condoId = isCondo ? userCondoId : (formData.get('condoId') as string);
+
     const eqData: Equipment = {
       id: editingEq?.id || Math.random().toString(36).substr(2, 9),
-      condo_id: formData.get('condoId') as string,
+      condo_id: condoId || '',
       type_id: formData.get('typeId') as string,
       manufacturer: formData.get('manufacturer') as string,
       model: formData.get('model') as string,
@@ -85,7 +90,7 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
           <h1 className="text-2xl font-black text-slate-900 leading-tight">Equipamentos</h1>
           <p className="text-sm text-slate-500 font-medium italic">Inventário técnico e controle de ativos.</p>
         </div>
-        {(isAdmin || isTech) && (
+        {(isAdmin || isTech || isCondo) && (
           <button 
             onClick={() => openModal(null)}
             className="w-full md:w-auto bg-blue-600 text-white px-6 py-2.5 rounded-xl flex items-center justify-center space-x-2 font-bold shadow-lg shadow-blue-500/20 active:scale-95 transition-all"
@@ -117,11 +122,6 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                     {type?.name || 'Inespecífico'}
                   </span>
                 </div>
-                {eq.photos && eq.photos.length > 1 && (
-                  <div className="absolute bottom-4 right-4 bg-slate-900/60 backdrop-blur-md px-2 py-1 rounded-lg text-[8px] font-black text-white uppercase">
-                    +{eq.photos.length - 1} fotos
-                  </div>
-                )}
               </div>
 
               <div className="p-6 flex-1 flex flex-col">
@@ -130,7 +130,7 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                     <h3 className="font-black text-slate-900 text-lg leading-tight truncate">{eq.manufacturer}</h3>
                     <p className="text-xs font-bold text-slate-500 truncate">{eq.model}</p>
                   </div>
-                  {(isAdmin || isTech) && (
+                  {(isAdmin || isTech || (isCondo && eq.condo_id === userCondoId)) && (
                     <div className="flex space-x-1 shrink-0">
                        <button onClick={() => openModal(eq)} className="p-2 text-slate-400 hover:text-blue-600 bg-slate-50 rounded-lg transition-colors"><Edit2 size={16} /></button>
                        <button onClick={() => deleteEquipment(eq.id)} className="p-2 text-slate-400 hover:text-red-600 bg-slate-50 rounded-lg transition-colors"><Trash2 size={16} /></button>
@@ -182,32 +182,19 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
             </div>
             
             <form onSubmit={handleSubmit} className="p-6 md:p-8 space-y-6 overflow-y-auto custom-scrollbar">
-              <div className="space-y-3">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Fotos do Ativo</label>
-                <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
-                  {photos.map((img, idx) => (
-                    <div key={idx} className="relative aspect-square group">
-                      <img src={img} className="w-full h-full object-cover rounded-2xl border border-slate-200 shadow-sm" alt="Preview" />
-                      <button type="button" onClick={() => removePhoto(idx)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity">
-                        <X size={12} />
-                      </button>
-                    </div>
-                  ))}
-                  <label className="aspect-square border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center text-slate-400 hover:border-blue-400 hover:bg-blue-50/30 transition-all cursor-pointer">
-                    <Camera size={24} />
-                    <span className="text-[8px] font-black uppercase mt-1">Adicionar</span>
-                    <input type="file" multiple accept="image/*" className="hidden" onChange={handleFileChange} />
-                  </label>
-                </div>
-              </div>
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Condomínio</label>
-                  <select required name="condoId" defaultValue={editingEq?.condo_id} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-xs focus:ring-2 focus:ring-blue-500/20 outline-none">
-                    <option value="">Selecione...</option>
-                    {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
+                  {isCondo ? (
+                    <div className="w-full px-4 py-3.5 bg-slate-100 border border-slate-200 rounded-2xl font-black text-xs text-slate-600">
+                      {data.condos.find((c: Condo) => c.id === userCondoId)?.name || 'ERRO DE VÍNCULO'}
+                    </div>
+                  ) : (
+                    <select required name="condoId" defaultValue={editingEq?.condo_id} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-xs focus:ring-2 focus:ring-blue-500/20 outline-none">
+                      <option value="">Selecione...</option>
+                      {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Tipo</label>
