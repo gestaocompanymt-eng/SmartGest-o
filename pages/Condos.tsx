@@ -1,27 +1,35 @@
 
 import React, { useState } from 'react';
 import { Plus, Search, Building2, MapPin, Edit2, Trash2, X, FileText, Save, Calendar, User } from 'lucide-react';
-import { Condo, ContractType } from '../types';
+import { Condo, ContractType, UserRole } from '../types';
 
 const Condos: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingCondo, setEditingCondo] = useState<Condo | null>(null);
 
-  const filteredCondos = data.condos.filter((c: Condo) => 
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    c.address.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const user = data.currentUser;
+  const isAdminOrTech = user?.role === UserRole.ADMIN || user?.role === UserRole.TECHNICIAN;
+  const isCondo = user?.role === UserRole.CONDO_USER;
+
+  const filteredCondos = data.condos.filter((c: Condo) => {
+    const matchesSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          c.address.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesRole = isCondo ? c.id === user?.condo_id : true;
+    return matchesSearch && matchesRole;
+  });
 
   const openEditModal = (condo: Condo | null) => {
+    if (!isAdminOrTech) return;
     setEditingCondo(condo);
     setIsModalOpen(true);
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const formData = new FormData(e.currentTarget);
+    if (!isAdminOrTech) return;
     
+    const formData = new FormData(e.currentTarget);
     const condoData: Condo = {
       id: editingCondo?.id || Math.random().toString(36).substr(2, 9),
       name: formData.get('name') as string,
@@ -29,7 +37,7 @@ const Condos: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, u
       manager: formData.get('manager') as string,
       contract_type: formData.get('contract_type') as ContractType,
       start_date: formData.get('start_date') as string,
-      monitoring_points: editingCondo?.monitoring_points || [], // Preserva dados antigos
+      monitoring_points: editingCondo?.monitoring_points || [],
     };
 
     const newCondos = editingCondo 
@@ -42,6 +50,7 @@ const Condos: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, u
   };
 
   const deleteCondo = (id: string) => {
+    if (!isAdminOrTech) return;
     if (confirm('Deseja realmente remover este condomínio?')) {
       updateData({ ...data, condos: data.condos.filter((c: Condo) => c.id !== id) });
     }
@@ -52,28 +61,36 @@ const Condos: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, u
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-black text-slate-900 leading-tight">Condomínios</h1>
-          <p className="text-slate-500 text-sm font-medium">Gestão de clientes e contratos.</p>
+          <p className="text-slate-500 text-sm font-medium">
+            {isCondo ? 'Informações do seu condomínio.' : 'Gestão de clientes e contratos.'}
+          </p>
         </div>
-        <button onClick={() => openEditModal(null)} className="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold shadow-lg shadow-blue-500/20 active:scale-95 transition-all">
-          <Plus size={20} className="inline mr-1" /> Novo Cliente
-        </button>
+        {isAdminOrTech && (
+          <button onClick={() => openEditModal(null)} className="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold shadow-lg shadow-blue-500/20 active:scale-95 transition-all">
+            <Plus size={20} className="inline mr-1" /> Novo Cliente
+          </button>
+        )}
       </div>
 
-      <div className="relative">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-        <input type="text" placeholder="Buscar por nome ou endereço..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none shadow-sm font-medium" />
-      </div>
+      {!isCondo && (
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+          <input type="text" placeholder="Buscar por nome ou endereço..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none shadow-sm font-medium" />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredCondos.map((condo: Condo) => (
-          <div key={condo.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden group hover:border-blue-400 transition-all">
+          <div key={condo.id} className={`bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden group transition-all ${isAdminOrTech ? 'hover:border-blue-400' : ''}`}>
             <div className="p-5">
               <div className="flex justify-between items-start mb-4">
                 <div className="bg-blue-50 p-3 rounded-xl text-blue-600"><Building2 size={22} /></div>
-                <div className="flex space-x-1">
-                  <button onClick={() => openEditModal(condo)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors"><Edit2 size={18} /></button>
-                  <button onClick={() => deleteCondo(condo.id)} className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={18} /></button>
-                </div>
+                {isAdminOrTech && (
+                  <div className="flex space-x-1">
+                    <button onClick={() => openEditModal(condo)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors"><Edit2 size={18} /></button>
+                    <button onClick={() => deleteCondo(condo.id)} className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={18} /></button>
+                  </div>
+                )}
               </div>
               <h3 className="font-bold text-lg text-slate-900 mb-1 leading-tight">{condo.name}</h3>
               <p className="text-xs text-slate-500 flex items-start mb-4"><MapPin size={14} className="mr-1.5 shrink-0 mt-0.5" /> {condo.address}</p>
@@ -97,7 +114,7 @@ const Condos: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, u
         ))}
       </div>
 
-      {isModalOpen && (
+      {isModalOpen && isAdminOrTech && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b flex justify-between items-center bg-slate-50">

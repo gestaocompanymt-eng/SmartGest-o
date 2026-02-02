@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
-import { UserRole, AppData } from './types';
+import { UserRole, AppData, User } from './types';
 import { supabase, isSupabaseActive } from './supabase';
 
 import Dashboard from './pages/Dashboard';
@@ -62,18 +62,36 @@ const AppContent: React.FC = () => {
   };
 
   const fetchAllData = useCallback(async (currentLocalData: AppData) => {
-    if (!navigator.onLine || !isSupabaseActive || isSyncingRef.current) return currentLocalData;
+    if (!navigator.onLine || !isSupabaseActive || isSyncingRef.current || !currentLocalData.currentUser) return currentLocalData;
     
     setSyncStatus('syncing');
+    const user = currentLocalData.currentUser;
+    const isCondo = user.role === UserRole.CONDO_USER;
+    const condoId = user.condo_id;
+
     try {
+      // Consultas com filtros de segurança por papel do usuário
+      let qUsers = supabase.from('users').select('*');
+      let qCondos = supabase.from('condos').select('*');
+      let qEquips = supabase.from('equipments').select('*');
+      let qSystems = supabase.from('systems').select('*');
+      let qOS = supabase.from('service_orders').select('*');
+      let qAppts = supabase.from('appointments').select('*');
+      let qLevels = supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(500);
+
+      if (isCondo && condoId) {
+        qUsers = qUsers.eq('condo_id', condoId);
+        qCondos = qCondos.eq('id', condoId);
+        qEquips = qEquips.eq('condo_id', condoId);
+        qSystems = qSystems.eq('condo_id', condoId);
+        qOS = qOS.eq('condo_id', condoId);
+        qAppts = qAppts.eq('condo_id', condoId);
+        // Níveis são filtrados em memória na página pois o ID pode ser o do dispositivo, 
+        // mas as tabelas estruturais acima já limitam o que o usuário pode ver.
+      }
+
       const [resUsers, resCondos, resEquips, resSystems, resOS, resAppts, resLevels] = await Promise.all([
-        supabase.from('users').select('*'),
-        supabase.from('condos').select('*'),
-        supabase.from('equipments').select('*'),
-        supabase.from('systems').select('*'),
-        supabase.from('service_orders').select('*'),
-        supabase.from('appointments').select('*'),
-        supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(200)
+        qUsers, qCondos, qEquips, qSystems, qOS, qAppts, qLevels
       ]);
 
       const cloudData: AppData = {
@@ -119,13 +137,11 @@ const AppContent: React.FC = () => {
 
   useEffect(() => {
     const init = async () => {
-      // 1. Carregar local imediatamente para evitar tela de loading
       const local = getStore();
       setData(local);
-      setIsInitialSyncing(false); // Libera o app para uso offline imediato
+      setIsInitialSyncing(false); 
       
-      // 2. Sincronizar em background
-      if (navigator.onLine) {
+      if (navigator.onLine && local.currentUser) {
         const updated = await fetchAllData(local);
         setData(updated);
         saveStore(updated);
@@ -135,10 +151,12 @@ const AppContent: React.FC = () => {
 
     const handleOnline = () => {
       setSyncStatus('syncing');
-      if (dataRef.current) fetchAllData(dataRef.current).then(updated => {
-        setData(updated);
-        saveStore(updated);
-      });
+      if (dataRef.current && dataRef.current.currentUser) {
+        fetchAllData(dataRef.current).then(updated => {
+          setData(updated);
+          saveStore(updated);
+        });
+      }
     };
     
     window.addEventListener('online', handleOnline);

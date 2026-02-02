@@ -49,7 +49,7 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
     setIsSaving(true);
     
     const formData = new FormData(e.currentTarget);
-    const condoId = formData.get('condoId') as string;
+    const condoId = isCondo ? (user?.condo_id || '') : (formData.get('condoId') as string);
     const name = formData.get('name') as string;
 
     const validPoints = points
@@ -102,7 +102,7 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
           <h1 className="text-2xl font-black text-slate-900 leading-tight">Sistemas</h1>
           <p className="text-sm text-slate-500">Gestão técnica e monitoramento.</p>
         </div>
-        {(isAdmin || isTech) && (
+        {(isAdmin || isTech || isCondo) && (
           <button onClick={() => openModal(null)} className="w-full md:w-auto bg-slate-900 text-white px-6 py-2.5 rounded-xl flex items-center justify-center space-x-2 font-black uppercase text-[10px] tracking-widest shadow-lg">
             <Plus size={18} />
             <span>Novo Sistema</span>
@@ -129,7 +129,7 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
                     <h3 className="text-lg font-black text-slate-900 leading-tight truncate">{sys.name}</h3>
                     <p className="text-[10px] font-black text-blue-600 uppercase mt-1 truncate">{condo?.name || 'Local Indefinido'}</p>
                    </div>
-                   {(isAdmin || isTech) && (
+                   {(isAdmin || isTech || (isCondo && sys.condo_id === user?.condo_id)) && (
                      <div className="flex space-x-1">
                         <button onClick={() => openModal(sys)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors"><Edit2 size={16} /></button>
                         <button onClick={() => deleteSystem(sys.id)} className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={16} /></button>
@@ -186,10 +186,16 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                  <div className="space-y-1">
                     <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Condomínio</label>
-                    <select required name="condoId" defaultValue={editingSys?.condo_id} className="w-full px-4 py-3 bg-slate-50 border rounded-2xl font-bold outline-none text-xs">
-                       <option value="">Selecione...</option>
-                       {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
+                    {isCondo ? (
+                      <div className="w-full px-4 py-3 bg-slate-100 border rounded-2xl font-black text-xs text-slate-600">
+                        {data.condos.find((c: Condo) => c.id === user?.condo_id)?.name || 'NÃO VINCULADO'}
+                      </div>
+                    ) : (
+                      <select required name="condoId" defaultValue={editingSys?.condo_id} className="w-full px-4 py-3 bg-slate-50 border rounded-2xl font-bold outline-none text-xs">
+                        <option value="">Selecione...</option>
+                        {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                    )}
                  </div>
                  <div className="space-y-1">
                     <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Tipo de Sistema</label>
