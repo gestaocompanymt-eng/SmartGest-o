@@ -26,6 +26,7 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const [selectedTechId, setSelectedTechId] = useState('all');
 
   const checkDatabaseHealth = async () => {
+    // Removida a tabela esp32_status da verificação de saúde
     const tables = ['users', 'condos', 'equipments', 'systems', 'service_orders', 'appointments', 'nivel_caixa', 'monitoring_alerts'];
     const newStatus: any = {};
     for (const table of tables) {
@@ -56,14 +57,6 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     });
   }, [data.serviceOrders, reportStartDate, reportEndDate, selectedCondoId, selectedTechId]);
 
-  const totals = useMemo(() => {
-    return filteredReportOrders.reduce((acc: any, curr: ServiceOrder) => ({
-      services: acc.services + (curr.service_value || 0),
-      materials: acc.materials + (curr.material_value || 0),
-      count: acc.count + 1
-    }), { services: 0, materials: 0, count: 0 });
-  }, [filteredReportOrders]);
-
   const handleUserSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -92,9 +85,6 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   };
 
   const sqlOptimizer = `
--- SMARTGESTÃO: GATILHO DE ECONOMIA E HISTÓRICO
--- Execute este código no SQL Editor do Supabase
-
 CREATE OR REPLACE FUNCTION filter_unchanged_levels()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -113,11 +103,6 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS tr_filter_levels ON nivel_caixa;
-CREATE TRIGGER tr_filter_levels
-BEFORE INSERT ON nivel_caixa
-FOR EACH ROW EXECUTE FUNCTION filter_unchanged_levels();
   `.trim();
 
   const handleCopySql = () => {
@@ -125,8 +110,6 @@ FOR EACH ROW EXECUTE FUNCTION filter_unchanged_levels();
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
-
-  const formatCurrency = (val: number) => val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
   return (
     <div className="space-y-8 pb-12">
@@ -163,13 +146,13 @@ FOR EACH ROW EXECUTE FUNCTION filter_unchanged_levels();
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
             <div className="p-6 border-b bg-slate-50/50 flex justify-between items-center">
                <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-[10px]">
-                <Database size={16} className="mr-2 text-blue-600" /> Status do Banco de Dados
+                <Database size={16} className="mr-2 text-blue-600" /> Saúde do Sistema Cloud
               </h3>
               <button onClick={checkDatabaseHealth} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all">
                 <RefreshCw size={14} />
               </button>
             </div>
-            <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="p-6 grid grid-cols-2 md:grid-cols-3 gap-4">
                {Object.entries(tableStatus).map(([table, status]) => (
                  <div key={table} className="flex flex-col p-3 rounded-xl bg-slate-50 border border-slate-100">
                     <span className="text-[8px] font-black text-slate-400 uppercase mb-1">{table}</span>
@@ -178,7 +161,7 @@ FOR EACH ROW EXECUTE FUNCTION filter_unchanged_levels();
                       {status === 'ok' && <CheckCircle size={12} className="text-emerald-500" />}
                       {status === 'error' && <AlertTriangle size={12} className="text-red-500" />}
                       <span className={`text-[10px] font-bold uppercase ${status === 'ok' ? 'text-emerald-600' : status === 'error' ? 'text-red-600' : 'text-blue-600'}`}>
-                        {status === 'ok' ? 'OK' : status === 'error' ? 'Erro' : '...'}
+                        {status === 'ok' ? 'Online' : status === 'error' ? 'Erro' : '...'}
                       </span>
                     </div>
                  </div>
@@ -189,13 +172,13 @@ FOR EACH ROW EXECUTE FUNCTION filter_unchanged_levels();
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
             <div className="p-6 border-b flex justify-between items-center">
               <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-xs">
-                <User size={18} className="mr-2 text-blue-600" /> Colaboradores
+                <User size={18} className="mr-2 text-blue-600" /> Equipe SmartGestão
               </h3>
               <button onClick={() => { 
                 setEditingUser(null); 
                 setSelectedRole(UserRole.TECHNICIAN); 
                 setIsUserModalOpen(true); 
-              }} className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline">+ Novo</button>
+              }} className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline">+ Adicionar Colaborador</button>
             </div>
             <div className="divide-y divide-slate-100">
               {data.users.map((u: UserType) => (
@@ -226,7 +209,7 @@ FOR EACH ROW EXECUTE FUNCTION filter_unchanged_levels();
 
       {isUserModalOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm no-print">
-          <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
+          <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b flex justify-between items-center bg-slate-50">
               <h2 className="text-lg font-black uppercase tracking-tight text-slate-800">{editingUser ? 'Editar' : 'Novo'} Acesso</h2>
               <button onClick={() => setIsUserModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm"><X size={24} /></button>
@@ -277,9 +260,6 @@ FOR EACH ROW EXECUTE FUNCTION filter_unchanged_levels();
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
-                  <p className="text-[9px] text-slate-400 font-medium italic mt-1">
-                    * O síndico terá acesso restrito apenas aos dados deste condomínio.
-                  </p>
                 </div>
               )}
 
