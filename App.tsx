@@ -99,19 +99,17 @@ const AppContent: React.FC = () => {
     }
   }, []);
 
-  // Polling Effect para Telemetria em Tempo Real (A cada 30 segundos)
   useEffect(() => {
     let interval: any;
     
     if (data?.currentUser && navigator.onLine) {
       interval = setInterval(async () => {
         if (dataRef.current && !isSyncingRef.current) {
-          console.log("SmartGestão: Auto-refreshing telemetry...");
           const updated = await fetchAllData(dataRef.current);
           setData(updated);
           saveStore(updated);
         }
-      }, 30000); // 30 segundos
+      }, 30000);
     }
 
     return () => {
@@ -121,12 +119,17 @@ const AppContent: React.FC = () => {
 
   useEffect(() => {
     const init = async () => {
+      // 1. Carregar local imediatamente para evitar tela de loading
       const local = getStore();
       setData(local);
-      const updated = await fetchAllData(local);
-      setData(updated);
-      saveStore(updated);
-      setIsInitialSyncing(false);
+      setIsInitialSyncing(false); // Libera o app para uso offline imediato
+      
+      // 2. Sincronizar em background
+      if (navigator.onLine) {
+        const updated = await fetchAllData(local);
+        setData(updated);
+        saveStore(updated);
+      }
     };
     init();
 
@@ -179,7 +182,7 @@ const AppContent: React.FC = () => {
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-center">
         <Wrench size={48} className="text-blue-500 animate-bounce mb-6" />
         <h2 className="text-white font-black uppercase tracking-widest text-lg mb-2">SmartGestão</h2>
-        <p className="text-slate-400 text-sm font-bold animate-pulse">Carregando...</p>
+        <p className="text-slate-400 text-sm font-bold animate-pulse">Iniciando módulos...</p>
       </div>
     );
   }
@@ -210,7 +213,6 @@ const AppContent: React.FC = () => {
 
   return (
     <div className="h-screen w-full flex flex-col md:flex-row bg-slate-50 overflow-hidden">
-      {/* Mobile Header - Fixo no topo */}
       <header className="md:hidden bg-slate-900 text-white p-4 flex justify-between items-center z-50 h-16 shrink-0 shadow-lg">
         <div className="flex items-center space-x-3">
           <Wrench size={18} className="text-blue-500" />
@@ -221,7 +223,6 @@ const AppContent: React.FC = () => {
         </button>
       </header>
 
-      {/* Sidebar - Fixa ou deslizante no mobile */}
       <aside className={`
         fixed inset-y-0 left-0 z-[60] w-72 bg-slate-900 text-white transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
@@ -267,7 +268,6 @@ const AppContent: React.FC = () => {
         </div>
       </aside>
 
-      {/* Main Content Area - Rola independentemente */}
       <main className="flex-1 flex flex-col overflow-hidden relative">
         <div className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth custom-scrollbar">
           <Routes>
@@ -287,7 +287,6 @@ const AppContent: React.FC = () => {
         </div>
       </main>
 
-      {/* Overlay do Menu Mobile */}
       {isSidebarOpen && (
         <div 
           className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[55] md:hidden transition-opacity duration-300"

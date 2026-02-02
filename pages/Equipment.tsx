@@ -1,4 +1,5 @@
 
+import React, { useState } from 'react';
 import { Plus, Layers, ShieldCheck, Thermometer, Zap, AlertCircle, Trash2, Edit2, X, MapPin, Camera, ImageIcon, ChevronLeft, ChevronRight, Building2 } from 'lucide-react';
 import { Equipment, EquipmentType, Condo, UserRole } from '../types';
 
@@ -16,7 +17,6 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     ? data.equipments.filter((e: Equipment) => e.condo_id === user?.condo_id)
     : data.equipments;
 
-  // Fix: Explicitly cast Array.from(files) to File[] to ensure compatibility with FileReader.readAsDataURL and avoid 'unknown' type issues.
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
@@ -103,7 +103,6 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
           
           return (
             <div key={eq.id} className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden group hover:border-blue-400 transition-all flex flex-col h-full">
-              {/* Espaço para Foto do Ativo */}
               <div className="relative h-48 bg-slate-100 shrink-0 overflow-hidden">
                 {eq.photos && eq.photos.length > 0 ? (
                   <img src={eq.photos[0]} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt={eq.model} />
@@ -139,7 +138,6 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                   )}
                 </div>
                 
-                {/* Fix: Use Building2 component after proper import from lucide-react */}
                 <p className="text-[10px] text-blue-600 font-black uppercase mb-6 flex items-center">
                   <Building2 size={12} className="mr-1.5" /> {condo?.name || 'SEM CONDOMÍNIO'}
                 </p>
@@ -184,7 +182,6 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
             </div>
             
             <form onSubmit={handleSubmit} className="p-6 md:p-8 space-y-6 overflow-y-auto custom-scrollbar">
-              {/* Seção de Fotos */}
               <div className="space-y-3">
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Fotos do Ativo</label>
                 <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
