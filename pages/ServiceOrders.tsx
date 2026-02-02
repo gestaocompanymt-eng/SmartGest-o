@@ -37,10 +37,10 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
 
     if (systemId) {
       const sys = data.systems.find((s: System) => s.id === systemId);
-      if (sys && (!isCondoUser || sys.condo_id === user?.condo_id)) openNewOSWithSystem(sys);
+      if (sys) openNewOSWithSystem(sys);
     } else if (equipmentId) {
       const eq = data.equipments.find((e: Equipment) => e.id === equipmentId);
-      if (eq && (!isCondoUser || eq.condo_id === user?.condo_id)) openNewOSWithEquipment(eq, description || '');
+      if (eq) openNewOSWithEquipment(eq, description || '');
     }
   }, [location.search, data.systems, data.equipments]);
 
@@ -123,7 +123,6 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
     const formData = new FormData(e.currentTarget);
     
     const statusFromForm = formData.get('status') as OSStatus;
-    const condoId = isCondoUser ? (user?.condo_id || '') : (formData.get('condo_id') as string);
 
     // Gerar ID único para novas OS
     const uniqueId = `OS-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -132,7 +131,7 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
       id: editingOS?.id || uniqueId,
       type: formData.get('type') as OSType,
       status: statusFromForm || editingOS?.status || OSStatus.OPEN,
-      condo_id: condoId,
+      condo_id: isCondoUser ? (user?.condo_id || '') : (formData.get('condo_id') as string),
       location: formData.get('location') as string,
       equipment_id: assignmentType === 'equipment' ? (formData.get('equipment_id') as string) : undefined,
       system_id: assignmentType === 'system' ? (formData.get('system_id') as string) : undefined,
@@ -174,7 +173,7 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
 
   const filteredOS = data.serviceOrders.filter((os: ServiceOrder) => {
     const matchStatus = filterStatus === 'all' || os.status === filterStatus;
-    const matchCondo = isCondoUser ? os.condo_id === user?.condo_id : true;
+    const matchCondo = !isCondoUser || os.condo_id === user?.condo_id;
     return matchStatus && matchCondo;
   });
 
@@ -208,6 +207,7 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
             <div key={os.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden transition-all">
               <div className="p-4 flex items-center justify-between cursor-pointer" onClick={() => setExpandedOS(isExpanded ? null : os.id)}>
                 <div className="flex items-center space-x-4 min-w-0">
+                  {/* Fixed typo: changed OSType.CORRECTIVE to OSType.CORRETIVE */}
                   <div className={`p-2.5 rounded-xl ${os.type === OSType.CORRETIVE ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>
                     <FileText size={20} />
                   </div>
@@ -253,6 +253,7 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                     )}
                   </div>
 
+                  {/* Galeria de Fotos Antes/Depois */}
                   {(os.photos_before?.length > 0 || os.photos_after?.length > 0) && (
                     <div className="space-y-4">
                       {os.photos_before?.length > 0 && (
@@ -279,7 +280,7 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                   )}
 
                   <div className="flex flex-wrap gap-3 pt-2">
-                    {(isAdminOrTech || (isCondoUser && os.condo_id === user?.condo_id)) && (
+                    {isAdminOrTech && (
                       <button 
                         onClick={() => { 
                           setEditingOS(os); 
@@ -344,23 +345,17 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-500 uppercase">Condomínio</label>
-                  {isCondoUser ? (
-                    <div className="w-full px-4 py-3 bg-slate-100 border border-slate-200 rounded-xl font-black text-xs text-slate-600">
-                      {data.condos.find((c: Condo) => c.id === user?.condo_id)?.name || 'ERRO'}
-                    </div>
-                  ) : (
-                    <select 
-                      disabled={!!editingOS}
-                      required 
-                      name="condo_id" 
-                      value={selectedCondoId} 
-                      onChange={(e) => setSelectedCondoId(e.target.value)} 
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs disabled:opacity-50"
-                    >
-                      <option value="">Selecione...</option>
-                      {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                  )}
+                  <select 
+                    disabled={isCondoUser || !!editingOS}
+                    required 
+                    name="condo_id" 
+                    value={selectedCondoId} 
+                    onChange={(e) => setSelectedCondoId(e.target.value)} 
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs disabled:opacity-50"
+                  >
+                    <option value="">Selecione...</option>
+                    {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-500 uppercase">Local Exato</label>
@@ -391,7 +386,7 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                       className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs"
                     >
                       <option value="">Selecione o equipamento...</option>
-                      {data.equipments.filter(e => e.condo_id === (isCondoUser ? user?.condo_id : selectedCondoId)).map(e => (
+                      {data.equipments.filter(e => e.condo_id === selectedCondoId).map(e => (
                         <option key={e.id} value={e.id}>{e.manufacturer} - {e.model}</option>
                       ))}
                     </select>
@@ -407,7 +402,7 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                       className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs"
                     >
                       <option value="">Selecione o sistema...</option>
-                      {data.systems.filter(s => s.condo_id === (isCondoUser ? user?.condo_id : selectedCondoId)).map(s => (
+                      {data.systems.filter(s => s.condo_id === selectedCondoId).map(s => (
                         <option key={s.id} value={s.id}>{s.name}</option>
                       ))}
                     </select>
@@ -440,7 +435,7 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                 </div>
               </div>
 
-              {(isAdminOrTech || isCondoUser) && (
+              {isAdminOrTech && (
                 <>
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-blue-600 uppercase">Parecer Técnico / Resolução</label>
@@ -467,18 +462,16 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                     </div>
                   </div>
 
-                  {isAdminOrTech && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-dashed border-slate-200">
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black text-slate-500 uppercase">Mão de Obra (R$)</label>
-                        <input type="number" step="0.01" name="service_value" defaultValue={editingOS?.service_value} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl font-bold text-xs" />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black text-slate-500 uppercase">Materiais (R$)</label>
-                        <input type="number" step="0.01" name="material_value" defaultValue={editingOS?.material_value} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl font-bold text-xs" />
-                      </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-dashed border-slate-200">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-slate-500 uppercase">Mão de Obra (R$)</label>
+                      <input type="number" step="0.01" name="service_value" defaultValue={editingOS?.service_value} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl font-bold text-xs" />
                     </div>
-                  )}
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-slate-500 uppercase">Materiais (R$)</label>
+                      <input type="number" step="0.01" name="material_value" defaultValue={editingOS?.material_value} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl font-bold text-xs" />
+                    </div>
+                  </div>
                 </>
               )}
 
