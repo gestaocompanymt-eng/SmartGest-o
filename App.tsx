@@ -10,8 +10,7 @@ import {
   Settings, 
   LogOut, 
   Menu, 
-  X,
-  Droplets
+  X
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
@@ -25,7 +24,6 @@ import SystemsPage from './pages/Systems';
 import ServiceOrders from './pages/ServiceOrders';
 import AdminSettings from './pages/AdminSettings';
 import Login from './pages/Login';
-import WaterLevel from './pages/WaterLevel';
 
 const AppContent: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
@@ -76,8 +74,6 @@ const AppContent: React.FC = () => {
       let qSystems = supabase.from('systems').select('*');
       let qOS = supabase.from('service_orders').select('*');
       let qAppts = supabase.from('appointments').select('*');
-      let qLevels = supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(300);
-      let qStatus = supabase.from('esp32_status').select('*');
 
       if (isRestricted && condoId) {
         qUsers = qUsers.eq('condo_id', condoId);
@@ -88,8 +84,8 @@ const AppContent: React.FC = () => {
         qAppts = qAppts.eq('condo_id', condoId);
       }
 
-      const [resUsers, resCondos, resEquips, resSystems, resOS, resAppts, resLevels, resStatus] = await Promise.all([
-        qUsers, qCondos, qEquips, qSystems, qOS, qAppts, qLevels, qStatus
+      const [resUsers, resCondos, resEquips, resSystems, resOS, resAppts] = await Promise.all([
+        qUsers, qCondos, qEquips, qSystems, qOS, qAppts
       ]);
 
       const cloudData: AppData = {
@@ -101,10 +97,7 @@ const AppContent: React.FC = () => {
         serviceOrders: smartUnion(currentLocalData.serviceOrders, resOS.data).sort((a: any, b: any) => 
           new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
         ),
-        appointments: smartUnion(currentLocalData.appointments, resAppts.data),
-        waterLevels: resLevels.data || currentLocalData.waterLevels || [],
-        esp32Status: resStatus.data || currentLocalData.esp32Status || [],
-        monitoringAlerts: currentLocalData.monitoringAlerts || []
+        appointments: smartUnion(currentLocalData.appointments, resAppts.data)
       };
       
       setSyncStatus('synced');
@@ -118,7 +111,6 @@ const AppContent: React.FC = () => {
 
   useEffect(() => {
     let interval: any;
-    
     if (data?.currentUser && navigator.onLine) {
       interval = setInterval(async () => {
         if (dataRef.current && !isSyncingRef.current) {
@@ -126,12 +118,9 @@ const AppContent: React.FC = () => {
           setData(updated);
           saveStore(updated);
         }
-      }, 30000);
+      }, 60000);
     }
-
-    return () => {
-      if (interval) clearInterval(interval);
-    };
+    return () => { if (interval) clearInterval(interval); };
   }, [fetchAllData, !!data?.currentUser]);
 
   useEffect(() => {
@@ -139,7 +128,6 @@ const AppContent: React.FC = () => {
       const local = getStore();
       setData(local);
       setIsInitialSyncing(false); 
-      
       if (navigator.onLine && local.currentUser) {
         const updated = await fetchAllData(local);
         setData(updated);
@@ -147,33 +135,14 @@ const AppContent: React.FC = () => {
       }
     };
     init();
-
-    const handleOnline = () => {
-      setSyncStatus('syncing');
-      if (dataRef.current && dataRef.current.currentUser) {
-        fetchAllData(dataRef.current).then(updated => {
-          setData(updated);
-          saveStore(updated);
-        });
-      }
-    };
-    
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', () => setSyncStatus('offline'));
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', () => setSyncStatus('offline'));
-    };
   }, [fetchAllData]);
 
   const updateData = async (newData: AppData) => {
     setData(newData);
     saveStore(newData);
-
     if (navigator.onLine && isSupabaseActive) {
       isSyncingRef.current = true;
       setSyncStatus('syncing');
-      
       try {
         const syncPromises = [];
         if (newData.systems?.length > 0) syncPromises.push(supabase.from('systems').upsert(newData.systems));
@@ -181,12 +150,10 @@ const AppContent: React.FC = () => {
         if (newData.condos?.length > 0) syncPromises.push(supabase.from('condos').upsert(newData.condos));
         if (newData.serviceOrders?.length > 0) syncPromises.push(supabase.from('service_orders').upsert(newData.serviceOrders));
         if (newData.users?.length > 0) syncPromises.push(supabase.from('users').upsert(newData.users.map(u => ({...u, password: u.password || ''}))));
-
         await Promise.all(syncPromises);
         setSyncStatus('synced');
       } catch (err) {
         setSyncStatus('error');
-        console.error("Erro ao subir dados para nuvem:", err);
       } finally {
         isSyncingRef.current = false;
       }
@@ -199,7 +166,7 @@ const AppContent: React.FC = () => {
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-center">
         <Wrench size={48} className="text-blue-500 animate-bounce mb-6" />
         <h2 className="text-white font-black uppercase tracking-widest text-lg mb-2">SmartGestão</h2>
-        <p className="text-slate-400 text-sm font-bold animate-pulse">Sincronizando com a nuvem...</p>
+        <p className="text-slate-400 text-sm font-bold animate-pulse">Iniciando plataforma...</p>
       </div>
     );
   }
@@ -214,7 +181,6 @@ const AppContent: React.FC = () => {
   }
 
   const user = data.currentUser;
-
   const NavItem = ({ to, icon: Icon, label }: { to: string; icon: any; label: string }) => (
     <Link
       to={to}
@@ -246,31 +212,22 @@ const AppContent: React.FC = () => {
         fixed inset-y-0 left-0 z-[60] w-72 bg-slate-900 text-white transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
-        <div className="h-full flex flex-col p-6 overflow-hidden">
+        <div className="h-full flex flex-col p-6">
           <div className="hidden md:flex items-center space-x-3 mb-10 px-2">
             <Wrench size={24} className="text-blue-500" />
             <span className="font-black text-xl tracking-tighter uppercase">SmartGestão</span>
           </div>
-
           <nav className="flex-1 space-y-2 overflow-y-auto pr-2 custom-scrollbar">
             <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
             <NavItem to="/condos" icon={Building2} label={user?.role === UserRole.CONDO_USER ? 'Meu Condomínio' : 'Condomínios'} />
             <NavItem to="/equipment" icon={Layers} label="Equipamentos" />
             <NavItem to="/systems" icon={Wrench} label="Sistemas" />
             <NavItem to="/os" icon={FileText} label="Ordens de Serviço" />
-            <NavItem to="/reservatorios" icon={Droplets} label="Reservatórios" />
             {data.currentUser?.role === UserRole.ADMIN && (
               <NavItem to="/admin" icon={Settings} label="Administração" />
             )}
           </nav>
-
           <div className="mt-auto pt-6 border-t border-slate-800">
-             <div className="flex items-center justify-between text-[10px] font-black uppercase text-slate-500 mb-4 px-2">
-                <span>Nuvem:</span>
-                <span className={`font-black ${syncStatus === 'error' ? 'text-red-500' : syncStatus === 'offline' ? 'text-amber-500' : 'text-emerald-500'}`}>
-                   {syncStatus === 'syncing' ? 'Sincronizando...' : syncStatus === 'error' ? 'Erro Conexão' : syncStatus === 'offline' ? 'Offline' : 'Sincronizado'}
-                </span>
-             </div>
             <button 
               onClick={() => {
                 const newData = { ...data!, currentUser: null };
@@ -295,39 +252,14 @@ const AppContent: React.FC = () => {
             <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} />} />
             <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} />} />
             <Route path="/os" element={<ServiceOrders data={data} updateData={updateData} />} />
-            <Route path="/reservatorios" element={<WaterLevel data={data} updateData={updateData} onRefresh={async () => {
-               const updated = await fetchAllData(data);
-               setData(updated);
-               saveStore(updated);
-            }} />} />
             <Route path="/admin" element={<AdminSettings data={data} updateData={updateData} />} />
             <Route path="/login" element={<Navigate to="/" />} />
           </Routes>
         </div>
       </main>
-
       {isSidebarOpen && (
-        <div 
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[55] md:hidden transition-opacity duration-300"
-          onClick={() => setSidebarOpen(false)}
-        />
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[55] md:hidden" onClick={() => setSidebarOpen(false)} />
       )}
-
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #cbd5e1;
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: #94a3b8;
-        }
-      `}</style>
     </div>
   );
 };

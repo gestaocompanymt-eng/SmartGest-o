@@ -1,5 +1,5 @@
 
-import { EquipmentType, SystemType, ContractType, UserRole } from './types';
+import { EquipmentType, SystemType } from './types';
 
 export const INITIAL_EQUIPMENT_TYPES: EquipmentType[] = [
   { id: '1', name: 'Bombas' },
@@ -17,8 +17,7 @@ export const INITIAL_SYSTEM_TYPES: SystemType[] = [
   { id: '3', name: 'Sistema de SPA' },
   { id: '4', name: 'Sistema de Sauna' },
   { id: '5', name: 'Sistema de Pressurização' },
-  { id: '6', name: 'Sistema de Exaustão' },
-  { id: '7', name: 'Sistema de Monitoramento' }
+  { id: '6', name: 'Sistema de Exaustão' }
 ];
 
 export const APP_CONFIG = {

@@ -33,10 +33,31 @@ export interface SystemType {
   name: string;
 }
 
+// Added missing interface for system monitoring points
 export interface MonitoringPoint {
   id: string;
-  name: string; 
-  device_id: string; 
+  name: string;
+  device_id: string;
+}
+
+// Added missing interface for equipment monitoring alerts
+export interface MonitoringAlert {
+  id: string;
+  equipment_id: string;
+  message: string;
+  value: string | number;
+  is_resolved: boolean;
+  created_at: string;
+}
+
+// Added missing interface for water level readings
+export interface WaterLevel {
+  id: string;
+  condominio_id: string;
+  percentual: number;
+  nivel_cm: number;
+  status?: string;
+  created_at: string;
 }
 
 export interface Condo {
@@ -46,7 +67,8 @@ export interface Condo {
   manager: string;
   contract_type: ContractType;
   start_date: string;
-  monitoring_points?: MonitoringPoint[]; 
+  // Added monitoring_points to support page logic in Condos.tsx
+  monitoring_points?: MonitoringPoint[];
   updated_at?: string;
 }
 
@@ -68,6 +90,7 @@ export interface Equipment {
   photos: string[];
   last_maintenance: string;
   updated_at?: string;
+  // Added fields to support Tuya monitoring logic in Monitoring.tsx
   tuya_device_id?: string;
   is_online?: boolean;
   monitoring_status?: 'normal' | 'atencao' | 'critico';
@@ -86,7 +109,8 @@ export interface System {
   name: string;
   location: string;
   equipment_ids: string[];
-  monitoring_points?: MonitoringPoint[]; 
+  // Added monitoring_points to support Systems page logic
+  monitoring_points?: MonitoringPoint[];
   parameters: string;
   observations: string;
   updated_at?: string;
@@ -124,31 +148,6 @@ export interface Appointment {
   updated_at?: string;
 }
 
-export interface WaterLevel {
-  id: number;
-  condominio_id: string;
-  nivel_cm: number;
-  percentual: number;
-  status: string;
-  created_at: string;
-}
-
-export interface ESP32Status {
-  id: string;
-  device_id: string;
-  status: 'online' | 'offline';
-  last_seen: string;
-}
-
-export interface MonitoringAlert {
-  id: string;
-  equipment_id: string;
-  message: string;
-  value: string | number;
-  is_resolved: boolean;
-  created_at: string;
-}
-
 export interface User {
   id: string;
   name: string;
@@ -164,11 +163,11 @@ export interface AppData {
   systems: System[];
   serviceOrders: ServiceOrder[];
   appointments: Appointment[];
-  waterLevels: WaterLevel[];
-  esp32Status: ESP32Status[];
   users: User[];
   equipmentTypes: EquipmentType[];
   systemTypes: SystemType[];
   currentUser: User | null;
+  // Added monitoring collections to support the app state used in Monitoring and WaterLevel pages
   monitoringAlerts: MonitoringAlert[];
+  waterLevels: WaterLevel[];
 }

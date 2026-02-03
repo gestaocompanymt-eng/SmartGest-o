@@ -2,26 +2,23 @@
 import { AppData, UserRole } from './types';
 import { INITIAL_EQUIPMENT_TYPES, INITIAL_SYSTEM_TYPES } from './constants';
 
-const STORAGE_KEY = 'smart_gestao_data_v3';
+const STORAGE_KEY = 'smart_gestao_data_v4';
 
-// Added esp32Status and monitoringAlerts to initialData
 const initialData: AppData = {
   condos: [],
   equipments: [],
   systems: [],
   serviceOrders: [],
   appointments: [],
-  waterLevels: [],
-  // Fix: Added missing esp32Status property to initialData
-  esp32Status: [],
   users: [
-    { id: 'admin1', name: 'Admin Principal', role: UserRole.ADMIN, email: 'admin', password: '41414889Ai' },
-    { id: 'tech1', name: 'Carlos Técnico', role: UserRole.TECHNICIAN, email: 'carlos@smartgestao.com', password: '123' }
+    { id: 'admin1', name: 'Admin Principal', role: UserRole.ADMIN, email: 'admin', password: '41414889Ai' }
   ],
   equipmentTypes: INITIAL_EQUIPMENT_TYPES,
   systemTypes: INITIAL_SYSTEM_TYPES,
   currentUser: null,
-  monitoringAlerts: []
+  // Added initialization for monitoring collections
+  monitoringAlerts: [],
+  waterLevels: []
 };
 
 export const getStore = (): AppData => {
@@ -31,27 +28,15 @@ export const getStore = (): AppData => {
   try {
     const parsedData: AppData = JSON.parse(saved);
     
-    initialData.users.forEach(defaultUser => {
-      const exists = parsedData.users?.some(u => u.email.toLowerCase() === defaultUser.email.toLowerCase());
-      if (!exists) {
-        if (!parsedData.users) parsedData.users = [];
-        parsedData.users.push(defaultUser);
-      }
-    });
-
     if (!parsedData.appointments) parsedData.appointments = [];
     if (!parsedData.condos) parsedData.condos = [];
     if (!parsedData.equipments) parsedData.equipments = [];
     if (!parsedData.systems) parsedData.systems = [];
     if (!parsedData.serviceOrders) parsedData.serviceOrders = [];
-    if (!parsedData.waterLevels) parsedData.waterLevels = [];
-    // Fix: Added fallback initialization for esp32Status field
-    if (!parsedData.esp32Status) parsedData.esp32Status = [];
     if (!parsedData.users) parsedData.users = [];
-    if (!parsedData.equipmentTypes) parsedData.equipmentTypes = INITIAL_EQUIPMENT_TYPES;
-    if (!parsedData.systemTypes) parsedData.systemTypes = INITIAL_SYSTEM_TYPES;
-    // Added fallback initialization for monitoringAlerts field
+    // Handle migration for monitoring fields
     if (!parsedData.monitoringAlerts) parsedData.monitoringAlerts = [];
+    if (!parsedData.waterLevels) parsedData.waterLevels = [];
     
     return parsedData;
   } catch (e) {
