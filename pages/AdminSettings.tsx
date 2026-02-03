@@ -2,14 +2,14 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { 
-  User, Trash2, Edit2, X, Save, Building2, RefreshCw, Cpu, Copy, Check, Database, CheckCircle, AlertTriangle
+  User, Trash2, Edit2, X, Save, Building2, RefreshCw, Cpu, Copy, Check, Database, CheckCircle, AlertTriangle, Wifi
 } from 'lucide-react';
 import { UserRole, User as UserType, Condo } from '../types';
 import { supabase } from '../supabase';
 
 const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
   const user = data.currentUser;
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<'telemetry' | 'hardware' | null>(null);
   
   if (!user || user.role !== UserRole.ADMIN) {
     return <Navigate to="/" />;
@@ -21,7 +21,7 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const [tableStatus, setTableStatus] = useState<Record<string, 'checking' | 'ok' | 'error'>>({});
 
   const checkDatabaseHealth = async () => {
-    const tables = ['users', 'condos', 'equipments', 'systems', 'service_orders', 'appointments', 'nivel_caixa'];
+    const tables = ['users', 'condos', 'equipments', 'systems', 'service_orders', 'appointments', 'nivel_caixa', 'esp32_status'];
     const newStatus: any = {};
     for (const table of tables) {
       newStatus[table] = 'checking';
@@ -67,84 +67,105 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     }
   };
 
-  const sqlOptimizer = `
--- SMARTGESTÃO: OTIMIZADOR DE BANCO DE DADOS
--- Este script impede que o banco salve registros se o nível for igual ao anterior.
-
+  const sqlTelemetry = `
+-- 1. OTIMIZADOR DE TELEMETRIA (Copie e Cole no SQL Editor do Supabase)
 CREATE OR REPLACE FUNCTION public.filter_unchanged_levels()
 RETURNS TRIGGER AS $$
 DECLARE
   last_val INTEGER;
 BEGIN
-  -- Busca o último valor registrado para este dispositivo específico
-  SELECT nivel_cm INTO last_val 
-  FROM public.nivel_caixa
-  WHERE condominio_id = NEW.condominio_id
-  ORDER BY created_at DESC
-  LIMIT 1;
+  -- Busca o último valor para este ID
+  SELECT nivel_cm INTO last_val FROM public.nivel_caixa
+  WHERE condominio_id = NEW.condominio_id ORDER BY created_at DESC LIMIT 1;
 
-  -- Se o valor novo for igual ao último, aborta a inserção (Retorna NULL)
+  -- Se o nível não mudou, cancela a inserção para economizar espaço
   IF last_val IS NOT NULL AND last_val = NEW.nivel_cm THEN
     RETURN NULL; 
   END IF;
   
-  -- Se mudou, permite a gravação
+  -- Sincroniza status de hardware na tabela de conectividade
+  INSERT INTO public.esp32_status (device_id, status, last_seen)
+  VALUES (NEW.condominio_id, 'online', NOW())
+  ON CONFLICT (device_id) DO UPDATE SET status = 'online', last_seen = NOW();
+
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
--- Aplica a Trigger na tabela nivel_caixa
+-- Aplica a trigger
 DROP TRIGGER IF EXISTS tr_filter_levels ON public.nivel_caixa;
-CREATE TRIGGER tr_filter_levels
-BEFORE INSERT ON public.nivel_caixa
+CREATE TRIGGER tr_filter_levels BEFORE INSERT ON public.nivel_caixa
 FOR EACH ROW EXECUTE FUNCTION public.filter_unchanged_levels();
   `.trim();
 
-  const handleCopySql = () => {
-    navigator.clipboard.writeText(sqlOptimizer);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const sqlHardwareTable = `
+-- 2. TABELA DE MONITOR DE HARDWARE (Copie e Cole no SQL Editor do Supabase)
+CREATE TABLE IF NOT EXISTS public.esp32_status (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    device_id TEXT UNIQUE NOT NULL,
+    status TEXT DEFAULT 'online',
+    last_seen TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Função para detectar dispositivos que sumiram há mais de 10 min
+CREATE OR REPLACE FUNCTION public.check_esp32_offline()
+RETURNS VOID AS $$
+BEGIN
+    UPDATE public.esp32_status SET status = 'offline'
+    WHERE last_seen < (NOW() - INTERVAL '10 minutes') AND status = 'online';
+END;
+$$ LANGUAGE plpgsql;
+  `.trim();
+
+  const handleCopy = (code: string, type: 'telemetry' | 'hardware') => {
+    navigator.clipboard.writeText(code);
+    setCopied(type);
+    setTimeout(() => setCopied(null), 2000);
   };
 
   return (
     <div className="space-y-8 pb-12">
       <div className="no-print">
         <h1 className="text-2xl font-black text-slate-900 leading-tight">Administração</h1>
-        <p className="text-sm text-slate-500 font-medium">Gestão técnica, equipe e otimização de infraestrutura.</p>
+        <p className="text-sm text-slate-500 font-medium">Gestão técnica, equipe e monitoramento de infraestrutura.</p>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 no-print">
-        <div className="xl:col-span-2 space-y-8">
+        <div className="xl:col-span-2 space-y-6">
           
-          <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden">
-             <div className="absolute top-0 right-0 p-8 opacity-5">
-                <Cpu size={120} />
-             </div>
-             <div className="relative z-10">
-                <div className="flex items-center space-x-3 mb-6">
-                   <div className="p-3 bg-blue-600 rounded-2xl shadow-lg shadow-blue-600/30">
-                      <Cpu className="text-white" size={24} />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+             {/* Bloco 1: Telemetria */}
+             <div className="bg-slate-900 rounded-[2rem] p-6 text-white shadow-xl relative overflow-hidden group">
+                <div className="relative z-10">
+                   <div className="flex items-center space-x-3 mb-4">
+                      <Cpu size={20} className="text-blue-500" />
+                      <h3 className="text-[10px] font-black uppercase tracking-widest text-blue-400">Filtro Inteligente</h3>
                    </div>
-                   <div>
-                      <h3 className="font-black uppercase text-xs tracking-[0.2em] text-blue-400">Otimizador de Telemetria</h3>
-                      <p className="text-xs text-slate-400 font-bold">Filtro de Inteligência de Dados</p>
-                   </div>
-                </div>
-                
-                <p className="text-sm font-medium text-slate-300 mb-8 leading-relaxed max-w-xl">
-                  Este script SQL cria uma regra de "Delta-Filtering". O banco ignorará entradas do ESP32 se o nível da água não tiver sofrido alteração, reduzindo drasticamente o tráfego e o custo de armazenamento.
-                </p>
-
-                <div className="bg-white/5 border border-white/10 rounded-2xl p-5 relative group">
-                   <pre className="text-[10px] font-mono text-blue-300/80 overflow-x-auto whitespace-pre custom-scrollbar max-h-48">
-                     {sqlOptimizer}
-                   </pre>
+                   <p className="text-[10px] text-slate-400 mb-4 font-bold leading-relaxed">Impede gravações duplicadas no banco se o nível da água não mudar.</p>
                    <button 
-                     onClick={handleCopySql}
-                     className="absolute top-4 right-4 bg-white text-slate-900 px-4 py-2 rounded-xl shadow-lg hover:bg-blue-50 transition-all flex items-center space-x-2 active:scale-95"
+                     onClick={() => handleCopy(sqlTelemetry, 'telemetry')}
+                     className="w-full py-3 bg-white/10 hover:bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center space-x-2"
                    >
-                     {copied ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
-                     <span className="text-[10px] font-black uppercase tracking-widest">{copied ? 'Copiado!' : 'Copiar Script'}</span>
+                     {copied === 'telemetry' ? <Check size={14} /> : <Copy size={14} />}
+                     <span>{copied === 'telemetry' ? 'Copiado!' : 'Copiar Script SQL'}</span>
+                   </button>
+                </div>
+             </div>
+
+             {/* Bloco 2: Hardware */}
+             <div className="bg-blue-600 rounded-[2rem] p-6 text-white shadow-xl relative overflow-hidden group">
+                <div className="relative z-10">
+                   <div className="flex items-center space-x-3 mb-4">
+                      <Wifi size={20} className="text-blue-200" />
+                      <h3 className="text-[10px] font-black uppercase tracking-widest text-blue-100">Status Online</h3>
+                   </div>
+                   <p className="text-[10px] text-blue-100/70 mb-4 font-bold leading-relaxed">Cria a tabela de status para monitorar se o ESP32 está conectado.</p>
+                   <button 
+                     onClick={() => handleCopy(sqlHardwareTable, 'hardware')}
+                     className="w-full py-3 bg-black/20 hover:bg-black/40 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center space-x-2"
+                   >
+                     {copied === 'hardware' ? <Check size={14} /> : <Copy size={14} />}
+                     <span>{copied === 'hardware' ? 'Copiado!' : 'Copiar SQL Hardware'}</span>
                    </button>
                 </div>
              </div>
@@ -280,18 +301,6 @@ FOR EACH ROW EXECUTE FUNCTION public.filter_unchanged_levels();
           </div>
         </div>
       )}
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(255,255,255,0.1);
-          border-radius: 10px;
-        }
-      `}</style>
     </div>
   );
 };

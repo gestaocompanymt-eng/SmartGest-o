@@ -4,7 +4,7 @@ import { INITIAL_EQUIPMENT_TYPES, INITIAL_SYSTEM_TYPES } from './constants';
 
 const STORAGE_KEY = 'smart_gestao_data_v3';
 
-// Added monitoringAlerts to initialData
+// Added esp32Status and monitoringAlerts to initialData
 const initialData: AppData = {
   condos: [],
   equipments: [],
@@ -12,6 +12,8 @@ const initialData: AppData = {
   serviceOrders: [],
   appointments: [],
   waterLevels: [],
+  // Fix: Added missing esp32Status property to initialData
+  esp32Status: [],
   users: [
     { id: 'admin1', name: 'Admin Principal', role: UserRole.ADMIN, email: 'admin', password: '41414889Ai' },
     { id: 'tech1', name: 'Carlos Técnico', role: UserRole.TECHNICIAN, email: 'carlos@smartgestao.com', password: '123' }
@@ -43,6 +45,8 @@ export const getStore = (): AppData => {
     if (!parsedData.systems) parsedData.systems = [];
     if (!parsedData.serviceOrders) parsedData.serviceOrders = [];
     if (!parsedData.waterLevels) parsedData.waterLevels = [];
+    // Fix: Added fallback initialization for esp32Status field
+    if (!parsedData.esp32Status) parsedData.esp32Status = [];
     if (!parsedData.users) parsedData.users = [];
     if (!parsedData.equipmentTypes) parsedData.equipmentTypes = INITIAL_EQUIPMENT_TYPES;
     if (!parsedData.systemTypes) parsedData.systemTypes = INITIAL_SYSTEM_TYPES;

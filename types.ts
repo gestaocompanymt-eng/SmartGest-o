@@ -50,7 +50,6 @@ export interface Condo {
   updated_at?: string;
 }
 
-// Updated Equipment interface with Tuya monitoring fields
 export interface Equipment {
   id: string;
   condo_id: string;
@@ -69,7 +68,6 @@ export interface Equipment {
   photos: string[];
   last_maintenance: string;
   updated_at?: string;
-  // Tuya Cloud integration fields
   tuya_device_id?: string;
   is_online?: boolean;
   monitoring_status?: 'normal' | 'atencao' | 'critico';
@@ -135,7 +133,13 @@ export interface WaterLevel {
   created_at: string;
 }
 
-// Added MonitoringAlert interface to fix missing export error in Monitoring.tsx
+export interface ESP32Status {
+  id: string;
+  device_id: string;
+  status: 'online' | 'offline';
+  last_seen: string;
+}
+
 export interface MonitoringAlert {
   id: string;
   equipment_id: string;
@@ -161,10 +165,10 @@ export interface AppData {
   serviceOrders: ServiceOrder[];
   appointments: Appointment[];
   waterLevels: WaterLevel[];
+  esp32Status: ESP32Status[];
   users: User[];
   equipmentTypes: EquipmentType[];
   systemTypes: SystemType[];
   currentUser: User | null;
-  // Added monitoringAlerts array to AppData
   monitoringAlerts: MonitoringAlert[];
 }

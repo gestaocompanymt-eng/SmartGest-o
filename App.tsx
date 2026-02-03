@@ -43,10 +43,10 @@ const AppContent: React.FC = () => {
   }, [data]);
 
   const smartUnion = (local: any[], cloud: any[] | null) => {
-    if (!cloud || cloud.length === 0) return local;
+    if (!cloud || cloud.length === 0) return local || [];
     const map = new Map();
     cloud.forEach(item => map.set(item.id, item));
-    local.forEach(item => {
+    (local || []).forEach(item => {
       if (!map.has(item.id)) {
         map.set(item.id, item);
       } else {
@@ -66,7 +66,6 @@ const AppContent: React.FC = () => {
     
     setSyncStatus('syncing');
     const user = currentLocalData.currentUser;
-    // REGRA: Somente CONDO_USER é restrito. ADMIN e TECHNICIAN são globais.
     const isRestricted = user.role === UserRole.CONDO_USER;
     const condoId = user.condo_id;
 
@@ -78,6 +77,7 @@ const AppContent: React.FC = () => {
       let qOS = supabase.from('service_orders').select('*');
       let qAppts = supabase.from('appointments').select('*');
       let qLevels = supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(300);
+      let qStatus = supabase.from('esp32_status').select('*');
 
       if (isRestricted && condoId) {
         qUsers = qUsers.eq('condo_id', condoId);
@@ -88,8 +88,8 @@ const AppContent: React.FC = () => {
         qAppts = qAppts.eq('condo_id', condoId);
       }
 
-      const [resUsers, resCondos, resEquips, resSystems, resOS, resAppts, resLevels] = await Promise.all([
-        qUsers, qCondos, qEquips, qSystems, qOS, qAppts, qLevels
+      const [resUsers, resCondos, resEquips, resSystems, resOS, resAppts, resLevels, resStatus] = await Promise.all([
+        qUsers, qCondos, qEquips, qSystems, qOS, qAppts, qLevels, qStatus
       ]);
 
       const cloudData: AppData = {
@@ -102,7 +102,8 @@ const AppContent: React.FC = () => {
           new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
         ),
         appointments: smartUnion(currentLocalData.appointments, resAppts.data),
-        waterLevels: resLevels.data || currentLocalData.waterLevels,
+        waterLevels: resLevels.data || currentLocalData.waterLevels || [],
+        esp32Status: resStatus.data || currentLocalData.esp32Status || [],
         monitoringAlerts: currentLocalData.monitoringAlerts || []
       };
       
@@ -175,11 +176,11 @@ const AppContent: React.FC = () => {
       
       try {
         const syncPromises = [];
-        if (newData.systems.length > 0) syncPromises.push(supabase.from('systems').upsert(newData.systems));
-        if (newData.equipments.length > 0) syncPromises.push(supabase.from('equipments').upsert(newData.equipments));
-        if (newData.condos.length > 0) syncPromises.push(supabase.from('condos').upsert(newData.condos));
-        if (newData.serviceOrders.length > 0) syncPromises.push(supabase.from('service_orders').upsert(newData.serviceOrders));
-        if (newData.users.length > 0) syncPromises.push(supabase.from('users').upsert(newData.users.map(u => ({...u, password: u.password || ''}))));
+        if (newData.systems?.length > 0) syncPromises.push(supabase.from('systems').upsert(newData.systems));
+        if (newData.equipments?.length > 0) syncPromises.push(supabase.from('equipments').upsert(newData.equipments));
+        if (newData.condos?.length > 0) syncPromises.push(supabase.from('condos').upsert(newData.condos));
+        if (newData.serviceOrders?.length > 0) syncPromises.push(supabase.from('service_orders').upsert(newData.serviceOrders));
+        if (newData.users?.length > 0) syncPromises.push(supabase.from('users').upsert(newData.users.map(u => ({...u, password: u.password || ''}))));
 
         await Promise.all(syncPromises);
         setSyncStatus('synced');
@@ -198,7 +199,7 @@ const AppContent: React.FC = () => {
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-center">
         <Wrench size={48} className="text-blue-500 animate-bounce mb-6" />
         <h2 className="text-white font-black uppercase tracking-widest text-lg mb-2">SmartGestão</h2>
-        <p className="text-slate-400 text-sm font-bold animate-pulse">Protegendo sua conexão...</p>
+        <p className="text-slate-400 text-sm font-bold animate-pulse">Sincronizando com a nuvem...</p>
       </div>
     );
   }
@@ -212,7 +213,6 @@ const AppContent: React.FC = () => {
     }} />;
   }
 
-  // Define user for use in navigation items
   const user = data.currentUser;
 
   const NavItem = ({ to, icon: Icon, label }: { to: string; icon: any; label: string }) => (
@@ -254,7 +254,6 @@ const AppContent: React.FC = () => {
 
           <nav className="flex-1 space-y-2 overflow-y-auto pr-2 custom-scrollbar">
             <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
-            {/* Fix: use the local 'user' constant or data.currentUser instead of an undefined 'user' */}
             <NavItem to="/condos" icon={Building2} label={user?.role === UserRole.CONDO_USER ? 'Meu Condomínio' : 'Condomínios'} />
             <NavItem to="/equipment" icon={Layers} label="Equipamentos" />
             <NavItem to="/systems" icon={Wrench} label="Sistemas" />
