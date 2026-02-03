@@ -10,7 +10,8 @@ import {
   Settings, 
   LogOut, 
   Menu, 
-  X
+  X,
+  Droplets
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
@@ -24,6 +25,7 @@ import SystemsPage from './pages/Systems';
 import ServiceOrders from './pages/ServiceOrders';
 import AdminSettings from './pages/AdminSettings';
 import Login from './pages/Login';
+import WaterLevel from './pages/WaterLevel';
 
 const AppContent: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
@@ -74,6 +76,7 @@ const AppContent: React.FC = () => {
       let qSystems = supabase.from('systems').select('*');
       let qOS = supabase.from('service_orders').select('*');
       let qAppts = supabase.from('appointments').select('*');
+      let qLevels = supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(100);
 
       if (isRestricted && condoId) {
         qUsers = qUsers.eq('condo_id', condoId);
@@ -84,8 +87,8 @@ const AppContent: React.FC = () => {
         qAppts = qAppts.eq('condo_id', condoId);
       }
 
-      const [resUsers, resCondos, resEquips, resSystems, resOS, resAppts] = await Promise.all([
-        qUsers, qCondos, qEquips, qSystems, qOS, qAppts
+      const [resUsers, resCondos, resEquips, resSystems, resOS, resAppts, resLevels] = await Promise.all([
+        qUsers, qCondos, qEquips, qSystems, qOS, qAppts, qLevels
       ]);
 
       const cloudData: AppData = {
@@ -97,7 +100,8 @@ const AppContent: React.FC = () => {
         serviceOrders: smartUnion(currentLocalData.serviceOrders, resOS.data).sort((a: any, b: any) => 
           new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
         ),
-        appointments: smartUnion(currentLocalData.appointments, resAppts.data)
+        appointments: smartUnion(currentLocalData.appointments, resAppts.data),
+        waterLevels: resLevels.data || []
       };
       
       setSyncStatus('synced');
@@ -118,7 +122,7 @@ const AppContent: React.FC = () => {
           setData(updated);
           saveStore(updated);
         }
-      }, 60000);
+      }, 30000); // Sincronização a cada 30s para telemetria
     }
     return () => { if (interval) clearInterval(interval); };
   }, [fetchAllData, !!data?.currentUser]);
@@ -220,6 +224,7 @@ const AppContent: React.FC = () => {
           <nav className="flex-1 space-y-2 overflow-y-auto pr-2 custom-scrollbar">
             <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
             <NavItem to="/condos" icon={Building2} label={user?.role === UserRole.CONDO_USER ? 'Meu Condomínio' : 'Condomínios'} />
+            <NavItem to="/reservatorios" icon={Droplets} label="Reservatórios" />
             <NavItem to="/equipment" icon={Layers} label="Equipamentos" />
             <NavItem to="/systems" icon={Wrench} label="Sistemas" />
             <NavItem to="/os" icon={FileText} label="Ordens de Serviço" />
@@ -249,6 +254,11 @@ const AppContent: React.FC = () => {
           <Routes>
             <Route path="/" element={<Dashboard data={data} updateData={updateData} />} />
             <Route path="/condos" element={<Condos data={data} updateData={updateData} />} />
+            <Route path="/reservatorios" element={<WaterLevel data={data} updateData={updateData} onRefresh={async () => {
+              const updated = await fetchAllData(data);
+              setData(updated);
+              saveStore(updated);
+            }} />} />
             <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} />} />
             <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} />} />
             <Route path="/os" element={<ServiceOrders data={data} updateData={updateData} />} />

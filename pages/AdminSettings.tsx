@@ -2,13 +2,14 @@
 import React, { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { 
-  User, Trash2, Edit2, X, Save, Building2, RefreshCw, Database, CheckCircle, AlertTriangle
+  User, Trash2, Edit2, X, Save, Building2, RefreshCw, Database, CheckCircle, AlertTriangle, Copy, Check, Cpu
 } from 'lucide-react';
 import { UserRole, User as UserType, Condo } from '../types';
 import { supabase } from '../supabase';
 
 const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
   const user = data.currentUser;
+  const [copied, setCopied] = useState(false);
   
   if (!user || user.role !== UserRole.ADMIN) {
     return <Navigate to="/" />;
@@ -19,8 +20,40 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const [selectedRole, setSelectedRole] = useState<UserRole>(UserRole.TECHNICIAN);
   const [tableStatus, setTableStatus] = useState<Record<string, 'checking' | 'ok' | 'error'>>({});
 
+  // Fix: Implemented missing deleteUser function
+  const deleteUser = (id: string) => {
+    if (window.confirm('Deseja realmente remover este acesso?')) {
+      const newUsers = data.users.filter((u: UserType) => u.id !== id);
+      updateData({ ...data, users: newUsers });
+    }
+  };
+
+  // Fix: Implemented missing handleUserSubmit function
+  const handleUserSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const role = formData.get('role') as UserRole;
+    
+    const userData: UserType = {
+      id: editingUser?.id || Math.random().toString(36).substr(2, 9),
+      name: formData.get('name') as string,
+      email: formData.get('email') as string,
+      password: (formData.get('password') as string) || editingUser?.password || '',
+      role: role,
+      condo_id: role === UserRole.CONDO_USER ? (formData.get('condoId') as string) : undefined
+    };
+
+    const newUsers = editingUser
+      ? data.users.map((u: UserType) => u.id === editingUser.id ? userData : u)
+      : [userData, ...data.users];
+
+    await updateData({ ...data, users: newUsers });
+    setIsUserModalOpen(false);
+    setEditingUser(null);
+  };
+
   const checkDatabaseHealth = async () => {
-    const tables = ['users', 'condos', 'equipments', 'systems', 'service_orders'];
+    const tables = ['users', 'condos', 'equipments', 'systems', 'service_orders', 'nivel_caixa'];
     const newStatus: any = {};
     for (const table of tables) {
       newStatus[table] = 'checking';
@@ -39,46 +72,55 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     checkDatabaseHealth();
   }, []);
 
-  const handleUserSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    const role = formData.get('role') as UserRole;
-    const userId = editingUser?.id || `user-${Date.now()}`;
-    const userData: UserType = {
-      id: userId,
-      name: formData.get('name') as string,
-      email: (formData.get('email') as string).trim().toLowerCase(),
-      role: role,
-      password: (formData.get('password') as string).trim(),
-      condo_id: role === UserRole.CONDO_USER ? (formData.get('condoId') as string) : undefined
-    };
-    const newUsersList = editingUser 
-      ? data.users.map((u: UserType) => u.id === editingUser.id ? userData : u) 
-      : [...data.users, userData];
-    await updateData({ ...data, users: newUsersList });
-    setIsUserModalOpen(false);
-    setEditingUser(null);
-  };
+  const sqlCode = `
+-- TABELA DE TELEMETRIA (Execute no SQL Editor do Supabase)
+CREATE TABLE IF NOT EXISTS public.nivel_caixa (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    condominio_id TEXT NOT NULL, -- Device ID do ESP32
+    percentual INTEGER DEFAULT 0,
+    nivel_cm INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'Normal'
+);
 
-  const deleteUser = (id: string) => {
-    if (confirm('Deseja remover o acesso deste colaborador permanentemente?')) {
-      updateData({ ...data, users: data.users.filter((u: any) => u.id !== id) });
-    }
+-- Index para performance
+CREATE INDEX IF NOT EXISTS idx_nivel_device ON public.nivel_caixa(condominio_id, created_at DESC);
+  `.trim();
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(sqlCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
     <div className="space-y-8 pb-12">
       <div>
         <h1 className="text-2xl font-black text-slate-900 leading-tight">Administração</h1>
-        <p className="text-sm text-slate-500 font-medium">Gestão de acessos e integridade do banco de dados.</p>
+        <p className="text-sm text-slate-500 font-medium">Gestão de acessos e infraestrutura cloud.</p>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         <div className="xl:col-span-2 space-y-6">
+          
+          <div className="bg-slate-900 rounded-[2rem] p-6 text-white shadow-xl">
+             <div className="flex items-center space-x-3 mb-4">
+                <Cpu size={24} className="text-blue-500" />
+                <h3 className="text-sm font-black uppercase tracking-widest">Configuração do Banco (IOT)</h3>
+             </div>
+             <p className="text-[10px] text-slate-400 mb-4 font-bold leading-relaxed">Se você ainda não criou a tabela de telemetria no Supabase, copie o código abaixo e execute no SQL Editor do painel da Supabase.</p>
+             <div className="bg-black/40 p-4 rounded-xl font-mono text-[10px] text-blue-300 overflow-x-auto mb-4 relative">
+                <pre>{sqlCode}</pre>
+                <button onClick={handleCopy} className="absolute top-2 right-2 p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-all">
+                  {copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                </button>
+             </div>
+          </div>
+
           <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
             <div className="p-6 border-b bg-slate-50/50 flex justify-between items-center">
                <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-[10px]">
-                <Database size={16} className="mr-2 text-blue-600" /> Integridade da Base Cloud
+                <Database size={16} className="mr-2 text-blue-600" /> Saúde do Ecossistema
               </h3>
               <button onClick={checkDatabaseHealth} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all">
                 <RefreshCw size={14} />
@@ -141,7 +183,7 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
 
       {isUserModalOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-[2rem] w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-[2rem] w-full max-md:max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b flex justify-between items-center bg-slate-50">
               <h2 className="text-lg font-black uppercase tracking-tight text-slate-800">{editingUser ? 'Editar' : 'Novo'} Acesso</h2>
               <button onClick={() => setIsUserModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm"><X size={24} /></button>

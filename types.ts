@@ -33,27 +33,15 @@ export interface SystemType {
   name: string;
 }
 
-// Added missing interface for system monitoring points
 export interface MonitoringPoint {
   id: string;
   name: string;
   device_id: string;
 }
 
-// Added missing interface for equipment monitoring alerts
-export interface MonitoringAlert {
-  id: string;
-  equipment_id: string;
-  message: string;
-  value: string | number;
-  is_resolved: boolean;
-  created_at: string;
-}
-
-// Added missing interface for water level readings
 export interface WaterLevel {
   id: string;
-  condominio_id: string;
+  condominio_id: string; // Usado como Device ID do ESP32
   percentual: number;
   nivel_cm: number;
   status?: string;
@@ -67,11 +55,10 @@ export interface Condo {
   manager: string;
   contract_type: ContractType;
   start_date: string;
-  // Added monitoring_points to support page logic in Condos.tsx
-  monitoring_points?: MonitoringPoint[];
   updated_at?: string;
 }
 
+// Fix: Added optional Tuya-related fields to Equipment to support Monitoring.tsx
 export interface Equipment {
   id: string;
   condo_id: string;
@@ -90,7 +77,7 @@ export interface Equipment {
   photos: string[];
   last_maintenance: string;
   updated_at?: string;
-  // Added fields to support Tuya monitoring logic in Monitoring.tsx
+  device_id?: string; // ID do ESP32 atrelado ao equipamento
   tuya_device_id?: string;
   is_online?: boolean;
   monitoring_status?: 'normal' | 'atencao' | 'critico';
@@ -109,7 +96,6 @@ export interface System {
   name: string;
   location: string;
   equipment_ids: string[];
-  // Added monitoring_points to support Systems page logic
   monitoring_points?: MonitoringPoint[];
   parameters: string;
   observations: string;
@@ -157,6 +143,17 @@ export interface User {
   condo_id?: string;
 }
 
+// Fix: Added MonitoringAlert interface definition
+export interface MonitoringAlert {
+  id: string;
+  equipment_id: string;
+  message: string;
+  value: string;
+  is_resolved: boolean;
+  created_at: string;
+}
+
+// Fix: Added monitoringAlerts to AppData
 export interface AppData {
   condos: Condo[];
   equipments: Equipment[];
@@ -167,7 +164,6 @@ export interface AppData {
   equipmentTypes: EquipmentType[];
   systemTypes: SystemType[];
   currentUser: User | null;
-  // Added monitoring collections to support the app state used in Monitoring and WaterLevel pages
-  monitoringAlerts: MonitoringAlert[];
   waterLevels: WaterLevel[];
+  monitoringAlerts: MonitoringAlert[];
 }

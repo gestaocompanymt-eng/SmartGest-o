@@ -2,7 +2,7 @@
 import { AppData, UserRole } from './types';
 import { INITIAL_EQUIPMENT_TYPES, INITIAL_SYSTEM_TYPES } from './constants';
 
-const STORAGE_KEY = 'smart_gestao_data_v4';
+const STORAGE_KEY = 'smart_gestao_data_v5';
 
 const initialData: AppData = {
   condos: [],
@@ -16,9 +16,8 @@ const initialData: AppData = {
   equipmentTypes: INITIAL_EQUIPMENT_TYPES,
   systemTypes: INITIAL_SYSTEM_TYPES,
   currentUser: null,
-  // Added initialization for monitoring collections
-  monitoringAlerts: [],
-  waterLevels: []
+  waterLevels: [],
+  monitoringAlerts: []
 };
 
 export const getStore = (): AppData => {
@@ -34,9 +33,8 @@ export const getStore = (): AppData => {
     if (!parsedData.systems) parsedData.systems = [];
     if (!parsedData.serviceOrders) parsedData.serviceOrders = [];
     if (!parsedData.users) parsedData.users = [];
-    // Handle migration for monitoring fields
-    if (!parsedData.monitoringAlerts) parsedData.monitoringAlerts = [];
     if (!parsedData.waterLevels) parsedData.waterLevels = [];
+    if (!parsedData.monitoringAlerts) parsedData.monitoringAlerts = [];
     
     return parsedData;
   } catch (e) {

@@ -31,6 +31,7 @@ const Condos: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, u
     if (!isAdminOrTech) return;
 
     const formData = new FormData(e.currentTarget);
+    // Fix: Removed 'monitoring_points' as it does not exist on type 'Condo'
     const condoData: Condo = {
       id: editingCondo?.id || Math.random().toString(36).substr(2, 9),
       name: formData.get('name') as string,
@@ -38,7 +39,6 @@ const Condos: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, u
       manager: formData.get('manager') as string,
       contract_type: formData.get('contract_type') as ContractType,
       start_date: formData.get('start_date') as string,
-      monitoring_points: editingCondo?.monitoring_points || [],
     };
 
     const newCondos = editingCondo 
