@@ -74,7 +74,7 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
 
   const sqlCode = `
 -- ==========================================
--- SCRIPT COMPLETO SMARTGESTÃO (TABELAS + RLS)
+-- SCRIPT COMPLETO SMARTGESTÃO (V2 - ROBUSTO)
 -- ==========================================
 
 -- 1. TABELA DE CONDOMÍNIOS
@@ -206,17 +206,58 @@ ON public.nivel_caixa FOR SELECT
 TO anon 
 USING (true);
 
--- POLÍTICAS DE ACESSO GERAL (Para simplificar o sincronismo do app)
--- Em um cenário de alta segurança, usaríamos auth.uid()
-CREATE POLICY "Acesso total autenticado" ON public.condos FOR ALL USING (true);
-CREATE POLICY "Acesso total autenticado" ON public.users FOR ALL USING (true);
-CREATE POLICY "Acesso total autenticado" ON public.equipments FOR ALL USING (true);
-CREATE POLICY "Acesso total autenticado" ON public.systems FOR ALL USING (true);
-CREATE POLICY "Acesso total autenticado" ON public.service_orders FOR ALL USING (true);
-CREATE POLICY "Acesso total autenticado" ON public.appointments FOR ALL USING (true);
+-- POLÍTICAS DE ACESSO GERAL
+-- Nota: Estas políticas permitem acesso rápido. Para produção restrita, use auth.uid()
+DO $$
+BEGIN
+    DROP POLICY IF EXISTS "Acesso total" ON public.condos;
+    CREATE POLICY "Acesso total" ON public.condos FOR ALL USING (true);
+    
+    DROP POLICY IF EXISTS "Acesso total" ON public.users;
+    CREATE POLICY "Acesso total" ON public.users FOR ALL USING (true);
+    
+    DROP POLICY IF EXISTS "Acesso total" ON public.equipments;
+    CREATE POLICY "Acesso total" ON public.equipments FOR ALL USING (true);
+    
+    DROP POLICY IF EXISTS "Acesso total" ON public.systems;
+    CREATE POLICY "Acesso total" ON public.systems FOR ALL USING (true);
+    
+    DROP POLICY IF EXISTS "Acesso total" ON public.service_orders;
+    CREATE POLICY "Acesso total" ON public.service_orders FOR ALL USING (true);
+    
+    DROP POLICY IF EXISTS "Acesso total" ON public.appointments;
+    CREATE POLICY "Acesso total" ON public.appointments FOR ALL USING (true);
+END $$;
 
--- ATIVAR REALTIME PARA TELEMETRIA
-ALTER PUBLICATION supabase_realtime ADD TABLE public.nivel_caixa;
+-- ==========================================
+-- ATIVAR REALTIME (SOLUÇÃO ERRO 55000)
+-- ==========================================
+DO $$
+DECLARE
+    is_all_tables BOOLEAN;
+BEGIN
+    -- 1. Garante que a publicação existe
+    IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+        CREATE PUBLICATION supabase_realtime;
+    END IF;
+
+    -- 2. Verifica se ela já é global
+    SELECT puballtables INTO is_all_tables FROM pg_publication WHERE pubname = 'supabase_realtime';
+
+    -- 3. Se NÃO for global, adicionamos a tabela manualmente
+    IF is_all_tables = false THEN
+        BEGIN
+            ALTER PUBLICATION supabase_realtime ADD TABLE public.nivel_caixa;
+        EXCEPTION
+            WHEN duplicate_object THEN
+                RAISE NOTICE 'Tabela já está na publicação';
+            WHEN others THEN
+                RAISE NOTICE 'Erro ao adicionar tabela: %', SQLERRM;
+        END;
+    ELSE
+        RAISE NOTICE 'Publicação é FOR ALL TABLES, ignorando ALTER.';
+    END IF;
+END $$;
 `.trim();
 
   const firmwareCode = `
