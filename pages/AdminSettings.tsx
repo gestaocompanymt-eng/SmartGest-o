@@ -2,9 +2,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { 
-  UserPlus, User, Trash2, Edit2, X, Save, Building2, LayoutList, RotateCcw, Printer, Filter, Calendar, Calculator, Settings2, Plus, Layers, Monitor, Database, CheckCircle, AlertTriangle, RefreshCw, Cpu, Copy, Check
+  User, Trash2, Edit2, X, Save, Building2, RefreshCw, Cpu, Copy, Check, Database, CheckCircle, AlertTriangle
 } from 'lucide-react';
-import { UserRole, User as UserType, ServiceOrder, Condo, OSStatus, EquipmentType, SystemType } from '../types';
+import { UserRole, User as UserType, Condo } from '../types';
 import { supabase } from '../supabase';
 
 const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
@@ -20,14 +20,8 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const [selectedRole, setSelectedRole] = useState<UserRole>(UserRole.TECHNICIAN);
   const [tableStatus, setTableStatus] = useState<Record<string, 'checking' | 'ok' | 'error'>>({});
 
-  const [reportStartDate, setReportStartDate] = useState('');
-  const [reportEndDate, setReportEndDate] = useState('');
-  const [selectedCondoId, setSelectedCondoId] = useState('all');
-  const [selectedTechId, setSelectedTechId] = useState('all');
-
   const checkDatabaseHealth = async () => {
-    // Removida a tabela esp32_status da verificação de saúde
-    const tables = ['users', 'condos', 'equipments', 'systems', 'service_orders', 'appointments', 'nivel_caixa', 'monitoring_alerts'];
+    const tables = ['users', 'condos', 'equipments', 'systems', 'service_orders', 'appointments', 'nivel_caixa'];
     const newStatus: any = {};
     for (const table of tables) {
       newStatus[table] = 'checking';
@@ -45,17 +39,6 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   useEffect(() => {
     checkDatabaseHealth();
   }, []);
-
-  const filteredReportOrders = useMemo(() => {
-    return data.serviceOrders.filter((os: ServiceOrder) => {
-      const date = new Date(os.created_at).toISOString().split('T')[0];
-      const matchStart = reportStartDate ? date >= reportStartDate : true;
-      const matchEnd = reportEndDate ? date <= reportEndDate : true;
-      const matchCondo = selectedCondoId === 'all' ? true : os.condo_id === selectedCondoId;
-      const matchTech = selectedTechId === 'all' ? true : os.technician_id === selectedTechId;
-      return matchStart && matchEnd && matchCondo && matchTech;
-    });
-  }, [data.serviceOrders, reportStartDate, reportEndDate, selectedCondoId, selectedTechId]);
 
   const handleUserSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -85,24 +68,36 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   };
 
   const sqlOptimizer = `
-CREATE OR REPLACE FUNCTION filter_unchanged_levels()
+-- SMARTGESTÃO: OTIMIZADOR DE BANCO DE DADOS
+-- Este script impede que o banco salve registros se o nível for igual ao anterior.
+
+CREATE OR REPLACE FUNCTION public.filter_unchanged_levels()
 RETURNS TRIGGER AS $$
 DECLARE
   last_val INTEGER;
 BEGIN
+  -- Busca o último valor registrado para este dispositivo específico
   SELECT nivel_cm INTO last_val 
-  FROM nivel_caixa
+  FROM public.nivel_caixa
   WHERE condominio_id = NEW.condominio_id
   ORDER BY created_at DESC
   LIMIT 1;
 
+  -- Se o valor novo for igual ao último, aborta a inserção (Retorna NULL)
   IF last_val IS NOT NULL AND last_val = NEW.nivel_cm THEN
     RETURN NULL; 
   END IF;
   
+  -- Se mudou, permite a gravação
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+
+-- Aplica a Trigger na tabela nivel_caixa
+DROP TRIGGER IF EXISTS tr_filter_levels ON public.nivel_caixa;
+CREATE TRIGGER tr_filter_levels
+BEFORE INSERT ON public.nivel_caixa
+FOR EACH ROW EXECUTE FUNCTION public.filter_unchanged_levels();
   `.trim();
 
   const handleCopySql = () => {
@@ -115,44 +110,56 @@ $$ LANGUAGE plpgsql;
     <div className="space-y-8 pb-12">
       <div className="no-print">
         <h1 className="text-2xl font-black text-slate-900 leading-tight">Administração</h1>
-        <p className="text-sm text-slate-500 font-medium">Gestão técnica, equipe e controle de acessos.</p>
+        <p className="text-sm text-slate-500 font-medium">Gestão técnica, equipe e otimização de infraestrutura.</p>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 no-print">
         <div className="xl:col-span-2 space-y-8">
           
-          <div className="bg-blue-600 rounded-3xl p-6 text-white shadow-xl shadow-blue-600/20">
-             <div className="flex items-center space-x-3 mb-4">
-                <Cpu className="text-blue-200" size={24} />
-                <h3 className="font-black uppercase text-xs tracking-widest">Otimizador de Telemetria</h3>
+          <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden">
+             <div className="absolute top-0 right-0 p-8 opacity-5">
+                <Cpu size={120} />
              </div>
-             <p className="text-sm font-medium text-blue-100 mb-6 leading-relaxed">
-               Este script garante que o banco registre dados <b>apenas quando o nível mudar</b>. Copie e cole no SQL Editor do Supabase.
-             </p>
-             <div className="bg-slate-900/50 rounded-2xl p-4 relative group">
-                <pre className="text-[9px] font-mono text-blue-200 overflow-x-auto whitespace-pre">
-                  {sqlOptimizer.substring(0, 180)}...
-                </pre>
-                <button 
-                  onClick={handleCopySql}
-                  className="absolute top-4 right-4 bg-white text-blue-600 p-2 rounded-xl shadow-lg hover:bg-blue-50 transition-all flex items-center space-x-2"
-                >
-                  {copied ? <Check size={14} /> : <Copy size={14} />}
-                  <span className="text-[10px] font-black uppercase tracking-widest">{copied ? 'Copiado!' : 'Copiar SQL'}</span>
-                </button>
+             <div className="relative z-10">
+                <div className="flex items-center space-x-3 mb-6">
+                   <div className="p-3 bg-blue-600 rounded-2xl shadow-lg shadow-blue-600/30">
+                      <Cpu className="text-white" size={24} />
+                   </div>
+                   <div>
+                      <h3 className="font-black uppercase text-xs tracking-[0.2em] text-blue-400">Otimizador de Telemetria</h3>
+                      <p className="text-xs text-slate-400 font-bold">Filtro de Inteligência de Dados</p>
+                   </div>
+                </div>
+                
+                <p className="text-sm font-medium text-slate-300 mb-8 leading-relaxed max-w-xl">
+                  Este script SQL cria uma regra de "Delta-Filtering". O banco ignorará entradas do ESP32 se o nível da água não tiver sofrido alteração, reduzindo drasticamente o tráfego e o custo de armazenamento.
+                </p>
+
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-5 relative group">
+                   <pre className="text-[10px] font-mono text-blue-300/80 overflow-x-auto whitespace-pre custom-scrollbar max-h-48">
+                     {sqlOptimizer}
+                   </pre>
+                   <button 
+                     onClick={handleCopySql}
+                     className="absolute top-4 right-4 bg-white text-slate-900 px-4 py-2 rounded-xl shadow-lg hover:bg-blue-50 transition-all flex items-center space-x-2 active:scale-95"
+                   >
+                     {copied ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+                     <span className="text-[10px] font-black uppercase tracking-widest">{copied ? 'Copiado!' : 'Copiar Script'}</span>
+                   </button>
+                </div>
              </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+          <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
             <div className="p-6 border-b bg-slate-50/50 flex justify-between items-center">
                <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-[10px]">
-                <Database size={16} className="mr-2 text-blue-600" /> Saúde do Sistema Cloud
+                <Database size={16} className="mr-2 text-blue-600" /> Saúde do Ecossistema Cloud
               </h3>
               <button onClick={checkDatabaseHealth} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-all">
                 <RefreshCw size={14} />
               </button>
             </div>
-            <div className="p-6 grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-4">
                {Object.entries(tableStatus).map(([table, status]) => (
                  <div key={table} className="flex flex-col p-3 rounded-xl bg-slate-50 border border-slate-100">
                     <span className="text-[8px] font-black text-slate-400 uppercase mb-1">{table}</span>
@@ -169,7 +176,7 @@ $$ LANGUAGE plpgsql;
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+          <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
             <div className="p-6 border-b flex justify-between items-center">
               <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-xs">
                 <User size={18} className="mr-2 text-blue-600" /> Equipe SmartGestão
@@ -178,7 +185,7 @@ $$ LANGUAGE plpgsql;
                 setEditingUser(null); 
                 setSelectedRole(UserRole.TECHNICIAN); 
                 setIsUserModalOpen(true); 
-              }} className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline">+ Adicionar Colaborador</button>
+              }} className="text-[10px] font-black text-blue-600 uppercase tracking-widest hover:underline">+ Novo Acesso</button>
             </div>
             <div className="divide-y divide-slate-100">
               {data.users.map((u: UserType) => (
@@ -209,7 +216,7 @@ $$ LANGUAGE plpgsql;
 
       {isUserModalOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm no-print">
-          <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-[2rem] w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b flex justify-between items-center bg-slate-50">
               <h2 className="text-lg font-black uppercase tracking-tight text-slate-800">{editingUser ? 'Editar' : 'Novo'} Acesso</h2>
               <button onClick={() => setIsUserModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm"><X size={24} /></button>
@@ -273,6 +280,18 @@ $$ LANGUAGE plpgsql;
           </div>
         </div>
       )}
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(255,255,255,0.1);
+          border-radius: 10px;
+        }
+      `}</style>
     </div>
   );
 };
