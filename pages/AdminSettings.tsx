@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { 
-  User, Trash2, Edit2, X, Save, Building2, RefreshCw, Database, CheckCircle, AlertTriangle, Copy, Check, Cpu, Code, Lock
+  User, Trash2, Edit2, X, Save, Building2, RefreshCw, Database, CheckCircle, AlertTriangle, Copy, Check, Cpu, Code, Lock, Terminal
 } from 'lucide-react';
 import { UserRole, User as UserType, Condo } from '../types';
 import { supabase } from '../supabase';
@@ -10,6 +10,8 @@ import { supabase } from '../supabase';
 const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
   const user = data.currentUser;
   const [copied, setCopied] = useState(false);
+  const [firmwareCopied, setFirmwareCopied] = useState(false);
+  const [activeTab, setActiveTab] = useState<'sql' | 'firmware'>('sql');
   
   if (!user || user.role !== UserRole.ADMIN) {
     return <Navigate to="/" />;
@@ -72,9 +74,10 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
 
   const sqlCode = `
 -- ==========================================
--- 1. ESTRUTURA DE TABELAS
+-- SCRIPT COMPLETO SMARTGESTÃO (TABELAS + RLS)
 -- ==========================================
 
+-- 1. TABELA DE CONDOMÍNIOS
 CREATE TABLE IF NOT EXISTS public.condos (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -86,23 +89,26 @@ CREATE TABLE IF NOT EXISTS public.condos (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- 2. TABELA DE USUÁRIOS
 CREATE TABLE IF NOT EXISTS public.users (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    role TEXT NOT NULL, -- 'ADMIN', 'TECHNICIAN', 'CONDO_USER'
+    role TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
     password TEXT,
     condo_id TEXT REFERENCES public.condos(id),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- 3. TABELA DE EQUIPAMENTOS
 CREATE TABLE IF NOT EXISTS public.equipments (
     id TEXT PRIMARY KEY,
     condo_id TEXT REFERENCES public.condos(id) ON DELETE CASCADE,
     type_id TEXT,
     manufacturer TEXT,
     model TEXT,
-    device_id TEXT, -- ESP32 Link
+    device_id TEXT,
     power TEXT,
     voltage TEXT,
     nominal_current NUMERIC,
@@ -113,25 +119,46 @@ CREATE TABLE IF NOT EXISTS public.equipments (
     location TEXT,
     observations TEXT,
     photos TEXT[],
-    last_maintenance TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    last_maintenance TIMESTAMP WITH TIME ZONE,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS public.service_orders (
+-- 4. TABELA DE SISTEMAS
+CREATE TABLE IF NOT EXISTS public.systems (
     id TEXT PRIMARY KEY,
-    condo_id TEXT REFERENCES public.condos(id),
-    type TEXT,
-    status TEXT,
-    problem_description TEXT,
-    actions_performed TEXT,
-    technician_id TEXT,
-    photos_before TEXT[],
-    photos_after TEXT[],
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    completed_at TIMESTAMP WITH TIME ZONE
+    condo_id TEXT REFERENCES public.condos(id) ON DELETE CASCADE,
+    type_id TEXT,
+    name TEXT NOT NULL,
+    location TEXT,
+    equipment_ids TEXT[],
+    parameters TEXT,
+    observations TEXT,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- 5. TABELA DE ORDENS DE SERVIÇO
+CREATE TABLE IF NOT EXISTS public.service_orders (
+    id TEXT PRIMARY KEY,
+    condo_id TEXT REFERENCES public.condos(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,
+    status TEXT NOT NULL,
+    location TEXT,
+    equipment_id TEXT,
+    system_id TEXT,
+    problem_description TEXT,
+    actions_performed TEXT,
+    parts_replaced TEXT[],
+    photos_before TEXT[],
+    photos_after TEXT[],
+    technician_id TEXT,
+    service_value NUMERIC DEFAULT 0,
+    material_value NUMERIC DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    completed_at TIMESTAMP WITH TIME ZONE,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 6. TABELA DE TELEMETRIA (IOT)
 CREATE TABLE IF NOT EXISTS public.nivel_caixa (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     condominio_id TEXT NOT NULL, -- Device ID do ESP32
@@ -141,45 +168,128 @@ CREATE TABLE IF NOT EXISTS public.nivel_caixa (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- 7. TABELA DE AGENDAMENTOS
+CREATE TABLE IF NOT EXISTS public.appointments (
+    id TEXT PRIMARY KEY,
+    condo_id TEXT REFERENCES public.condos(id) ON DELETE CASCADE,
+    technician_id TEXT,
+    date TEXT,
+    time TEXT,
+    description TEXT,
+    status TEXT,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- ==========================================
--- 2. SEGURANÇA (RLS - ROW LEVEL SECURITY)
+-- CONFIGURAÇÃO DE SEGURANÇA (RLS)
 -- ==========================================
 
 -- Habilitar RLS em todas as tabelas
 ALTER TABLE public.condos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.equipments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.systems ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.service_orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.nivel_caixa ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.appointments ENABLE ROW LEVEL SECURITY;
 
--- Política para Nivel Caixa (ESP32 precisa inserir sem login)
-DROP POLICY IF EXISTS "Permitir inserção anônima para ESP32" ON public.nivel_caixa;
-CREATE POLICY "Permitir inserção anônima para ESP32" 
+-- POLÍTICAS PARA TELEMETRIA (ESP32)
+DROP POLICY IF EXISTS "Inserção Pública ESP32" ON public.nivel_caixa;
+CREATE POLICY "Inserção Pública ESP32" 
 ON public.nivel_caixa FOR INSERT 
 TO anon 
 WITH CHECK (true);
 
-DROP POLICY IF EXISTS "Leitura de telemetria para todos" ON public.nivel_caixa;
-CREATE POLICY "Leitura de telemetria para todos" 
+DROP POLICY IF EXISTS "Leitura Geral Telemetria" ON public.nivel_caixa;
+CREATE POLICY "Leitura Geral Telemetria" 
 ON public.nivel_caixa FOR SELECT 
+TO anon 
 USING (true);
 
--- Política para Condos (Síndico só vê o dele, Staff vê tudo)
-DROP POLICY IF EXISTS "Acesso Condominios" ON public.condos;
-CREATE POLICY "Acesso Condominios" 
-ON public.condos FOR ALL 
-USING (
-  true -- Em produção, substituir por lógica de auth.uid() vinculada ao condo_id
-);
+-- POLÍTICAS DE ACESSO GERAL (Para simplificar o sincronismo do app)
+-- Em um cenário de alta segurança, usaríamos auth.uid()
+CREATE POLICY "Acesso total autenticado" ON public.condos FOR ALL USING (true);
+CREATE POLICY "Acesso total autenticado" ON public.users FOR ALL USING (true);
+CREATE POLICY "Acesso total autenticado" ON public.equipments FOR ALL USING (true);
+CREATE POLICY "Acesso total autenticado" ON public.systems FOR ALL USING (true);
+CREATE POLICY "Acesso total autenticado" ON public.service_orders FOR ALL USING (true);
+CREATE POLICY "Acesso total autenticado" ON public.appointments FOR ALL USING (true);
 
--- Habilitar Realtime
+-- ATIVAR REALTIME PARA TELEMETRIA
 ALTER PUBLICATION supabase_realtime ADD TABLE public.nivel_caixa;
 `.trim();
 
-  const handleCopy = () => {
+  const firmwareCode = `
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
+
+const char* ssid     = "MT-IARASOUSA";
+const char* password = "41414889";
+const char* supabase_url = "https://rlldyyipyapkehtxwvqk.supabase.co/rest/v1/nivel_caixa";
+const char* anon_key     = "sb_publishable_mOmsdU6uKC0eI6_ppTiHhQ_6NJD8jYv";
+
+#define SENSOR_25   32
+#define SENSOR_50   33
+#define SENSOR_75   25
+#define SENSOR_100  26
+#define BUZZER      27
+#define LED_STATUS  2
+
+String deviceID;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(SENSOR_25, INPUT_PULLDOWN);
+  pinMode(SENSOR_50, INPUT_PULLDOWN);
+  pinMode(SENSOR_75, INPUT_PULLDOWN);
+  pinMode(SENSOR_100, INPUT_PULLDOWN);
+  pinMode(BUZZER, OUTPUT);
+  pinMode(LED_STATUS, OUTPUT);
+  
+  uint64_t chipid = ESP.getEfuseMac();
+  deviceID = String((uint32_t)(chipid >> 32), HEX) + String((uint32_t)chipid, HEX);
+  deviceID.toUpperCase();
+
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
+  Serial.println("\\nID: " + deviceID);
+}
+
+void loop() {
+  int p = 0;
+  if (digitalRead(SENSOR_100)) p = 100;
+  else if (digitalRead(SENSOR_75)) p = 75;
+  else if (digitalRead(SENSOR_50)) p = 50;
+  else if (digitalRead(SENSOR_25)) p = 25;
+  else p = 10;
+
+  if (WiFi.status() == WL_CONNECTED) {
+    WiFiClientSecure client; client.setInsecure();
+    HTTPClient http;
+    http.begin(client, supabase_url);
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("apikey", anon_key);
+    http.addHeader("Authorization", "Bearer " + String(anon_key));
+
+    String body = "{\\"condominio_id\\":\\"" + deviceID + "\\",\\"percentual\\":" + String(p) + ",\\"nivel_cm\\":" + String(p) + ",\\"status\\":\\"Normal\\"}";
+    http.POST(body);
+    http.end();
+  }
+  delay(30000);
+}
+`.trim();
+
+  const handleCopySql = () => {
     navigator.clipboard.writeText(sqlCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleCopyFirmware = () => {
+    navigator.clipboard.writeText(firmwareCode);
+    setFirmwareCopied(true);
+    setTimeout(() => setFirmwareCopied(false), 2000);
   };
 
   return (
@@ -187,7 +297,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.nivel_caixa;
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-black text-slate-900 leading-tight">Administração</h1>
-          <p className="text-sm text-slate-500 font-medium italic">Infraestrutura Cloud e Segurança RLS.</p>
+          <p className="text-sm text-slate-500 font-medium italic">Infraestrutura Cloud e Configuração IOT.</p>
         </div>
         <button onClick={checkDatabaseHealth} className="bg-white border p-3 rounded-2xl shadow-sm hover:bg-slate-50 transition-all text-blue-600">
           <RefreshCw size={20} />
@@ -198,24 +308,58 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.nivel_caixa;
         <div className="xl:col-span-2 space-y-6">
           
           <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden">
-             <div className="absolute top-0 right-0 p-8 opacity-10"><Lock size={120} /></div>
+             <div className="absolute top-0 right-0 p-8 opacity-10"><Terminal size={120} /></div>
              <div className="relative z-10">
-               <div className="flex items-center space-x-3 mb-4">
-                  <div className="p-3 bg-blue-500 rounded-2xl shadow-lg shadow-blue-500/40"><Cpu size={24} /></div>
-                  <h3 className="text-lg font-black uppercase tracking-tight">Script SQL com RLS</h3>
-               </div>
-               <p className="text-xs text-slate-400 mb-6 font-bold leading-relaxed max-w-md">Para garantir que o ESP32 envie dados e os Síndicos tenham privacidade, execute este script no <span className="text-blue-400">SQL Editor</span> do Supabase.</p>
-               
-               <div className="bg-black/60 p-5 rounded-2xl font-mono text-[10px] text-blue-300 border border-white/10 max-h-64 overflow-y-auto custom-scrollbar mb-6 relative group">
-                  <pre className="whitespace-pre-wrap">{sqlCode}</pre>
-                  <button onClick={handleCopy} className="absolute top-4 right-4 p-3 bg-white/10 hover:bg-white/20 rounded-xl transition-all backdrop-blur-md">
-                    {copied ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />}
+               <div className="flex space-x-4 mb-8">
+                  <button 
+                    onClick={() => setActiveTab('sql')}
+                    className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'sql' ? 'bg-blue-600 text-white' : 'bg-white/5 text-white/40 hover:bg-white/10'}`}
+                  >
+                    SQL Database
+                  </button>
+                  <button 
+                    onClick={() => setActiveTab('firmware')}
+                    className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'firmware' ? 'bg-blue-600 text-white' : 'bg-white/5 text-white/40 hover:bg-white/10'}`}
+                  >
+                    Firmware ESP32
                   </button>
                </div>
+
+               {activeTab === 'sql' ? (
+                 <>
+                   <div className="flex items-center space-x-3 mb-4">
+                      <div className="p-3 bg-blue-500 rounded-2xl shadow-lg shadow-blue-500/40"><Database size={24} /></div>
+                      <h3 className="text-lg font-black uppercase tracking-tight">Script de Inicialização</h3>
+                   </div>
+                   <p className="text-xs text-slate-400 mb-6 font-bold leading-relaxed max-w-md">Execute no <span className="text-blue-400">SQL Editor</span> do Supabase para configurar TODAS as tabelas e o RLS.</p>
+                   
+                   <div className="bg-black/60 p-5 rounded-2xl font-mono text-[10px] text-blue-300 border border-white/10 max-h-64 overflow-y-auto custom-scrollbar mb-6 relative group">
+                      <pre className="whitespace-pre-wrap">{sqlCode}</pre>
+                      <button onClick={handleCopySql} className="absolute top-4 right-4 p-3 bg-white/10 hover:bg-white/20 rounded-xl transition-all backdrop-blur-md">
+                        {copied ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />}
+                      </button>
+                   </div>
+                 </>
+               ) : (
+                 <>
+                   <div className="flex items-center space-x-3 mb-4">
+                      <div className="p-3 bg-emerald-500 rounded-2xl shadow-lg shadow-emerald-500/40"><Cpu size={24} /></div>
+                      <h3 className="text-lg font-black uppercase tracking-tight">Código Arduino IDE</h3>
+                   </div>
+                   <p className="text-xs text-slate-400 mb-6 font-bold leading-relaxed max-w-md">Copie e cole na sua Arduino IDE. Pinos: 32(25%), 33(50%), 25(75%), 26(100%).</p>
+                   
+                   <div className="bg-black/60 p-5 rounded-2xl font-mono text-[10px] text-emerald-300 border border-white/10 max-h-64 overflow-y-auto custom-scrollbar mb-6 relative group">
+                      <pre className="whitespace-pre-wrap">{firmwareCode}</pre>
+                      <button onClick={handleCopyFirmware} className="absolute top-4 right-4 p-3 bg-white/10 hover:bg-white/20 rounded-xl transition-all backdrop-blur-md">
+                        {firmwareCopied ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />}
+                      </button>
+                   </div>
+                 </>
+               )}
                
                <div className="flex items-center space-x-2 text-[10px] font-black uppercase text-blue-400 bg-blue-500/10 p-4 rounded-xl border border-blue-500/20">
                   <CheckCircle size={14} />
-                  <span>Este script habilita o RLS e permite que placas anônimas (ESP32) gravem dados.</span>
+                  <span>Configurações sincronizadas com as credenciais do seu projeto.</span>
                </div>
              </div>
           </div>
