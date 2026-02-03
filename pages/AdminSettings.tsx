@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { 
-  User, Trash2, Edit2, X, Save, Building2, RefreshCw, Database, CheckCircle, AlertTriangle, Copy, Check, Cpu, Code, Lock, Terminal
+  User, Trash2, Edit2, X, Save, Building2, RefreshCw, Database, CheckCircle, AlertTriangle, Copy, Check, Cpu, Code, Lock, Terminal, ShieldCheck, Activity
 } from 'lucide-react';
 import { UserRole, User as UserType, Condo } from '../types';
 import { supabase } from '../supabase';
@@ -12,6 +12,7 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const [copied, setCopied] = useState(false);
   const [firmwareCopied, setFirmwareCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<'sql' | 'firmware'>('sql');
+  const [testResult, setTestResult] = useState<{status: 'idle' | 'loading' | 'success' | 'error', message: string}>({status: 'idle', message: ''});
   
   if (!user || user.role !== UserRole.ADMIN) {
     return <Navigate to="/" />;
@@ -65,6 +66,31 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
         newStatus[table] = 'error';
       }
       setTableStatus({ ...newStatus });
+    }
+  };
+
+  const runDiagnostics = async () => {
+    setTestResult({status: 'loading', message: 'Iniciando testes de RLS e Integridade...'});
+    
+    try {
+      // 1. Testar Inserção IOT (Anônima)
+      const { error: iotError } = await supabase.from('nivel_caixa').insert({
+        condominio_id: 'TEST_DIAGNOSTIC',
+        percentual: 100,
+        nivel_cm: 100,
+        status: 'Teste de Diagnóstico'
+      });
+
+      if (iotError) throw new Error(`Falha no RLS IOT: ${iotError.message}`);
+
+      // 2. Testar Leitura de Tabelas
+      const { error: readError } = await supabase.from('condos').select('count', { count: 'exact', head: true });
+      if (readError) throw new Error(`Falha no RLS de Leitura: ${readError.message}`);
+
+      setTestResult({status: 'success', message: 'Tabelas criadas e Políticas RLS validadas com sucesso!'});
+      checkDatabaseHealth();
+    } catch (err: any) {
+      setTestResult({status: 'error', message: err.message});
     }
   };
 
@@ -207,7 +233,6 @@ TO anon
 USING (true);
 
 -- POLÍTICAS DE ACESSO GERAL
--- Nota: Estas políticas permitem acesso rápido. Para produção restrita, use auth.uid()
 DO $$
 BEGIN
     DROP POLICY IF EXISTS "Acesso total" ON public.condos;
@@ -236,15 +261,10 @@ DO $$
 DECLARE
     is_all_tables BOOLEAN;
 BEGIN
-    -- 1. Garante que a publicação existe
     IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
         CREATE PUBLICATION supabase_realtime;
     END IF;
-
-    -- 2. Verifica se ela já é global
     SELECT puballtables INTO is_all_tables FROM pg_publication WHERE pubname = 'supabase_realtime';
-
-    -- 3. Se NÃO for global, adicionamos a tabela manualmente
     IF is_all_tables = false THEN
         BEGIN
             ALTER PUBLICATION supabase_realtime ADD TABLE public.nivel_caixa;
@@ -254,8 +274,6 @@ BEGIN
             WHEN others THEN
                 RAISE NOTICE 'Erro ao adicionar tabela: %', SQLERRM;
         END;
-    ELSE
-        RAISE NOTICE 'Publicação é FOR ALL TABLES, ignorando ALTER.';
     END IF;
 END $$;
 `.trim();
@@ -340,10 +358,28 @@ void loop() {
           <h1 className="text-2xl font-black text-slate-900 leading-tight">Administração</h1>
           <p className="text-sm text-slate-500 font-medium italic">Infraestrutura Cloud e Configuração IOT.</p>
         </div>
-        <button onClick={checkDatabaseHealth} className="bg-white border p-3 rounded-2xl shadow-sm hover:bg-slate-50 transition-all text-blue-600">
-          <RefreshCw size={20} />
-        </button>
+        <div className="flex space-x-2">
+           <button onClick={runDiagnostics} className="flex items-center space-x-2 bg-blue-50 text-blue-600 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-blue-200 hover:bg-blue-100 transition-all">
+             <ShieldCheck size={16} />
+             <span>Validar RLS e Tabelas</span>
+           </button>
+           <button onClick={checkDatabaseHealth} className="bg-white border p-3 rounded-2xl shadow-sm hover:bg-slate-50 transition-all text-blue-600">
+             <RefreshCw size={20} />
+           </button>
+        </div>
       </div>
+
+      {testResult.status !== 'idle' && (
+        <div className={`p-6 rounded-[2rem] border-2 animate-in zoom-in-95 duration-200 ${testResult.status === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : testResult.status === 'error' ? 'bg-red-50 border-red-200 text-red-800' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
+          <div className="flex items-center space-x-4">
+            {testResult.status === 'loading' ? <RefreshCw size={24} className="animate-spin" /> : testResult.status === 'success' ? <CheckCircle size={24} /> : <AlertTriangle size={24} />}
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest mb-1">Resultado do Diagnóstico</p>
+              <p className="text-sm font-bold">{testResult.message}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         <div className="xl:col-span-2 space-y-6">
@@ -397,11 +433,6 @@ void loop() {
                    </div>
                  </>
                )}
-               
-               <div className="flex items-center space-x-2 text-[10px] font-black uppercase text-blue-400 bg-blue-500/10 p-4 rounded-xl border border-blue-500/20">
-                  <CheckCircle size={14} />
-                  <span>Configurações sincronizadas com as credenciais do seu projeto.</span>
-               </div>
              </div>
           </div>
 
@@ -460,7 +491,7 @@ void loop() {
 
       {isUserModalOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-[2.5rem] w-full max-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b flex justify-between items-center bg-slate-50">
               <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">{editingUser ? 'Editar Acesso' : 'Novo Acesso'}</h2>
               <button onClick={() => setIsUserModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm"><X size={24} /></button>
