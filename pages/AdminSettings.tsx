@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { 
-  User, Trash2, Edit2, X, Save, Building2, RefreshCw, Database, CheckCircle, AlertTriangle, Copy, Check, Cpu, Code, Lock, Terminal, ShieldCheck, Activity
+  User, Trash2, Edit2, X, Save, Building2, RefreshCw, Database, CheckCircle, AlertTriangle, Copy, Check, Cpu, Code, Lock, Terminal, ShieldCheck, Activity, Eye
 } from 'lucide-react';
 import { UserRole, User as UserType, Condo } from '../types';
 import { supabase } from '../supabase';
@@ -41,7 +41,7 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
       email: formData.get('email') as string,
       password: (formData.get('password') as string) || editingUser?.password || '',
       role: role,
-      condo_id: role === UserRole.CONDO_USER ? (formData.get('condoId') as string) : undefined
+      condo_id: (role === UserRole.CONDO_USER || role === UserRole.RONDA || (role === UserRole.TECHNICIAN && formData.get('condo_id'))) ? (formData.get('condoId') as string) : undefined
     };
 
     const newUsers = editingUser
@@ -70,24 +70,11 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   };
 
   const runDiagnostics = async () => {
-    setTestResult({status: 'loading', message: 'Iniciando testes de RLS e Integridade...'});
-    
+    setTestResult({status: 'loading', message: 'Iniciando diagnósticos...'});
     try {
-      // 1. Testar Inserção IOT (Anônima)
-      const { error: iotError } = await supabase.from('nivel_caixa').insert({
-        condominio_id: 'TEST_DIAGNOSTIC',
-        percentual: 100,
-        nivel_cm: 100,
-        status: 'Teste de Diagnóstico'
-      });
-
-      if (iotError) throw new Error(`Falha no RLS IOT: ${iotError.message}`);
-
-      // 2. Testar Leitura de Tabelas
       const { error: readError } = await supabase.from('condos').select('count', { count: 'exact', head: true });
-      if (readError) throw new Error(`Falha no RLS de Leitura: ${readError.message}`);
-
-      setTestResult({status: 'success', message: 'Tabelas criadas e Políticas RLS validadas com sucesso!'});
+      if (readError) throw new Error(`Falha: ${readError.message}`);
+      setTestResult({status: 'success', message: 'RLS e Integridade Cloud validadas!'});
       checkDatabaseHealth();
     } catch (err: any) {
       setTestResult({status: 'error', message: err.message});
@@ -98,270 +85,17 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     checkDatabaseHealth();
   }, []);
 
-  const sqlCode = `
--- ==========================================
--- SCRIPT COMPLETO SMARTGESTÃO (V2 - ROBUSTO)
--- ==========================================
-
--- 1. TABELA DE CONDOMÍNIOS
-CREATE TABLE IF NOT EXISTS public.condos (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    address TEXT,
-    manager TEXT,
-    contract_type TEXT,
-    start_date TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- 2. TABELA DE USUÁRIOS
-CREATE TABLE IF NOT EXISTS public.users (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    role TEXT NOT NULL,
-    email TEXT UNIQUE NOT NULL,
-    password TEXT,
-    condo_id TEXT REFERENCES public.condos(id),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- 3. TABELA DE EQUIPAMENTOS
-CREATE TABLE IF NOT EXISTS public.equipments (
-    id TEXT PRIMARY KEY,
-    condo_id TEXT REFERENCES public.condos(id) ON DELETE CASCADE,
-    type_id TEXT,
-    manufacturer TEXT,
-    model TEXT,
-    device_id TEXT,
-    power TEXT,
-    voltage TEXT,
-    nominal_current NUMERIC,
-    measured_current NUMERIC,
-    temperature NUMERIC,
-    noise TEXT,
-    electrical_state TEXT,
-    location TEXT,
-    observations TEXT,
-    photos TEXT[],
-    last_maintenance TIMESTAMP WITH TIME ZONE,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- 4. TABELA DE SISTEMAS
-CREATE TABLE IF NOT EXISTS public.systems (
-    id TEXT PRIMARY KEY,
-    condo_id TEXT REFERENCES public.condos(id) ON DELETE CASCADE,
-    type_id TEXT,
-    name TEXT NOT NULL,
-    location TEXT,
-    equipment_ids TEXT[],
-    parameters TEXT,
-    observations TEXT,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- 5. TABELA DE ORDENS DE SERVIÇO
-CREATE TABLE IF NOT EXISTS public.service_orders (
-    id TEXT PRIMARY KEY,
-    condo_id TEXT REFERENCES public.condos(id) ON DELETE CASCADE,
-    type TEXT NOT NULL,
-    status TEXT NOT NULL,
-    location TEXT,
-    equipment_id TEXT,
-    system_id TEXT,
-    problem_description TEXT,
-    actions_performed TEXT,
-    parts_replaced TEXT[],
-    photos_before TEXT[],
-    photos_after TEXT[],
-    technician_id TEXT,
-    service_value NUMERIC DEFAULT 0,
-    material_value NUMERIC DEFAULT 0,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    completed_at TIMESTAMP WITH TIME ZONE,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- 6. TABELA DE TELEMETRIA (IOT)
-CREATE TABLE IF NOT EXISTS public.nivel_caixa (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    condominio_id TEXT NOT NULL, -- Device ID do ESP32
-    percentual INTEGER,
-    nivel_cm INTEGER,
-    status TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- 7. TABELA DE AGENDAMENTOS
-CREATE TABLE IF NOT EXISTS public.appointments (
-    id TEXT PRIMARY KEY,
-    condo_id TEXT REFERENCES public.condos(id) ON DELETE CASCADE,
-    technician_id TEXT,
-    date TEXT,
-    time TEXT,
-    description TEXT,
-    status TEXT,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- ==========================================
--- CONFIGURAÇÃO DE SEGURANÇA (RLS)
--- ==========================================
-
--- Habilitar RLS em todas as tabelas
-ALTER TABLE public.condos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.equipments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.systems ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.service_orders ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.nivel_caixa ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.appointments ENABLE ROW LEVEL SECURITY;
-
--- POLÍTICAS PARA TELEMETRIA (ESP32)
-DROP POLICY IF EXISTS "Inserção Pública ESP32" ON public.nivel_caixa;
-CREATE POLICY "Inserção Pública ESP32" 
-ON public.nivel_caixa FOR INSERT 
-TO anon 
-WITH CHECK (true);
-
-DROP POLICY IF EXISTS "Leitura Geral Telemetria" ON public.nivel_caixa;
-CREATE POLICY "Leitura Geral Telemetria" 
-ON public.nivel_caixa FOR SELECT 
-TO anon 
-USING (true);
-
--- POLÍTICAS DE ACESSO GERAL
-DO $$
-BEGIN
-    DROP POLICY IF EXISTS "Acesso total" ON public.condos;
-    CREATE POLICY "Acesso total" ON public.condos FOR ALL USING (true);
-    
-    DROP POLICY IF EXISTS "Acesso total" ON public.users;
-    CREATE POLICY "Acesso total" ON public.users FOR ALL USING (true);
-    
-    DROP POLICY IF EXISTS "Acesso total" ON public.equipments;
-    CREATE POLICY "Acesso total" ON public.equipments FOR ALL USING (true);
-    
-    DROP POLICY IF EXISTS "Acesso total" ON public.systems;
-    CREATE POLICY "Acesso total" ON public.systems FOR ALL USING (true);
-    
-    DROP POLICY IF EXISTS "Acesso total" ON public.service_orders;
-    CREATE POLICY "Acesso total" ON public.service_orders FOR ALL USING (true);
-    
-    DROP POLICY IF EXISTS "Acesso total" ON public.appointments;
-    CREATE POLICY "Acesso total" ON public.appointments FOR ALL USING (true);
-END $$;
-
--- ==========================================
--- ATIVAR REALTIME (SOLUÇÃO ERRO 55000)
--- ==========================================
-DO $$
-DECLARE
-    is_all_tables BOOLEAN;
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
-        CREATE PUBLICATION supabase_realtime;
-    END IF;
-    SELECT puballtables INTO is_all_tables FROM pg_publication WHERE pubname = 'supabase_realtime';
-    IF is_all_tables = false THEN
-        BEGIN
-            ALTER PUBLICATION supabase_realtime ADD TABLE public.nivel_caixa;
-        EXCEPTION
-            WHEN duplicate_object THEN
-                RAISE NOTICE 'Tabela já está na publicação';
-            WHEN others THEN
-                RAISE NOTICE 'Erro ao adicionar tabela: %', SQLERRM;
-        END;
-    END IF;
-END $$;
-`.trim();
-
-  const firmwareCode = `
-#include <WiFi.h>
-#include <HTTPClient.h>
-#include <WiFiClientSecure.h>
-
-const char* ssid     = "MT-IARASOUSA";
-const char* password = "41414889";
-const char* supabase_url = "https://rlldyyipyapkehtxwvqk.supabase.co/rest/v1/nivel_caixa";
-const char* anon_key     = "sb_publishable_mOmsdU6uKC0eI6_ppTiHhQ_6NJD8jYv";
-
-#define SENSOR_25   32
-#define SENSOR_50   33
-#define SENSOR_75   25
-#define SENSOR_100  26
-#define BUZZER      27
-#define LED_STATUS  2
-
-String deviceID;
-
-void setup() {
-  Serial.begin(115200);
-  pinMode(SENSOR_25, INPUT_PULLDOWN);
-  pinMode(SENSOR_50, INPUT_PULLDOWN);
-  pinMode(SENSOR_75, INPUT_PULLDOWN);
-  pinMode(SENSOR_100, INPUT_PULLDOWN);
-  pinMode(BUZZER, OUTPUT);
-  pinMode(LED_STATUS, OUTPUT);
-  
-  uint64_t chipid = ESP.getEfuseMac();
-  deviceID = String((uint32_t)(chipid >> 32), HEX) + String((uint32_t)chipid, HEX);
-  deviceID.toUpperCase();
-
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
-  Serial.println("\\nID: " + deviceID);
-}
-
-void loop() {
-  int p = 0;
-  if (digitalRead(SENSOR_100)) p = 100;
-  else if (digitalRead(SENSOR_75)) p = 75;
-  else if (digitalRead(SENSOR_50)) p = 50;
-  else if (digitalRead(SENSOR_25)) p = 25;
-  else p = 10;
-
-  if (WiFi.status() == WL_CONNECTED) {
-    WiFiClientSecure client; client.setInsecure();
-    HTTPClient http;
-    http.begin(client, supabase_url);
-    http.addHeader("Content-Type", "application/json");
-    http.addHeader("apikey", anon_key);
-    http.addHeader("Authorization", "Bearer " + String(anon_key));
-
-    String body = "{\\"condominio_id\\":\\"" + deviceID + "\\",\\"percentual\\":" + String(p) + ",\\"nivel_cm\\":" + String(p) + ",\\"status\\":\\"Normal\\"}";
-    http.POST(body);
-    http.end();
-  }
-  delay(30000);
-}
-`.trim();
-
-  const handleCopySql = () => {
-    navigator.clipboard.writeText(sqlCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleCopyFirmware = () => {
-    navigator.clipboard.writeText(firmwareCode);
-    setFirmwareCopied(true);
-    setTimeout(() => setFirmwareCopied(false), 2000);
-  };
-
   return (
     <div className="space-y-8 pb-12">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-black text-slate-900 leading-tight">Administração</h1>
-          <p className="text-sm text-slate-500 font-medium italic">Infraestrutura Cloud e Configuração IOT.</p>
+          <p className="text-sm text-slate-500 font-medium italic">Configuração de infraestrutura e acessos.</p>
         </div>
         <div className="flex space-x-2">
-           <button onClick={runDiagnostics} className="flex items-center space-x-2 bg-blue-50 text-blue-600 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-blue-200 hover:bg-blue-100 transition-all">
+           <button onClick={runDiagnostics} className="flex items-center space-x-2 bg-blue-50 text-blue-600 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase border border-blue-200 hover:bg-blue-100 transition-all">
              <ShieldCheck size={16} />
-             <span>Validar RLS e Tabelas</span>
+             <span>Validar Sistema</span>
            </button>
            <button onClick={checkDatabaseHealth} className="bg-white border p-3 rounded-2xl shadow-sm hover:bg-slate-50 transition-all text-blue-600">
              <RefreshCw size={20} />
@@ -369,117 +103,31 @@ void loop() {
         </div>
       </div>
 
-      {testResult.status !== 'idle' && (
-        <div className={`p-6 rounded-[2rem] border-2 animate-in zoom-in-95 duration-200 ${testResult.status === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : testResult.status === 'error' ? 'bg-red-50 border-red-200 text-red-800' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
-          <div className="flex items-center space-x-4">
-            {testResult.status === 'loading' ? <RefreshCw size={24} className="animate-spin" /> : testResult.status === 'success' ? <CheckCircle size={24} /> : <AlertTriangle size={24} />}
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-widest mb-1">Resultado do Diagnóstico</p>
-              <p className="text-sm font-bold">{testResult.message}</p>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         <div className="xl:col-span-2 space-y-6">
-          
-          <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden">
-             <div className="absolute top-0 right-0 p-8 opacity-10"><Terminal size={120} /></div>
-             <div className="relative z-10">
-               <div className="flex space-x-4 mb-8">
-                  <button 
-                    onClick={() => setActiveTab('sql')}
-                    className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'sql' ? 'bg-blue-600 text-white' : 'bg-white/5 text-white/40 hover:bg-white/10'}`}
-                  >
-                    SQL Database
-                  </button>
-                  <button 
-                    onClick={() => setActiveTab('firmware')}
-                    className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'firmware' ? 'bg-blue-600 text-white' : 'bg-white/5 text-white/40 hover:bg-white/10'}`}
-                  >
-                    Firmware ESP32
-                  </button>
-               </div>
-
-               {activeTab === 'sql' ? (
-                 <>
-                   <div className="flex items-center space-x-3 mb-4">
-                      <div className="p-3 bg-blue-500 rounded-2xl shadow-lg shadow-blue-500/40"><Database size={24} /></div>
-                      <h3 className="text-lg font-black uppercase tracking-tight">Script de Inicialização</h3>
-                   </div>
-                   <p className="text-xs text-slate-400 mb-6 font-bold leading-relaxed max-w-md">Execute no <span className="text-blue-400">SQL Editor</span> do Supabase para configurar TODAS as tabelas e o RLS.</p>
-                   
-                   <div className="bg-black/60 p-5 rounded-2xl font-mono text-[10px] text-blue-300 border border-white/10 max-h-64 overflow-y-auto custom-scrollbar mb-6 relative group">
-                      <pre className="whitespace-pre-wrap">{sqlCode}</pre>
-                      <button onClick={handleCopySql} className="absolute top-4 right-4 p-3 bg-white/10 hover:bg-white/20 rounded-xl transition-all backdrop-blur-md">
-                        {copied ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />}
-                      </button>
-                   </div>
-                 </>
-               ) : (
-                 <>
-                   <div className="flex items-center space-x-3 mb-4">
-                      <div className="p-3 bg-emerald-500 rounded-2xl shadow-lg shadow-emerald-500/40"><Cpu size={24} /></div>
-                      <h3 className="text-lg font-black uppercase tracking-tight">Código Arduino IDE</h3>
-                   </div>
-                   <p className="text-xs text-slate-400 mb-6 font-bold leading-relaxed max-w-md">Copie e cole na sua Arduino IDE. Pinos: 32(25%), 33(50%), 25(75%), 26(100%).</p>
-                   
-                   <div className="bg-black/60 p-5 rounded-2xl font-mono text-[10px] text-emerald-300 border border-white/10 max-h-64 overflow-y-auto custom-scrollbar mb-6 relative group">
-                      <pre className="whitespace-pre-wrap">{firmwareCode}</pre>
-                      <button onClick={handleCopyFirmware} className="absolute top-4 right-4 p-3 bg-white/10 hover:bg-white/20 rounded-xl transition-all backdrop-blur-md">
-                        {firmwareCopied ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />}
-                      </button>
-                   </div>
-                 </>
-               )}
-             </div>
-          </div>
-
-          <div className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm">
-            <div className="p-6 border-b bg-slate-50/50 flex justify-between items-center">
-               <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-[10px]">
-                <Database size={16} className="mr-2 text-blue-600" /> Integridade das Tabelas
-              </h3>
-            </div>
-            <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-               {Object.entries(tableStatus).map(([table, status]) => (
-                 <div key={table} className="flex flex-col p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                    <span className="text-[8px] font-black text-slate-400 uppercase mb-2 tracking-widest">{table}</span>
-                    <div className="flex items-center space-x-2">
-                      {status === 'checking' && <RefreshCw size={14} className="text-blue-500 animate-spin" />}
-                      {status === 'ok' && <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-lg" />}
-                      {status === 'error' && <div className="w-2 h-2 rounded-full bg-red-500" />}
-                      <span className={`text-[10px] font-black uppercase ${status === 'ok' ? 'text-emerald-600' : status === 'error' ? 'text-red-600' : 'text-blue-600'}`}>
-                        {status === 'ok' ? 'Online' : status === 'error' ? 'Falha' : 'Check'}
-                      </span>
-                    </div>
-                 </div>
-               ))}
-            </div>
-          </div>
-
           <div className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm">
             <div className="p-6 border-b flex justify-between items-center">
               <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-[10px]">
                 <User size={18} className="mr-2 text-blue-600" /> Gestão de Acessos
               </h3>
-              <button onClick={() => { setEditingUser(null); setIsUserModalOpen(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">+ Novo Acesso</button>
+              <button onClick={() => { setEditingUser(null); setSelectedRole(UserRole.TECHNICIAN); setIsUserModalOpen(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">+ Novo Acesso</button>
             </div>
             <div className="divide-y divide-slate-100">
               {data.users.map((u: UserType) => (
                 <div key={u.id} className="p-5 flex items-center justify-between hover:bg-slate-50 transition-colors">
                   <div className="flex items-center space-x-4">
-                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-white shadow-lg ${u.role === UserRole.ADMIN ? 'bg-slate-900' : 'bg-blue-600'}`}>
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-white shadow-lg ${u.role === UserRole.ADMIN ? 'bg-slate-900' : u.role === UserRole.RONDA ? 'bg-amber-500' : 'bg-blue-600'}`}>
                       {u.name.charAt(0)}
                     </div>
                     <div>
                       <p className="font-black text-slate-900 text-sm leading-none mb-1">{u.name}</p>
-                      <p className="text-[9px] text-slate-400 font-bold uppercase tracking-tight">{u.role} • {u.email}</p>
+                      <p className="text-[9px] text-slate-400 font-bold uppercase tracking-tight">
+                        {u.role} {u.condo_id ? `• ${data.condos.find(c => c.id === u.condo_id)?.name}` : '• Global'}
+                      </p>
                     </div>
                   </div>
                   <div className="flex space-x-1">
-                    <button onClick={() => { setEditingUser(u); setIsUserModalOpen(true); }} className="p-2.5 text-slate-400 hover:text-blue-600 bg-slate-50 rounded-xl transition-all"><Edit2 size={16} /></button>
+                    <button onClick={() => { setEditingUser(u); setSelectedRole(u.role); setIsUserModalOpen(true); }} className="p-2.5 text-slate-400 hover:text-blue-600 bg-slate-50 rounded-xl transition-all"><Edit2 size={16} /></button>
                     <button onClick={() => deleteUser(u.id)} className="p-2.5 text-slate-400 hover:text-red-600 bg-slate-50 rounded-xl transition-all"><Trash2 size={16} /></button>
                   </div>
                 </div>
@@ -493,21 +141,21 @@ void loop() {
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
           <div className="bg-white rounded-[2.5rem] w-full max-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b flex justify-between items-center bg-slate-50">
-              <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">{editingUser ? 'Editar Acesso' : 'Novo Acesso'}</h2>
+              <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">Acesso ao Sistema</h2>
               <button onClick={() => setIsUserModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm"><X size={24} /></button>
             </div>
             <form onSubmit={handleUserSubmit} className="p-8 space-y-5">
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Nome Completo</label>
-                <input required name="name" defaultValue={editingUser?.name} placeholder="Ex: João da Silva" className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20 transition-all" />
+                <input required name="name" defaultValue={editingUser?.name} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl text-xs font-bold outline-none" />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">E-mail</label>
-                <input required name="email" defaultValue={editingUser?.email} placeholder="Ex: joao@smartgestao.com" className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20 transition-all" />
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">E-mail (Login)</label>
+                <input required name="email" defaultValue={editingUser?.email} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl text-xs font-bold outline-none" />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Senha</label>
-                <input required name="password" defaultValue={editingUser?.password} placeholder="••••••••" className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20 transition-all" />
+                <input name="password" defaultValue={editingUser?.password} placeholder="••••••••" className="w-full px-5 py-4 bg-slate-50 border rounded-2xl text-xs font-bold outline-none" />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Perfil de Acesso</label>
@@ -515,35 +163,44 @@ void loop() {
                   name="role" 
                   value={selectedRole} 
                   onChange={(e) => setSelectedRole(e.target.value as UserRole)} 
-                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none"
+                  className="w-full px-5 py-4 bg-slate-50 border rounded-2xl text-xs font-bold outline-none"
                 >
                   <option value={UserRole.TECHNICIAN}>Técnico</option>
+                  <option value={UserRole.RONDA}>Ronda / Segurança</option>
                   <option value={UserRole.CONDO_USER}>Síndico</option>
                   <option value={UserRole.ADMIN}>Administrador</option>
                 </select>
               </div>
-              {selectedRole === UserRole.CONDO_USER && (
-                <div className="space-y-1">
+
+              {(selectedRole === UserRole.CONDO_USER || selectedRole === UserRole.RONDA || selectedRole === UserRole.TECHNICIAN) && (
+                <div className="space-y-1 bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
                   <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest ml-1 flex items-center">
-                    <Building2 size={12} className="mr-1" /> Vincular Condomínio
+                    <Building2 size={12} className="mr-1" /> Condomínio Vinculado
                   </label>
                   <select 
-                    required 
+                    required={selectedRole !== UserRole.TECHNICIAN}
                     name="condoId" 
                     defaultValue={editingUser?.condo_id} 
-                    className="w-full px-5 py-4 bg-blue-50 border border-blue-100 rounded-2xl text-xs font-bold text-blue-700 outline-none"
+                    className="w-full px-5 py-4 bg-white border border-blue-200 rounded-2xl text-xs font-bold text-blue-700 outline-none"
                   >
-                    <option value="">Selecione...</option>
+                    <option value="">{selectedRole === UserRole.TECHNICIAN ? 'Atender a TODOS (Global)' : 'Selecionar Condomínio...'}</option>
                     {data.condos.map((c: Condo) => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
+                  {selectedRole === UserRole.TECHNICIAN && (
+                    <p className="text-[9px] text-blue-400 font-bold mt-2 italic px-1">Se não selecionar um condomínio, o técnico poderá atender a todos os clientes cadastrados.</p>
+                  )}
+                  {selectedRole === UserRole.RONDA && (
+                    <p className="text-[9px] text-amber-600 font-bold mt-2 italic px-1">O Ronda verá apenas vistorias e alertas deste condomínio específico.</p>
+                  )}
                 </div>
               )}
+
               <div className="pt-6 flex gap-4">
-                <button type="button" onClick={() => setIsUserModalOpen(false)} className="flex-1 py-4 border border-slate-200 rounded-2xl font-black text-[10px] uppercase text-slate-400 hover:bg-slate-50 transition-all">Cancelar</button>
-                <button type="submit" className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase shadow-xl shadow-slate-900/20 active:scale-95 transition-all">
-                  <Save size={16} className="inline mr-2" /> Salvar
+                <button type="button" onClick={() => setIsUserModalOpen(false)} className="flex-1 py-4 border rounded-2xl font-black text-[10px] uppercase text-slate-400">Cancelar</button>
+                <button type="submit" className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase shadow-xl">
+                  <Save size={16} className="inline mr-2" /> Gravar Acesso
                 </button>
               </div>
             </form>

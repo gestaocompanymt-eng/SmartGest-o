@@ -1,9 +1,11 @@
 
 import React, { useState, useMemo } from 'react';
-import { Plus, Layers, ShieldCheck, Thermometer, Zap, AlertCircle, Trash2, Edit2, X, MapPin, Camera, ImageIcon, ChevronLeft, ChevronRight, Building2, Clock, Calendar } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Plus, Layers, ShieldCheck, Thermometer, Zap, AlertCircle, Trash2, Edit2, X, MapPin, Camera, ImageIcon, ChevronLeft, ChevronRight, Building2, Clock, Calendar, Eye } from 'lucide-react';
 import { Equipment, EquipmentType, Condo, UserRole } from '../types';
 
 const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
+  const navigate = useNavigate();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEq, setEditingEq] = useState<Equipment | null>(null);
   const [photos, setPhotos] = useState<string[]>([]);
@@ -13,7 +15,7 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const isCondo = user?.role === UserRole.CONDO_USER;
   const userCondoId = user?.condo_id;
 
-  const filteredEquipments = isCondo
+  const filteredEquipments = isCondo || (user?.role === UserRole.TECHNICIAN && userCondoId)
     ? data.equipments.filter((e: Equipment) => e.condo_id === userCondoId)
     : data.equipments;
 
@@ -36,7 +38,7 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    const condoId = isCondo ? userCondoId : (formData.get('condoId') as string);
+    const condoId = (isCondo || userCondoId) ? userCondoId : (formData.get('condoId') as string);
 
     const eqData: Equipment = {
       id: editingEq?.id || `eq-${Date.now()}`,
@@ -86,7 +88,7 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-900 leading-tight">Gestão de Ativos</h1>
-          <p className="text-sm text-slate-500 font-medium">Controle de inventário e periodicidade técnica.</p>
+          <p className="text-sm text-slate-500 font-medium italic">Inventário técnico e preventivas.</p>
         </div>
         {isAdminOrTech && (
           <button onClick={() => openModal(null)} className="w-full md:w-auto bg-slate-900 text-white px-6 py-3 rounded-2xl flex items-center justify-center space-x-2 font-black uppercase text-[10px] tracking-widest shadow-xl">
@@ -110,17 +112,11 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-slate-300"><ImageIcon size={40} /></div>
                 )}
-                <div className="absolute top-4 left-4">
+                <div className="absolute top-4 left-4 flex gap-2">
                   <span className="px-3 py-1 bg-white/90 backdrop-blur shadow-sm text-slate-900 text-[9px] font-black uppercase tracking-widest rounded-lg border border-slate-100">
                     {type?.name || 'Inespecífico'}
                   </span>
                 </div>
-                {eq.maintenance_period && (
-                   <div className="absolute bottom-4 right-4 bg-slate-900/80 backdrop-blur px-3 py-1.5 rounded-xl border border-white/20">
-                      <p className="text-[7px] font-black text-slate-400 uppercase leading-none mb-1">Periodicidade</p>
-                      <p className="text-[10px] font-black text-white leading-none">{eq.maintenance_period} dias</p>
-                   </div>
-                )}
               </div>
 
               <div className="p-6 flex-1 flex flex-col">
@@ -129,11 +125,18 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                     <h3 className="font-black text-slate-900 text-lg leading-tight truncate">{eq.manufacturer}</h3>
                     <p className="text-xs font-bold text-slate-500 truncate">{eq.model}</p>
                   </div>
-                  {isAdminOrTech && (
-                    <div className="flex space-x-1 shrink-0">
+                  <div className="flex space-x-1 shrink-0">
+                     <button 
+                        onClick={() => navigate(`/os?equipmentId=${eq.id}&vistoria=true`)} 
+                        className="p-2.5 text-amber-600 hover:bg-amber-50 bg-white border border-amber-100 rounded-xl transition-all"
+                        title="Realizar Vistoria"
+                     >
+                       <Eye size={16} />
+                     </button>
+                     {isAdminOrTech && (
                        <button onClick={() => openModal(eq)} className="p-2.5 text-slate-400 hover:text-blue-600 bg-slate-50 rounded-xl transition-all"><Edit2 size={16} /></button>
-                    </div>
-                  )}
+                     )}
+                  </div>
                 </div>
                 
                 <p className="text-[9px] text-blue-600 font-black uppercase mb-6 flex items-center">
@@ -142,7 +145,7 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
 
                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-6">
                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-[9px] font-black text-slate-400 uppercase">Saúde do Cronograma</span>
+                      <span className="text-[9px] font-black text-slate-400 uppercase">Manutenção</span>
                       <span className={`text-[9px] font-black uppercase ${status.color}`}>{status.label}</span>
                    </div>
                    <div className="flex items-center space-x-3">

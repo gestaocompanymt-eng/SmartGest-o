@@ -11,7 +11,8 @@ import {
   LogOut, 
   Menu, 
   X,
-  Droplets
+  Droplets,
+  Eye
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
@@ -66,7 +67,7 @@ const AppContent: React.FC = () => {
     
     setSyncStatus('syncing');
     const user = currentLocalData.currentUser;
-    const isRestricted = user.role === UserRole.CONDO_USER;
+    const isRestricted = user.role === UserRole.CONDO_USER || user.role === UserRole.RONDA || (user.role === UserRole.TECHNICIAN && user.condo_id);
     const condoId = user.condo_id;
 
     try {
@@ -122,7 +123,7 @@ const AppContent: React.FC = () => {
           setData(updated);
           saveStore(updated);
         }
-      }, 30000); // Sincronização a cada 30s para telemetria
+      }, 30000);
     }
     return () => { if (interval) clearInterval(interval); };
   }, [fetchAllData, !!data?.currentUser]);
@@ -223,16 +224,24 @@ const AppContent: React.FC = () => {
           </div>
           <nav className="flex-1 space-y-2 overflow-y-auto pr-2 custom-scrollbar">
             <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
-            <NavItem to="/condos" icon={Building2} label={user?.role === UserRole.CONDO_USER ? 'Meu Condomínio' : 'Condomínios'} />
-            <NavItem to="/reservatorios" icon={Droplets} label="Reservatórios" />
-            <NavItem to="/equipment" icon={Layers} label="Equipamentos" />
-            <NavItem to="/systems" icon={Wrench} label="Sistemas" />
-            <NavItem to="/os" icon={FileText} label="Ordens de Serviço" />
+            {user?.role !== UserRole.RONDA && (
+              <>
+                <NavItem to="/condos" icon={Building2} label={(user?.role === UserRole.CONDO_USER || (user?.role === UserRole.TECHNICIAN && user.condo_id)) ? 'Meu Condomínio' : 'Condomínios'} />
+                <NavItem to="/reservatorios" icon={Droplets} label="Reservatórios" />
+                <NavItem to="/equipment" icon={Layers} label="Equipamentos" />
+                <NavItem to="/systems" icon={Wrench} label="Sistemas" />
+              </>
+            )}
+            <NavItem to="/os" icon={FileText} label={user?.role === UserRole.RONDA ? 'Minhas Vistorias' : 'Ordens de Serviço'} />
             {data.currentUser?.role === UserRole.ADMIN && (
               <NavItem to="/admin" icon={Settings} label="Administração" />
             )}
           </nav>
           <div className="mt-auto pt-6 border-t border-slate-800">
+            <div className="px-4 py-3 mb-4 bg-slate-800/50 rounded-xl">
+               <p className="text-[10px] font-black text-slate-500 uppercase">Acesso: {user?.role}</p>
+               <p className="text-xs font-bold text-white truncate">{user?.name}</p>
+            </div>
             <button 
               onClick={() => {
                 const newData = { ...data!, currentUser: null };
@@ -253,14 +262,14 @@ const AppContent: React.FC = () => {
         <div className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth custom-scrollbar">
           <Routes>
             <Route path="/" element={<Dashboard data={data} updateData={updateData} />} />
-            <Route path="/condos" element={<Condos data={data} updateData={updateData} />} />
-            <Route path="/reservatorios" element={<WaterLevel data={data} updateData={updateData} onRefresh={async () => {
+            <Route path="/condos" element={user?.role === UserRole.RONDA ? <Navigate to="/" /> : <Condos data={data} updateData={updateData} />} />
+            <Route path="/reservatorios" element={user?.role === UserRole.RONDA ? <Navigate to="/" /> : <WaterLevel data={data} updateData={updateData} onRefresh={async () => {
               const updated = await fetchAllData(data);
               setData(updated);
               saveStore(updated);
             }} />} />
-            <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} />} />
-            <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} />} />
+            <Route path="/equipment" element={user?.role === UserRole.RONDA ? <Navigate to="/" /> : <EquipmentPage data={data} updateData={updateData} />} />
+            <Route path="/systems" element={user?.role === UserRole.RONDA ? <Navigate to="/" /> : <SystemsPage data={data} updateData={updateData} />} />
             <Route path="/os" element={<ServiceOrders data={data} updateData={updateData} />} />
             <Route path="/admin" element={<AdminSettings data={data} updateData={updateData} />} />
             <Route path="/login" element={<Navigate to="/" />} />

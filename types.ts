@@ -1,9 +1,9 @@
 
-
 export enum UserRole {
   ADMIN = 'ADMIN',
   TECHNICIAN = 'TECHNICIAN',
-  CONDO_USER = 'CONDO_USER'
+  CONDO_USER = 'CONDO_USER',
+  RONDA = 'RONDA'
 }
 
 export enum ContractType {
@@ -14,7 +14,8 @@ export enum ContractType {
 export enum OSType {
   PREVENTIVE = 'Preventiva',
   CORRETIVE = 'Corretiva',
-  SERVICE = 'Serviço Avulso'
+  SERVICE = 'Serviço Avulso',
+  VISTORIA = 'Vistoria / Ronda'
 }
 
 export enum OSStatus {
@@ -49,7 +50,6 @@ export interface WaterLevel {
   created_at: string;
 }
 
-// Fixed: Exported MonitoringAlert interface to resolve import error in Monitoring.tsx
 export interface MonitoringAlert {
   id: string;
   equipment_id: string;
@@ -86,10 +86,9 @@ export interface Equipment {
   observations: string;
   photos: string[];
   last_maintenance: string;
-  maintenance_period?: number; // Periodicidade em dias
+  maintenance_period?: number;
   updated_at?: string;
   device_id?: string; 
-  // Added properties for Tuya/Monitoring integration used in Monitoring.tsx
   tuya_device_id?: string;
   is_online?: boolean;
   monitoring_status?: 'normal' | 'atencao' | 'critico';
@@ -112,7 +111,7 @@ export interface System {
   parameters: string;
   observations: string;
   last_maintenance?: string;
-  maintenance_period?: number; // Periodicidade em dias
+  maintenance_period?: number;
   updated_at?: string;
 }
 
@@ -157,7 +156,7 @@ export interface User {
   role: UserRole;
   email: string;
   password?: string;
-  condo_id?: string;
+  condo_id?: string; // Se preenchido, restringe o acesso a este condomínio
 }
 
 export interface AppData {
@@ -171,6 +170,5 @@ export interface AppData {
   systemTypes: SystemType[];
   currentUser: User | null;
   waterLevels: WaterLevel[];
-  // Fixed: typed monitoringAlerts correctly
   monitoringAlerts: MonitoringAlert[];
 }
