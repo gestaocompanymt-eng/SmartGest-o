@@ -1,8 +1,8 @@
-
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
+// Fix: Import RefreshCcw from lucide-react to resolve the error on line 362
 import { 
-  Plus, FileText, ChevronDown, ChevronUp, X, DollarSign, Calculator, Printer, MessageCircle, Edit2, Share2, Wrench, MapPin, Camera, Trash2, Image as ImageIcon, CheckCircle2
+  Plus, FileText, ChevronDown, ChevronUp, X, DollarSign, Edit2, Share2, Wrench, MapPin, Camera, Trash2, Image as ImageIcon, CheckCircle2, Save, Layers, Settings, Building2, RefreshCcw
 } from 'lucide-react';
 import { OSType, OSStatus, ServiceOrder, Condo, System, UserRole, AppData, Equipment } from '../types';
 
@@ -14,15 +14,13 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
   const location = useLocation();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
   const [editingOS, setEditingOS] = useState<ServiceOrder | null>(null);
-  const [quoteOS, setQuoteOS] = useState<ServiceOrder | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [expandedOS, setExpandedOS] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
   
   const [selectedCondoId, setSelectedCondoId] = useState(isCondoUser ? (userCondoId || '') : '');
-  const [assignmentType, setAssignmentType] = useState<'equipment' | 'system' | 'general'>('general');
+  const [assignmentType, setAssignmentType] = useState<'general' | 'equipment' | 'system'>('general');
   const [selectedEquipmentId, setSelectedEquipmentId] = useState('');
   const [selectedSystemId, setSelectedSystemId] = useState('');
   const [initialDescription, setInitialDescription] = useState('');
@@ -72,49 +70,26 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'before' | 'after') => {
     const files = e.target.files;
     if (!files) return;
-
     (Array.from(files) as File[]).forEach(file => {
       const reader = new FileReader();
       reader.onloadend = () => {
         const base64String = reader.result as string;
-        if (type === 'before') {
-          setPhotosBefore(prev => [...prev, base64String]);
-        } else {
-          setPhotosAfter(prev => [...prev, base64String]);
-        }
+        if (type === 'before') setPhotosBefore(prev => [...prev, base64String]);
+        else setPhotosAfter(prev => [...prev, base64String]);
       };
       reader.readAsDataURL(file);
     });
   };
 
-  const removePhoto = (index: number, type: 'before' | 'after') => {
-    if (type === 'before') {
-      setPhotosBefore(prev => prev.filter((_, i) => i !== index));
-    } else {
-      setPhotosAfter(prev => prev.filter((_, i) => i !== index));
-    }
-  };
-
   const handleShare = async (os: ServiceOrder, condoName?: string) => {
     const text = `🛠️ *SmartGestão - Ordem de Serviço*\n\n*ID:* ${os.id}\n*Condomínio:* ${condoName || 'Não informado'}\n*Local:* ${os.location || 'Não informado'}\n*Tipo:* ${os.type}\n*Status:* ${os.status}\n\n*Descrição:* ${os.problem_description}\n\n_Gerado via SmartGestão_`;
-
     if (navigator.share) {
       try {
-        await navigator.share({
-          title: `OS ${os.id} - SmartGestão`,
-          text: text,
-          url: window.location.origin
-        });
-      } catch (err) {
-        console.error('Erro ao compartilhar:', err);
-      }
+        await navigator.share({ title: `OS ${os.id} - SmartGestão`, text: text, url: window.location.origin });
+      } catch (err) {}
     } else {
-      try {
-        await navigator.clipboard.writeText(text);
-        alert('Informações da OS copiadas para a área de transferência!');
-      } catch (err) {
-        alert('Não foi possível copiar os dados.');
-      }
+      await navigator.clipboard.writeText(text);
+      alert('Copiado para a área de transferência!');
     }
   };
 
@@ -122,15 +97,11 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
     e.preventDefault();
     setSaveStatus('saving');
     const formData = new FormData(e.currentTarget);
-    
     const statusFromForm = formData.get('status') as OSStatus;
-    // Pega o ID do condomínio: se for síndico é o dele, se for global é o que foi selecionado
     const condoId = isCondoUser ? (userCondoId || '') : (formData.get('condo_id') as string);
 
-    const uniqueId = `OS-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-
     const osData: ServiceOrder = {
-      id: editingOS?.id || uniqueId,
+      id: editingOS?.id || `OS-${Date.now()}`,
       type: formData.get('type') as OSType,
       status: statusFromForm || editingOS?.status || OSStatus.OPEN,
       condo_id: condoId,
@@ -179,9 +150,13 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
     return matchStatus && matchCondo;
   });
 
-  const formatCurrency = (val?: number) => {
-    return (val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  };
+  const filteredEquipments = useMemo(() => {
+    return data.equipments.filter(e => e.condo_id === selectedCondoId);
+  }, [data.equipments, selectedCondoId]);
+
+  const filteredSystems = useMemo(() => {
+    return data.systems.filter(s => s.condo_id === selectedCondoId);
+  }, [data.systems, selectedCondoId]);
 
   return (
     <div className="space-y-6 pb-12">
@@ -218,6 +193,8 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                   </div>
                 </div>
                 <div className="flex items-center space-x-3">
+                   {os.equipment_id && <Layers size={14} className="text-blue-500" />}
+                   {os.system_id && <Settings size={14} className="text-indigo-500" />}
                   <span className={`px-2 py-1 rounded text-[8px] font-black uppercase ${
                     os.status === OSStatus.COMPLETED ? 'bg-emerald-100 text-emerald-700' : 
                     os.status === OSStatus.CANCELLED ? 'bg-slate-100 text-slate-500' : 
@@ -230,10 +207,14 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
               </div>
               {isExpanded && (
                 <div className="px-4 pb-4 border-t pt-4 space-y-4 animate-in slide-in-from-top duration-200">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                     <div className="space-y-2">
-                      <p className="text-[10px] font-black text-slate-400 uppercase">Descrição da Ocorrência</p>
-                      <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-xl italic">{os.problem_description}</p>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ocorrência</p>
+                      <p className="text-slate-600 leading-relaxed bg-slate-50 p-4 rounded-xl italic border border-slate-100">{os.problem_description}</p>
+                    </div>
+                    <div className="space-y-2">
+                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ações Realizadas</p>
+                       <p className="text-slate-600 leading-relaxed bg-slate-900 text-white p-4 rounded-xl font-mono text-[10px]">{os.actions_performed || 'Em aguardo de execução...'}</p>
                     </div>
                   </div>
 
@@ -242,20 +223,24 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                       <button 
                         onClick={() => { 
                           setEditingOS(os); 
+                          setSelectedCondoId(os.condo_id);
+                          setAssignmentType(os.equipment_id ? 'equipment' : os.system_id ? 'system' : 'general');
+                          setSelectedEquipmentId(os.equipment_id || '');
+                          setSelectedSystemId(os.system_id || '');
                           setPhotosBefore(os.photos_before || []);
                           setPhotosAfter(os.photos_after || []);
                           setIsModalOpen(true); 
                         }} 
-                        className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-black uppercase px-4 py-2 rounded-xl flex items-center transition-colors"
+                        className="bg-slate-900 text-white text-[9px] font-black uppercase px-6 py-3 rounded-xl flex items-center transition-all shadow-lg active:scale-95"
                       >
-                        <Edit2 size={14} className="mr-1.5" /> Editar / Finalizar
+                        <Edit2 size={14} className="mr-2" /> Editar / Finalizar
                       </button>
                     )}
                     <button 
                       onClick={() => handleShare(os, condo?.name)}
-                      className="bg-slate-100 hover:bg-slate-200 text-slate-500 text-[10px] font-black uppercase px-4 py-2 rounded-xl flex items-center transition-colors"
+                      className="bg-slate-100 hover:bg-slate-200 text-slate-500 text-[9px] font-black uppercase px-6 py-3 rounded-xl flex items-center transition-colors"
                     >
-                      <Share2 size={14} className="mr-1.5" /> Compartilhar
+                      <Share2 size={14} className="mr-2" /> Compartilhar
                     </button>
                   </div>
                 </div>
@@ -267,27 +252,27 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
 
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-300 flex flex-col max-h-[90vh]">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-2xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-300 flex flex-col max-h-[90vh]">
             <div className="p-6 border-b flex justify-between items-center bg-slate-50">
-              <h2 className="text-lg font-black uppercase tracking-tight">{editingOS ? 'Gerenciar OS' : 'Novo Chamado'}</h2>
+              <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">{editingOS ? 'Gerenciar OS' : 'Novo Chamado'}</h2>
               <button onClick={closeModal} className="p-2 bg-white rounded-xl shadow-sm"><X size={20} /></button>
             </div>
-            <form onSubmit={handleSubmit} className="p-6 space-y-6 overflow-y-auto">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <form onSubmit={handleSubmit} className="p-8 space-y-6 overflow-y-auto">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase">Status</label>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Status</label>
                   <select 
                     name="status" 
                     defaultValue={editingOS?.status || OSStatus.OPEN}
-                    className="w-full px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl font-black text-blue-700 text-xs"
+                    className="w-full px-5 py-4 bg-blue-50 border border-blue-100 rounded-2xl font-black text-blue-700 text-xs outline-none"
                   >
                     {Object.values(OSStatus).map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase">Condomínio</label>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Condomínio</label>
                   {isCondoUser ? (
-                    <div className="w-full px-4 py-3 bg-slate-100 border rounded-xl font-black text-xs text-slate-600">
+                    <div className="w-full px-5 py-4 bg-slate-100 border border-slate-200 rounded-2xl font-black text-xs text-slate-600">
                       {data.condos.find((c: Condo) => c.id === userCondoId)?.name || 'NÃO VINCULADO'}
                     </div>
                   ) : (
@@ -297,7 +282,7 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                       name="condo_id" 
                       value={selectedCondoId} 
                       onChange={(e) => setSelectedCondoId(e.target.value)} 
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs"
+                      className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-xs outline-none"
                     >
                       <option value="">Selecione...</option>
                       {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -306,15 +291,76 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-500 uppercase">Descrição do Problema</label>
-                <textarea required name="description" defaultValue={editingOS?.problem_description || initialDescription} rows={3} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"></textarea>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Vínculo do Atendimento</label>
+                <div className="grid grid-cols-3 gap-2">
+                   <button 
+                    type="button" 
+                    onClick={() => setAssignmentType('general')}
+                    className={`py-3 rounded-xl text-[9px] font-black uppercase border transition-all ${assignmentType === 'general' ? 'bg-slate-900 text-white border-slate-900 shadow-lg shadow-slate-900/20' : 'bg-white text-slate-400 border-slate-200'}`}
+                   >Geral</button>
+                   <button 
+                    type="button" 
+                    onClick={() => setAssignmentType('equipment')}
+                    className={`py-3 rounded-xl text-[9px] font-black uppercase border transition-all ${assignmentType === 'equipment' ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-500/20' : 'bg-white text-slate-400 border-slate-200'}`}
+                   >Equipamento</button>
+                   <button 
+                    type="button" 
+                    onClick={() => setAssignmentType('system')}
+                    className={`py-3 rounded-xl text-[9px] font-black uppercase border transition-all ${assignmentType === 'system' ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-500/20' : 'bg-white text-slate-400 border-slate-200'}`}
+                   >Sistema</button>
+                </div>
               </div>
 
-              <div className="pt-4 flex gap-3">
-                <button type="button" onClick={closeModal} className="flex-1 py-4 border rounded-2xl font-black text-xs uppercase">Descartar</button>
-                <button type="submit" disabled={saveStatus === 'saving'} className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-slate-900/20 active:scale-95">
-                  {saveStatus === 'saving' ? 'Salvando...' : 'Gravar OS'}
+              {assignmentType === 'equipment' && (
+                <div className="space-y-1 animate-in slide-in-from-top duration-200">
+                  <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest ml-1">Equipamento Específico</label>
+                  <select 
+                    required 
+                    name="equipment_id" 
+                    value={selectedEquipmentId}
+                    onChange={(e) => setSelectedEquipmentId(e.target.value)}
+                    className="w-full px-5 py-4 bg-blue-50 border border-blue-100 rounded-2xl font-black text-blue-900 text-xs outline-none"
+                  >
+                    <option value="">Escolha o Equipamento...</option>
+                    {filteredEquipments.map(e => <option key={e.id} value={e.id}>{e.manufacturer} - {e.model} ({e.location})</option>)}
+                  </select>
+                </div>
+              )}
+
+              {assignmentType === 'system' && (
+                <div className="space-y-1 animate-in slide-in-from-top duration-200">
+                  <label className="text-[10px] font-black text-indigo-600 uppercase tracking-widest ml-1">Sistema Predial</label>
+                  <select 
+                    required 
+                    name="system_id" 
+                    value={selectedSystemId}
+                    onChange={(e) => setSelectedSystemId(e.target.value)}
+                    className="w-full px-5 py-4 bg-indigo-50 border border-indigo-100 rounded-2xl font-black text-indigo-900 text-xs outline-none"
+                  >
+                    <option value="">Escolha o Sistema...</option>
+                    {filteredSystems.map(s => <option key={s.id} value={s.id}>{s.name} ({s.location})</option>)}
+                  </select>
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Descrição Técnica / Problema</label>
+                <textarea required name="description" defaultValue={editingOS?.problem_description || initialDescription} rows={3} className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none"></textarea>
+              </div>
+
+              {editingOS && (
+                <div className="space-y-1 animate-in zoom-in-95">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Ações de Reparo / Vistoria</label>
+                  <textarea name="actions" defaultValue={editingOS.actions_performed} rows={3} className="w-full px-5 py-4 bg-slate-900 text-blue-100 border border-slate-800 rounded-2xl text-[10px] font-mono outline-none" placeholder="Relatório técnico detalhado..."></textarea>
+                </div>
+              )}
+
+              <div className="pt-6 flex gap-4 shrink-0">
+                <button type="button" onClick={closeModal} className="flex-1 py-4 border border-slate-200 rounded-2xl font-black text-[10px] uppercase text-slate-400">Descartar</button>
+                <button type="submit" disabled={saveStatus === 'saving'} className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-slate-900/20 active:scale-95 transition-all flex items-center justify-center">
+                  {saveStatus === 'saving' ? <RefreshCcw size={16} className="animate-spin mr-2" /> : <Save size={16} className="mr-2" />}
+                  {saveStatus === 'saving' ? 'Gravando...' : 'Gravar Ordem'}
                 </button>
               </div>
             </form>

@@ -15,7 +15,8 @@ import {
   Building2,
   X,
   Save,
-  RotateCcw
+  Layers,
+  Settings
 } from 'lucide-react';
 import { AppData, OSStatus, OSType, UserRole, Appointment, ServiceOrder, Condo, Equipment, System } from '../types';
 import { useNavigate } from 'react-router-dom';
@@ -23,6 +24,8 @@ import { useNavigate } from 'react-router-dom';
 const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> = ({ data, updateData }) => {
   const navigate = useNavigate();
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [selectedCondoId, setSelectedCondoId] = useState('');
+  const [assignmentType, setAssignmentType] = useState<'general' | 'equipment' | 'system'>('general');
   
   const user = data.currentUser;
   const isRestricted = user?.role === UserRole.CONDO_USER;
@@ -62,12 +65,13 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
   const handleCompleteAppointment = async (appt: Appointment) => {
     if (!window.confirm('Deseja marcar esta vistoría/manutenção como REALIZADA? Isso gerará um histórico na lista de Ordens de Serviço.')) return;
 
-    // 1. Criar a OS baseada no agendamento
     const newOS: ServiceOrder = {
       id: `OS-PREV-${Date.now()}`,
       type: OSType.PREVENTIVE,
       status: OSStatus.COMPLETED,
       condo_id: appt.condo_id,
+      equipment_id: appt.equipment_id,
+      system_id: appt.system_id,
       problem_description: `Manutenção Preventiva Programada: ${appt.description}`,
       actions_performed: 'Vistoria periódica realizada conforme cronograma. Sistemas operando dentro da normalidade.',
       parts_replaced: [],
@@ -79,7 +83,6 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
       updated_at: new Date().toISOString()
     };
 
-    // 2. Remover o agendamento ou marcar como realizado
     const updatedAppointments = data.appointments.filter(a => a.id !== appt.id);
     const updatedOS = [newOS, ...data.serviceOrders];
 
@@ -107,6 +110,16 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
     </div>
   );
 
+  const filteredEquipmentsForModal = useMemo(() => {
+    const cid = isRestricted ? condoId : selectedCondoId;
+    return data.equipments.filter(e => e.condo_id === cid);
+  }, [data.equipments, selectedCondoId, isRestricted, condoId]);
+
+  const filteredSystemsForModal = useMemo(() => {
+    const cid = isRestricted ? condoId : selectedCondoId;
+    return data.systems.filter(s => s.condo_id === cid);
+  }, [data.systems, selectedCondoId, isRestricted, condoId]);
+
   return (
     <div className="space-y-8 pb-12">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -119,7 +132,10 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
           </p>
         </div>
         <button 
-          onClick={() => setIsScheduleModalOpen(true)}
+          onClick={() => {
+            setSelectedCondoId(isRestricted ? (condoId || '') : '');
+            setIsScheduleModalOpen(true);
+          }}
           className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-slate-900/20 flex items-center space-x-2 active:scale-95 transition-all"
         >
           <Plus size={16} />
@@ -134,7 +150,6 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        {/* Coluna Principal: Agenda */}
         <div className="xl:col-span-2 space-y-6">
           <div className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm">
             <div className="px-8 py-6 border-b flex justify-between items-center bg-slate-50/50">
@@ -163,9 +178,11 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
                           dayAppts.map(appt => (
                             <div key={appt.id} className="bg-slate-50 border border-slate-100 rounded-[1.5rem] p-4 flex items-center justify-between group hover:border-blue-300 transition-all">
                               <div className="flex items-center space-x-4">
-                                <div className="p-3 bg-white rounded-xl shadow-sm text-blue-600"><Wrench size={18} /></div>
+                                <div className={`p-3 rounded-xl shadow-sm ${appt.equipment_id ? 'bg-blue-100 text-blue-600' : appt.system_id ? 'bg-indigo-100 text-indigo-600' : 'bg-white text-slate-400'}`}>
+                                  {appt.equipment_id ? <Layers size={18} /> : appt.system_id ? <Settings size={18} /> : <Wrench size={18} />}
+                                </div>
                                 <div>
-                                  <p className="text-[10px] font-black text-blue-500 uppercase tracking-tight">{appt.time} • Manutenção Preventiva</p>
+                                  <p className="text-[10px] font-black text-blue-500 uppercase tracking-tight">{appt.time} • {appt.equipment_id ? 'Equipamento' : appt.system_id ? 'Sistema' : 'Preventiva Geral'}</p>
                                   <p className="text-sm font-bold text-slate-800 leading-tight">{appt.description}</p>
                                   {!isRestricted && (
                                     <p className="text-[9px] font-black text-slate-400 uppercase mt-1">
@@ -197,7 +214,6 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
           </div>
         </div>
 
-        {/* Coluna Lateral: Histórico e Ações */}
         <div className="space-y-6">
           <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-xl relative overflow-hidden">
              <div className="absolute top-0 right-0 p-8 opacity-10 rotate-12"><ShieldCheck size={120} /></div>
@@ -243,10 +259,9 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
         </div>
       </div>
 
-      {/* Modal de Agendamento de Preventiva */}
       {isScheduleModalOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
             <div className="p-6 border-b flex justify-between items-center bg-slate-50">
               <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">Programar Manutenção / Vistoria</h2>
               <button onClick={() => setIsScheduleModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm"><X size={24} /></button>
@@ -258,6 +273,8 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
                 id: `APPT-${Date.now()}`,
                 condo_id: isRestricted ? (condoId || '') : (formData.get('condo_id') as string),
                 technician_id: user?.id || 'admin',
+                equipment_id: assignmentType === 'equipment' ? (formData.get('equipment_id') as string) : undefined,
+                system_id: assignmentType === 'system' ? (formData.get('system_id') as string) : undefined,
                 date: formData.get('date') as string,
                 time: formData.get('time') as string,
                 description: formData.get('description') as string,
@@ -265,14 +282,61 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
               };
               updateData({ ...data, appointments: [newAppt, ...data.appointments] });
               setIsScheduleModalOpen(false);
-            }} className="p-8 space-y-5">
+            }} className="p-8 space-y-5 overflow-y-auto">
               
               {!isRestricted && (
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Condomínio</label>
-                  <select required name="condo_id" className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none">
+                  <select 
+                    required 
+                    name="condo_id" 
+                    value={selectedCondoId}
+                    onChange={(e) => setSelectedCondoId(e.target.value)}
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none"
+                  >
                     <option value="">Selecione o Condomínio...</option>
                     {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Tipo de Vínculo Técnico</label>
+                <div className="grid grid-cols-3 gap-2">
+                   <button 
+                    type="button" 
+                    onClick={() => setAssignmentType('general')}
+                    className={`py-3 rounded-xl text-[9px] font-black uppercase border transition-all ${assignmentType === 'general' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'}`}
+                   >Preventiva Geral</button>
+                   <button 
+                    type="button" 
+                    onClick={() => setAssignmentType('equipment')}
+                    className={`py-3 rounded-xl text-[9px] font-black uppercase border transition-all ${assignmentType === 'equipment' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'}`}
+                   >Equipamento</button>
+                   <button 
+                    type="button" 
+                    onClick={() => setAssignmentType('system')}
+                    className={`py-3 rounded-xl text-[9px] font-black uppercase border transition-all ${assignmentType === 'system' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'}`}
+                   >Sistema Predial</button>
+                </div>
+              </div>
+
+              {assignmentType === 'equipment' && (
+                <div className="space-y-1 animate-in slide-in-from-top duration-200">
+                  <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest ml-1">Selecionar Equipamento</label>
+                  <select required name="equipment_id" className="w-full px-5 py-4 bg-blue-50 border border-blue-100 rounded-2xl text-xs font-bold text-blue-900 outline-none">
+                    <option value="">Selecione o Equipamento...</option>
+                    {filteredEquipmentsForModal.map(e => <option key={e.id} value={e.id}>{e.manufacturer} - {e.model} ({e.location})</option>)}
+                  </select>
+                </div>
+              )}
+
+              {assignmentType === 'system' && (
+                <div className="space-y-1 animate-in slide-in-from-top duration-200">
+                  <label className="text-[10px] font-black text-indigo-600 uppercase tracking-widest ml-1">Selecionar Sistema</label>
+                  <select required name="system_id" className="w-full px-5 py-4 bg-indigo-50 border border-indigo-100 rounded-2xl text-xs font-bold text-indigo-900 outline-none">
+                    <option value="">Selecione o Sistema Predial...</option>
+                    {filteredSystemsForModal.map(s => <option key={s.id} value={s.id}>{s.name} ({s.location})</option>)}
                   </select>
                 </div>
               )}
@@ -289,11 +353,11 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Descrição / Equipamento</label>
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Descrição do Agendamento</label>
                 <textarea required name="description" placeholder="Ex: Vistoria mensal nas bombas de recalque do Bloco A" rows={3} className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none resize-none"></textarea>
               </div>
 
-              <div className="pt-6 flex gap-4">
+              <div className="pt-6 flex gap-4 shrink-0">
                 <button type="button" onClick={() => setIsScheduleModalOpen(false)} className="flex-1 py-4 border border-slate-200 rounded-2xl font-black text-[10px] uppercase text-slate-400">Cancelar</button>
                 <button type="submit" className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-black text-[10px] uppercase shadow-xl shadow-blue-600/20 active:scale-95 transition-all">
                   <Save size={16} className="inline mr-2" /> Salvar na Agenda

@@ -58,7 +58,6 @@ export interface Condo {
   updated_at?: string;
 }
 
-// Fix: Added optional Tuya-related fields to Equipment to support Monitoring.tsx
 export interface Equipment {
   id: string;
   condo_id: string;
@@ -77,7 +76,7 @@ export interface Equipment {
   photos: string[];
   last_maintenance: string;
   updated_at?: string;
-  device_id?: string; // ID do ESP32 atrelado ao equipamento
+  device_id?: string; 
   tuya_device_id?: string;
   is_online?: boolean;
   monitoring_status?: 'normal' | 'atencao' | 'critico';
@@ -127,6 +126,8 @@ export interface Appointment {
   id: string;
   condo_id: string;
   technician_id: string;
+  equipment_id?: string; // Vínculo com equipamento
+  system_id?: string;    // Vínculo com sistema
   date: string;
   time: string;
   description: string;
@@ -143,7 +144,6 @@ export interface User {
   condo_id?: string;
 }
 
-// Fix: Added MonitoringAlert interface definition
 export interface MonitoringAlert {
   id: string;
   equipment_id: string;
@@ -153,7 +153,6 @@ export interface MonitoringAlert {
   created_at: string;
 }
 
-// Fix: Added monitoringAlerts to AppData
 export interface AppData {
   condos: Condo[];
   equipments: Equipment[];
