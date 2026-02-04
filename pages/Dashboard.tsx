@@ -1,5 +1,5 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { 
   AlertTriangle, 
   Clock, 
@@ -16,7 +16,8 @@ import {
   X,
   Save,
   Layers,
-  Settings
+  Settings,
+  PlayCircle
 } from 'lucide-react';
 import { AppData, OSStatus, OSType, UserRole, Appointment, ServiceOrder, Condo, Equipment, System } from '../types';
 import { useNavigate } from 'react-router-dom';
@@ -29,7 +30,53 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
   
   const user = data.currentUser;
   const isRestricted = user?.role === UserRole.CONDO_USER;
+  const isAdminOrTech = user?.role === UserRole.ADMIN || user?.role === UserRole.TECHNICIAN;
   const condoId = user?.condo_id;
+
+  // Lógica de ativação automática de agendamentos (Transforma em OS Aberta no dia programado)
+  useEffect(() => {
+    if (!isAdminOrTech) return;
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const pendingToday = data.appointments.filter(a => a.date <= todayStr && a.status === 'Pendente' && !a.service_order_id);
+
+    if (pendingToday.length > 0) {
+      const newOSs: ServiceOrder[] = [];
+      const updatedAppts = [...data.appointments];
+
+      pendingToday.forEach(appt => {
+        const osId = `OS-AUTO-${Date.now()}-${appt.id}`;
+        const newOS: ServiceOrder = {
+          id: osId,
+          type: OSType.PREVENTIVE,
+          status: OSStatus.OPEN,
+          condo_id: appt.condo_id,
+          equipment_id: appt.equipment_id,
+          system_id: appt.system_id,
+          problem_description: `[AUTOMÁTICO] Manutenção Programada: ${appt.description}`,
+          actions_performed: '',
+          parts_replaced: [],
+          photos_before: [],
+          photos_after: [],
+          technician_id: 'auto-system',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+        newOSs.push(newOS);
+        
+        const idx = updatedAppts.findIndex(a => a.id === appt.id);
+        if (idx !== -1) {
+          updatedAppts[idx] = { ...updatedAppts[idx], service_order_id: osId, status: 'Confirmada' };
+        }
+      });
+
+      updateData({
+        ...data,
+        serviceOrders: [...newOSs, ...data.serviceOrders],
+        appointments: updatedAppts
+      });
+    }
+  }, [data.appointments, isAdminOrTech]);
 
   // Filtragem de dados baseada no perfil
   const filteredOSList = useMemo(() => isRestricted 
@@ -62,35 +109,13 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
     return filteredAppointments.filter(a => a.date === dateStr);
   };
 
-  const handleCompleteAppointment = async (appt: Appointment) => {
-    if (!window.confirm('Deseja marcar esta vistoría/manutenção como REALIZADA? Isso gerará um histórico na lista de Ordens de Serviço.')) return;
-
-    const newOS: ServiceOrder = {
-      id: `OS-PREV-${Date.now()}`,
-      type: OSType.PREVENTIVE,
-      status: OSStatus.COMPLETED,
-      condo_id: appt.condo_id,
-      equipment_id: appt.equipment_id,
-      system_id: appt.system_id,
-      problem_description: `Manutenção Preventiva Programada: ${appt.description}`,
-      actions_performed: 'Vistoria periódica realizada conforme cronograma. Sistemas operando dentro da normalidade.',
-      parts_replaced: [],
-      photos_before: [],
-      photos_after: [],
-      technician_id: user?.id || 'admin',
-      created_at: new Date().toISOString(),
-      completed_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-
-    const updatedAppointments = data.appointments.filter(a => a.id !== appt.id);
-    const updatedOS = [newOS, ...data.serviceOrders];
-
-    updateData({
-      ...data,
-      appointments: updatedAppointments,
-      serviceOrders: updatedOS
-    });
+  const handleStartWork = (appt: Appointment) => {
+    if (appt.service_order_id) {
+      navigate(`/os?id=${appt.service_order_id}`);
+    } else {
+      // Caso não tenha sido gerada automaticamente ainda
+      alert('Esta manutenção está sendo preparada para o sistema.');
+    }
   };
 
   const StatCard = ({ title, value, icon: Icon, color, subValue }: any) => (
@@ -131,16 +156,18 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
               : "Visão consolidada de toda a operação técnica."}
           </p>
         </div>
-        <button 
-          onClick={() => {
-            setSelectedCondoId(isRestricted ? (condoId || '') : '');
-            setIsScheduleModalOpen(true);
-          }}
-          className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-slate-900/20 flex items-center space-x-2 active:scale-95 transition-all"
-        >
-          <Plus size={16} />
-          <span>Programar Preventiva</span>
-        </button>
+        {isAdminOrTech && (
+          <button 
+            onClick={() => {
+              setSelectedCondoId(isRestricted ? (condoId || '') : '');
+              setIsScheduleModalOpen(true);
+            }}
+            className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-slate-900/20 flex items-center space-x-2 active:scale-95 transition-all"
+          >
+            <Plus size={16} />
+            <span>Programar Preventiva</span>
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -184,20 +211,27 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
                                 <div>
                                   <p className="text-[10px] font-black text-blue-500 uppercase tracking-tight">{appt.time} • {appt.equipment_id ? 'Equipamento' : appt.system_id ? 'Sistema' : 'Preventiva Geral'}</p>
                                   <p className="text-sm font-bold text-slate-800 leading-tight">{appt.description}</p>
-                                  {!isRestricted && (
-                                    <p className="text-[9px] font-black text-slate-400 uppercase mt-1">
-                                      {data.condos.find(c => c.id === appt.condo_id)?.name}
-                                    </p>
-                                  )}
+                                  <div className="flex items-center space-x-2 mt-1">
+                                    {!isRestricted && (
+                                      <p className="text-[9px] font-black text-slate-400 uppercase">
+                                        {data.condos.find(c => c.id === appt.condo_id)?.name}
+                                      </p>
+                                    )}
+                                    {appt.service_order_id && (
+                                      <span className="text-[8px] font-black bg-emerald-100 text-emerald-600 px-2 py-0.5 rounded-md uppercase">OS Aberta</span>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
-                              <button 
-                                onClick={() => handleCompleteAppointment(appt)}
-                                className="p-3 bg-emerald-50 text-emerald-600 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity hover:bg-emerald-500 hover:text-white"
-                                title="Concluir Vistoria"
-                              >
-                                <CheckCircle2 size={18} />
-                              </button>
+                              {isAdminOrTech && appt.service_order_id && (
+                                <button 
+                                  onClick={() => handleStartWork(appt)}
+                                  className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-xl font-black text-[9px] uppercase shadow-lg shadow-blue-500/20 active:scale-95 transition-all"
+                                >
+                                  <PlayCircle size={14} />
+                                  <span>Executar</span>
+                                </button>
+                              )}
                             </div>
                           ))
                         ) : (

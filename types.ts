@@ -126,12 +126,13 @@ export interface Appointment {
   id: string;
   condo_id: string;
   technician_id: string;
-  equipment_id?: string; // Vínculo com equipamento
-  system_id?: string;    // Vínculo com sistema
+  equipment_id?: string;
+  system_id?: string;
   date: string;
   time: string;
   description: string;
   status: 'Pendente' | 'Confirmada' | 'Realizada' | 'Cancelada';
+  service_order_id?: string; // Vínculo com a OS gerada
   updated_at?: string;
 }
 
