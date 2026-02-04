@@ -17,7 +17,8 @@ import {
   Save,
   Layers,
   Settings,
-  PlayCircle
+  PlayCircle,
+  Activity
 } from 'lucide-react';
 import { AppData, OSStatus, OSType, UserRole, Appointment, ServiceOrder, Condo, Equipment, System } from '../types';
 import { useNavigate } from 'react-router-dom';
@@ -33,18 +34,22 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
   const isAdminOrTech = user?.role === UserRole.ADMIN || user?.role === UserRole.TECHNICIAN;
   const condoId = user?.condo_id;
 
-  // Lógica de ativação automática de agendamentos (Transforma em OS Aberta no dia programado)
+  // Lógica de ativação automática: Transformar agendamentos do dia em OS Abertas
   useEffect(() => {
     if (!isAdminOrTech) return;
 
     const todayStr = new Date().toISOString().split('T')[0];
-    const pendingToday = data.appointments.filter(a => a.date <= todayStr && a.status === 'Pendente' && !a.service_order_id);
+    const pendingToOpen = data.appointments.filter(a => 
+      a.date <= todayStr && 
+      a.status === 'Pendente' && 
+      !a.service_order_id
+    );
 
-    if (pendingToday.length > 0) {
+    if (pendingToOpen.length > 0) {
       const newOSs: ServiceOrder[] = [];
       const updatedAppts = [...data.appointments];
 
-      pendingToday.forEach(appt => {
+      pendingToOpen.forEach(appt => {
         const osId = `OS-AUTO-${Date.now()}-${appt.id}`;
         const newOS: ServiceOrder = {
           id: osId,
@@ -53,12 +58,12 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
           condo_id: appt.condo_id,
           equipment_id: appt.equipment_id,
           system_id: appt.system_id,
-          problem_description: `[AUTOMÁTICO] Manutenção Programada: ${appt.description}`,
+          problem_description: `[PREVENTIVA PROGRAMADA] ${appt.description}`,
           actions_performed: '',
           parts_replaced: [],
           photos_before: [],
           photos_after: [],
-          technician_id: 'auto-system',
+          technician_id: 'aguardando-tecnico',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         };
@@ -78,6 +83,42 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
     }
   }, [data.appointments, isAdminOrTech]);
 
+  // Lista de ativos que precisam de revisão baseada na PERIODICIDADE
+  const periodicAlerts = useMemo(() => {
+    const alerts: any[] = [];
+    const today = new Date();
+
+    // Checar Equipamentos
+    data.equipments.forEach(eq => {
+      if (eq.maintenance_period && eq.last_maintenance) {
+        const last = new Date(eq.last_maintenance);
+        const next = new Date(last);
+        next.setDate(last.getDate() + eq.maintenance_period);
+        
+        const diffDays = Math.ceil((next.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        if (diffDays <= 7) { // Alerta se faltar 7 dias ou menos
+          alerts.push({ id: eq.id, name: `${eq.manufacturer} ${eq.model}`, days: diffDays, type: 'Equipamento', condo: data.condos.find(c => c.id === eq.condo_id)?.name });
+        }
+      }
+    });
+
+    // Checar Sistemas
+    data.systems.forEach(sys => {
+      if (sys.maintenance_period && sys.last_maintenance) {
+        const last = new Date(sys.last_maintenance);
+        const next = new Date(last);
+        next.setDate(last.getDate() + sys.maintenance_period);
+        
+        const diffDays = Math.ceil((next.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        if (diffDays <= 7) {
+          alerts.push({ id: sys.id, name: sys.name, days: diffDays, type: 'Sistema', condo: data.condos.find(c => c.id === sys.condo_id)?.name });
+        }
+      }
+    });
+
+    return alerts.sort((a, b) => a.days - b.days);
+  }, [data.equipments, data.systems, data.condos]);
+
   // Filtragem de dados baseada no perfil
   const filteredOSList = useMemo(() => isRestricted 
     ? data.serviceOrders.filter(os => os.condo_id === condoId)
@@ -88,12 +129,6 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
     : data.appointments,
   [data.appointments, isRestricted, condoId]);
 
-  const criticalEquipments = useMemo(() => isRestricted
-    ? data.equipments.filter(e => e.condo_id === condoId && e.electrical_state === 'Crítico')
-    : data.equipments.filter(e => e.electrical_state === 'Crítico'),
-  [data.equipments, isRestricted, condoId]);
-
-  // Lógica da Agenda (Próximos 7 dias)
   const next7Days = useMemo(() => {
     const days = [];
     for (let i = 0; i < 7; i++) {
@@ -107,15 +142,6 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
   const getAppointmentsForDay = (date: Date) => {
     const dateStr = date.toISOString().split('T')[0];
     return filteredAppointments.filter(a => a.date === dateStr);
-  };
-
-  const handleStartWork = (appt: Appointment) => {
-    if (appt.service_order_id) {
-      navigate(`/os?id=${appt.service_order_id}`);
-    } else {
-      // Caso não tenha sido gerada automaticamente ainda
-      alert('Esta manutenção está sendo preparada para o sistema.');
-    }
   };
 
   const StatCard = ({ title, value, icon: Icon, color, subValue }: any) => (
@@ -134,16 +160,6 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
       </div>
     </div>
   );
-
-  const filteredEquipmentsForModal = useMemo(() => {
-    const cid = isRestricted ? condoId : selectedCondoId;
-    return data.equipments.filter(e => e.condo_id === cid);
-  }, [data.equipments, selectedCondoId, isRestricted, condoId]);
-
-  const filteredSystemsForModal = useMemo(() => {
-    const cid = isRestricted ? condoId : selectedCondoId;
-    return data.systems.filter(s => s.condo_id === cid);
-  }, [data.systems, selectedCondoId, isRestricted, condoId]);
 
   return (
     <div className="space-y-8 pb-12">
@@ -171,17 +187,49 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <StatCard title="Ativos Críticos" value={criticalEquipments.length} icon={AlertTriangle} color="bg-red-500" subValue="Risco de Parada" />
+        <StatCard title="Urgências" value={periodicAlerts.length} icon={AlertTriangle} color="bg-red-500" subValue="Por Periodicidade" />
         <StatCard title="Agenda Ativa" value={filteredAppointments.length} icon={Calendar} color="bg-blue-600" subValue="Esta Semana" />
-        <StatCard title="Preventivas/Mês" value={filteredOSList.filter(o => o.type === OSType.PREVENTIVE).length} icon={ClipboardCheck} color="bg-emerald-500" subValue="Concluídas" />
+        <StatCard title="OS Abertas" value={filteredOSList.filter(o => o.status === OSStatus.OPEN).length} icon={PlayCircle} color="bg-emerald-500" subValue="Para Execução" />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         <div className="xl:col-span-2 space-y-6">
+          {/* Alertas de Periodicidade */}
+          {periodicAlerts.length > 0 && (
+            <div className="bg-amber-50 border-2 border-amber-200 rounded-[2.5rem] p-6 animate-in slide-in-from-top duration-300">
+               <h3 className="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-4 flex items-center">
+                 <Clock size={16} className="mr-2" /> Atenção: Manutenções Perto do Vencimento
+               </h3>
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {periodicAlerts.slice(0, 4).map(alert => (
+                    <div key={alert.id} className="bg-white p-4 rounded-2xl border border-amber-100 flex items-center justify-between shadow-sm">
+                       <div>
+                         <p className="text-[8px] font-black text-amber-500 uppercase">{alert.type} • {alert.condo}</p>
+                         <p className="text-xs font-black text-slate-800 leading-tight">{alert.name}</p>
+                         <p className={`text-[10px] font-black mt-1 uppercase ${alert.days < 0 ? 'text-red-600' : 'text-amber-600'}`}>
+                           {alert.days < 0 ? `Atrasado ${Math.abs(alert.days)} dias` : alert.days === 0 ? 'Vence hoje' : `Vence em ${alert.days} dias`}
+                         </p>
+                       </div>
+                       <button 
+                        onClick={() => {
+                          setSelectedCondoId(data.equipments.find(e => e.id === alert.id)?.condo_id || data.systems.find(s => s.id === alert.id)?.condo_id || '');
+                          setAssignmentType(alert.type === 'Equipamento' ? 'equipment' : 'system');
+                          setIsScheduleModalOpen(true);
+                        }}
+                        className="p-2.5 bg-amber-500 text-white rounded-xl shadow-lg shadow-amber-500/20 active:scale-95 transition-all"
+                       >
+                         <Calendar size={18} />
+                       </button>
+                    </div>
+                  ))}
+               </div>
+            </div>
+          )}
+
           <div className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm">
             <div className="px-8 py-6 border-b flex justify-between items-center bg-slate-50/50">
               <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest flex items-center">
-                <Calendar size={16} className="mr-2 text-blue-600" /> Cronograma Semanal de Vistorias
+                <Calendar size={16} className="mr-2 text-blue-600" /> Agenda da Semana
               </h3>
             </div>
             <div className="p-4 md:p-8">
@@ -199,7 +247,6 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
                           {day.getDate()}
                         </div>
                       </div>
-                      
                       <div className="flex-1 space-y-3">
                         {dayAppts.length > 0 ? (
                           dayAppts.map(appt => (
@@ -209,7 +256,7 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
                                   {appt.equipment_id ? <Layers size={18} /> : appt.system_id ? <Settings size={18} /> : <Wrench size={18} />}
                                 </div>
                                 <div>
-                                  <p className="text-[10px] font-black text-blue-500 uppercase tracking-tight">{appt.time} • {appt.equipment_id ? 'Equipamento' : appt.system_id ? 'Sistema' : 'Preventiva Geral'}</p>
+                                  <p className="text-[10px] font-black text-blue-500 uppercase tracking-tight">{appt.time} • {appt.equipment_id ? 'Ativo' : appt.system_id ? 'Sistema' : 'Geral'}</p>
                                   <p className="text-sm font-bold text-slate-800 leading-tight">{appt.description}</p>
                                   <div className="flex items-center space-x-2 mt-1">
                                     {!isRestricted && (
@@ -218,25 +265,25 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
                                       </p>
                                     )}
                                     {appt.service_order_id && (
-                                      <span className="text-[8px] font-black bg-emerald-100 text-emerald-600 px-2 py-0.5 rounded-md uppercase">OS Aberta</span>
+                                      <span className="text-[8px] font-black bg-emerald-100 text-emerald-600 px-2 py-0.5 rounded-md uppercase">Na Lista do Técnico</span>
                                     )}
                                   </div>
                                 </div>
                               </div>
                               {isAdminOrTech && appt.service_order_id && (
                                 <button 
-                                  onClick={() => handleStartWork(appt)}
-                                  className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-xl font-black text-[9px] uppercase shadow-lg shadow-blue-500/20 active:scale-95 transition-all"
+                                  onClick={() => navigate(`/os?id=${appt.service_order_id}`)}
+                                  className="flex items-center space-x-2 px-4 py-2 bg-slate-900 text-white rounded-xl font-black text-[9px] uppercase shadow-xl active:scale-95 transition-all"
                                 >
                                   <PlayCircle size={14} />
-                                  <span>Executar</span>
+                                  <span>Dar Baixa</span>
                                 </button>
                               )}
                             </div>
                           ))
                         ) : (
                           <div className="h-full flex items-center border-b border-slate-50 pb-4">
-                            <span className="text-[10px] font-bold text-slate-300 italic">Nenhuma atividade programada</span>
+                            <span className="text-[10px] font-bold text-slate-300 italic">Livre</span>
                           </div>
                         )}
                       </div>
@@ -252,18 +299,18 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
           <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-xl relative overflow-hidden">
              <div className="absolute top-0 right-0 p-8 opacity-10 rotate-12"><ShieldCheck size={120} /></div>
              <div className="relative z-10">
-               <h3 className="text-lg font-black uppercase tracking-tight leading-tight">Plano de Manutenção</h3>
-               <p className="text-xs text-slate-400 mt-2 font-medium leading-relaxed">Preventivas em dia garantem a valorização do patrimônio e economia de até 40% em reparos.</p>
+               <h3 className="text-lg font-black uppercase tracking-tight leading-tight">Metas de Preventiva</h3>
+               <p className="text-xs text-slate-400 mt-2 font-medium leading-relaxed">Periodicidades cadastradas ajudam a evitar custos emergenciais.</p>
                <div className="mt-8 space-y-4">
                   <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/10">
-                    <span className="text-[10px] font-black uppercase text-slate-400">Status Geral</span>
-                    <span className="text-[10px] font-black bg-emerald-500 text-white px-3 py-1 rounded-lg uppercase">Excelente</span>
+                    <span className="text-[10px] font-black uppercase text-slate-400">Total Ativos</span>
+                    <span className="text-[10px] font-black text-white">{data.equipments.length + data.systems.length}</span>
                   </div>
                   <button 
                     onClick={() => navigate('/os')}
                     className="w-full py-4 bg-white text-slate-900 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center space-x-2 shadow-xl"
                   >
-                    <span>Ver Histórico OS</span>
+                    <span>Histórico Técnico</span>
                     <ChevronRight size={14} />
                   </button>
                </div>
@@ -271,33 +318,40 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
           </div>
 
           <div className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm">
-            <div className="px-6 py-5 border-b flex items-center justify-between">
+            <div className="px-6 py-5 border-b">
               <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest flex items-center">
-                <Clock size={16} className="mr-2 text-blue-600" /> Últimas OS
+                <Activity size={16} className="mr-2 text-blue-600" /> Telemetria Recente
               </h3>
             </div>
-            <div className="divide-y divide-slate-100">
-              {filteredOSList.slice(0, 5).map(os => (
-                <div key={os.id} className="p-5 hover:bg-slate-50 transition-colors">
-                  <p className="text-[9px] font-black text-slate-400 uppercase leading-none mb-1">
-                    {os.type} • {new Date(os.created_at).toLocaleDateString()}
-                  </p>
-                  <p className="text-xs font-bold text-slate-800 line-clamp-1">{os.problem_description}</p>
-                </div>
-              ))}
-              {filteredOSList.length === 0 && (
-                <div className="p-8 text-center text-slate-400 italic text-[10px]">Sem registros recentes.</div>
-              )}
+            <div className="p-4 space-y-3">
+              {data.waterLevels.slice(0, 3).map(level => {
+                 const condo = data.condos.find(c => c.id === level.condominio_id);
+                 return (
+                   <div key={level.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-[8px] font-black text-slate-400 uppercase">Reservatório</span>
+                        <span className="text-[8px] font-black text-blue-600 uppercase">{new Date(level.created_at).toLocaleTimeString()}</span>
+                      </div>
+                      <div className="flex items-end space-x-2">
+                        <span className="text-2xl font-black text-slate-900 leading-none">{level.percentual}%</span>
+                        <div className="flex-1 h-1 bg-slate-200 rounded-full mb-1">
+                           <div className="h-full bg-blue-500 rounded-full" style={{ width: `${level.percentual}%` }}></div>
+                        </div>
+                      </div>
+                   </div>
+                 );
+              })}
             </div>
           </div>
         </div>
       </div>
-
+      
+      {/* O modal de agendamento permanece o mesmo, mantendo a flexibilidade de vincular equipamentos/sistemas */}
       {isScheduleModalOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
           <div className="bg-white rounded-[2.5rem] w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
             <div className="p-6 border-b flex justify-between items-center bg-slate-50">
-              <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">Programar Manutenção / Vistoria</h2>
+              <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">Programar Preventiva</h2>
               <button onClick={() => setIsScheduleModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm"><X size={24} /></button>
             </div>
             <form onSubmit={async (e) => {
@@ -320,82 +374,42 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
               
               {!isRestricted && (
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Condomínio</label>
-                  <select 
-                    required 
-                    name="condo_id" 
-                    value={selectedCondoId}
-                    onChange={(e) => setSelectedCondoId(e.target.value)}
-                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none"
-                  >
-                    <option value="">Selecione o Condomínio...</option>
+                  <label className="text-[10px] font-black text-slate-500 uppercase ml-1 tracking-widest">Condomínio</label>
+                  <select required name="condo_id" value={selectedCondoId} onChange={(e) => setSelectedCondoId(e.target.value)} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl text-xs font-bold outline-none">
+                    <option value="">Selecione...</option>
                     {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
               )}
 
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Tipo de Vínculo Técnico</label>
+                <label className="text-[10px] font-black text-slate-500 uppercase ml-1 tracking-widest">Vincular a:</label>
                 <div className="grid grid-cols-3 gap-2">
-                   <button 
-                    type="button" 
-                    onClick={() => setAssignmentType('general')}
-                    className={`py-3 rounded-xl text-[9px] font-black uppercase border transition-all ${assignmentType === 'general' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'}`}
-                   >Preventiva Geral</button>
-                   <button 
-                    type="button" 
-                    onClick={() => setAssignmentType('equipment')}
-                    className={`py-3 rounded-xl text-[9px] font-black uppercase border transition-all ${assignmentType === 'equipment' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'}`}
-                   >Equipamento</button>
-                   <button 
-                    type="button" 
-                    onClick={() => setAssignmentType('system')}
-                    className={`py-3 rounded-xl text-[9px] font-black uppercase border transition-all ${assignmentType === 'system' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'}`}
-                   >Sistema Predial</button>
+                   <button type="button" onClick={() => setAssignmentType('general')} className={`py-3 rounded-xl text-[9px] font-black uppercase border transition-all ${assignmentType === 'general' ? 'bg-slate-900 text-white' : 'bg-white text-slate-400'}`}>Geral</button>
+                   <button type="button" onClick={() => setAssignmentType('equipment')} className={`py-3 rounded-xl text-[9px] font-black uppercase border transition-all ${assignmentType === 'equipment' ? 'bg-blue-600 text-white' : 'bg-white text-slate-400'}`}>Ativo</button>
+                   <button type="button" onClick={() => setAssignmentType('system')} className={`py-3 rounded-xl text-[9px] font-black uppercase border transition-all ${assignmentType === 'system' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-400'}`}>Sistema</button>
                 </div>
               </div>
 
-              {assignmentType === 'equipment' && (
-                <div className="space-y-1 animate-in slide-in-from-top duration-200">
-                  <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest ml-1">Selecionar Equipamento</label>
-                  <select required name="equipment_id" className="w-full px-5 py-4 bg-blue-50 border border-blue-100 rounded-2xl text-xs font-bold text-blue-900 outline-none">
-                    <option value="">Selecione o Equipamento...</option>
-                    {filteredEquipmentsForModal.map(e => <option key={e.id} value={e.id}>{e.manufacturer} - {e.model} ({e.location})</option>)}
-                  </select>
-                </div>
-              )}
-
-              {assignmentType === 'system' && (
-                <div className="space-y-1 animate-in slide-in-from-top duration-200">
-                  <label className="text-[10px] font-black text-indigo-600 uppercase tracking-widest ml-1">Selecionar Sistema</label>
-                  <select required name="system_id" className="w-full px-5 py-4 bg-indigo-50 border border-indigo-100 rounded-2xl text-xs font-bold text-indigo-900 outline-none">
-                    <option value="">Selecione o Sistema Predial...</option>
-                    {filteredSystemsForModal.map(s => <option key={s.id} value={s.id}>{s.name} ({s.location})</option>)}
-                  </select>
-                </div>
-              )}
-
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Data</label>
-                  <input required type="date" name="date" className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none" />
+                  <label className="text-[10px] font-black text-slate-500 uppercase ml-1 tracking-widest">Data</label>
+                  <input required type="date" name="date" className="w-full px-5 py-4 bg-slate-50 border rounded-2xl text-xs font-bold outline-none" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Horário</label>
-                  <input required type="time" name="time" className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none" />
+                  <label className="text-[10px] font-black text-slate-500 uppercase ml-1 tracking-widest">Horário</label>
+                  <input required type="time" name="time" className="w-full px-5 py-4 bg-slate-50 border rounded-2xl text-xs font-bold outline-none" />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Descrição do Agendamento</label>
-                <textarea required name="description" placeholder="Ex: Vistoria mensal nas bombas de recalque do Bloco A" rows={3} className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold outline-none resize-none"></textarea>
+                <label className="text-[10px] font-black text-slate-500 uppercase ml-1 tracking-widest">Descrição</label>
+                <textarea required name="description" placeholder="Ex: Vistoria preventiva mensal nas bombas" rows={3} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl text-xs font-bold outline-none resize-none"></textarea>
               </div>
 
               <div className="pt-6 flex gap-4 shrink-0">
-                <button type="button" onClick={() => setIsScheduleModalOpen(false)} className="flex-1 py-4 border border-slate-200 rounded-2xl font-black text-[10px] uppercase text-slate-400">Cancelar</button>
-                <button type="submit" className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-black text-[10px] uppercase shadow-xl shadow-blue-600/20 active:scale-95 transition-all">
-                  <Save size={16} className="inline mr-2" /> Salvar na Agenda
-                </button>
+                <button type="button" onClick={() => setIsScheduleModalOpen(false)} className="flex-1 py-4 border rounded-2xl font-black text-[10px] uppercase text-slate-400">Cancelar</button>
+                <button type="submit" className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-black text-[10px] uppercase shadow-xl">Agendar</button>
               </div>
             </form>
           </div>

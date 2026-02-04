@@ -1,4 +1,5 @@
 
+
 export enum UserRole {
   ADMIN = 'ADMIN',
   TECHNICIAN = 'TECHNICIAN',
@@ -41,10 +42,20 @@ export interface MonitoringPoint {
 
 export interface WaterLevel {
   id: string;
-  condominio_id: string; // Usado como Device ID do ESP32
+  condominio_id: string; 
   percentual: number;
   nivel_cm: number;
   status?: string;
+  created_at: string;
+}
+
+// Fixed: Exported MonitoringAlert interface to resolve import error in Monitoring.tsx
+export interface MonitoringAlert {
+  id: string;
+  equipment_id: string;
+  message: string;
+  value: string | number;
+  is_resolved: boolean;
   created_at: string;
 }
 
@@ -75,8 +86,10 @@ export interface Equipment {
   observations: string;
   photos: string[];
   last_maintenance: string;
+  maintenance_period?: number; // Periodicidade em dias
   updated_at?: string;
   device_id?: string; 
+  // Added properties for Tuya/Monitoring integration used in Monitoring.tsx
   tuya_device_id?: string;
   is_online?: boolean;
   monitoring_status?: 'normal' | 'atencao' | 'critico';
@@ -98,6 +111,8 @@ export interface System {
   monitoring_points?: MonitoringPoint[];
   parameters: string;
   observations: string;
+  last_maintenance?: string;
+  maintenance_period?: number; // Periodicidade em dias
   updated_at?: string;
 }
 
@@ -132,7 +147,7 @@ export interface Appointment {
   time: string;
   description: string;
   status: 'Pendente' | 'Confirmada' | 'Realizada' | 'Cancelada';
-  service_order_id?: string; // Vínculo com a OS gerada
+  service_order_id?: string;
   updated_at?: string;
 }
 
@@ -143,15 +158,6 @@ export interface User {
   email: string;
   password?: string;
   condo_id?: string;
-}
-
-export interface MonitoringAlert {
-  id: string;
-  equipment_id: string;
-  message: string;
-  value: string;
-  is_resolved: boolean;
-  created_at: string;
 }
 
 export interface AppData {
@@ -165,5 +171,6 @@ export interface AppData {
   systemTypes: SystemType[];
   currentUser: User | null;
   waterLevels: WaterLevel[];
+  // Fixed: typed monitoringAlerts correctly
   monitoringAlerts: MonitoringAlert[];
 }

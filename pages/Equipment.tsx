@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { Plus, Layers, ShieldCheck, Thermometer, Zap, AlertCircle, Trash2, Edit2, X, MapPin, Camera, ImageIcon, ChevronLeft, ChevronRight, Building2 } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Plus, Layers, ShieldCheck, Thermometer, Zap, AlertCircle, Trash2, Edit2, X, MapPin, Camera, ImageIcon, ChevronLeft, ChevronRight, Building2, Clock, Calendar } from 'lucide-react';
 import { Equipment, EquipmentType, Condo, UserRole } from '../types';
 
 const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
@@ -9,8 +9,7 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const [photos, setPhotos] = useState<string[]>([]);
 
   const user = data.currentUser;
-  const isAdmin = user?.role === UserRole.ADMIN;
-  const isTech = user?.role === UserRole.TECHNICIAN;
+  const isAdminOrTech = user?.role === UserRole.ADMIN || user?.role === UserRole.TECHNICIAN;
   const isCondo = user?.role === UserRole.CONDO_USER;
   const userCondoId = user?.condo_id;
 
@@ -21,18 +20,11 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
-
     (Array.from(files) as File[]).forEach(file => {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhotos(prev => [...prev, reader.result as string]);
-      };
+      reader.onloadend = () => setPhotos(prev => [...prev, reader.result as string]);
       reader.readAsDataURL(file);
     });
-  };
-
-  const removePhoto = (index: number) => {
-    setPhotos(prev => prev.filter((_, i) => i !== index));
   };
 
   const openModal = (eq: Equipment | null) => {
@@ -44,12 +36,10 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    
-    // Força o ID do condomínio apenas se for Síndico. Técnico e Admin usam o valor do select.
     const condoId = isCondo ? userCondoId : (formData.get('condoId') as string);
 
     const eqData: Equipment = {
-      id: editingEq?.id || Math.random().toString(36).substr(2, 9),
+      id: editingEq?.id || `eq-${Date.now()}`,
       condo_id: condoId || '',
       type_id: formData.get('typeId') as string,
       manufacturer: formData.get('manufacturer') as string,
@@ -64,7 +54,8 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
       location: formData.get('location') as string,
       observations: formData.get('observations') as string,
       photos: photos,
-      last_maintenance: editingEq?.last_maintenance || new Date().toISOString()
+      last_maintenance: formData.get('last_maintenance') as string || new Date().toISOString(),
+      maintenance_period: Number(formData.get('maintenance_period')) || 30
     };
 
     const newEquipments = editingEq
@@ -77,26 +68,30 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     setPhotos([]);
   };
 
-  const deleteEquipment = (id: string) => {
-    if (confirm('Excluir este equipamento permanentemente?')) {
-      updateData({ ...data, equipments: data.equipments.filter((e: Equipment) => e.id !== id) });
-    }
+  const getMaintenanceStatus = (eq: Equipment) => {
+    if (!eq.last_maintenance || !eq.maintenance_period) return { label: 'Sem dados', color: 'text-slate-400' };
+    const last = new Date(eq.last_maintenance);
+    const next = new Date(last);
+    next.setDate(last.getDate() + eq.maintenance_period);
+    const today = new Date();
+    const diff = Math.ceil((next.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (diff < 0) return { label: 'Atrasada', color: 'text-red-500', days: Math.abs(diff) };
+    if (diff <= 7) return { label: 'Vence em breve', color: 'text-amber-500', days: diff };
+    return { label: 'Em dia', color: 'text-emerald-500', days: diff };
   };
 
   return (
     <div className="space-y-6 pb-12">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 leading-tight">Equipamentos</h1>
-          <p className="text-sm text-slate-500 font-medium italic">Inventário técnico e controle de ativos.</p>
+          <h1 className="text-2xl font-black text-slate-900 leading-tight">Gestão de Ativos</h1>
+          <p className="text-sm text-slate-500 font-medium">Controle de inventário e periodicidade técnica.</p>
         </div>
-        {(isAdmin || isTech || isCondo) && (
-          <button 
-            onClick={() => openModal(null)}
-            className="w-full md:w-auto bg-blue-600 text-white px-6 py-2.5 rounded-xl flex items-center justify-center space-x-2 font-bold shadow-lg shadow-blue-500/20 active:scale-95 transition-all"
-          >
-            <Plus size={20} />
-            <span className="uppercase text-xs tracking-widest">Cadastrar Ativo</span>
+        {isAdminOrTech && (
+          <button onClick={() => openModal(null)} className="w-full md:w-auto bg-slate-900 text-white px-6 py-3 rounded-2xl flex items-center justify-center space-x-2 font-black uppercase text-[10px] tracking-widest shadow-xl">
+            <Plus size={18} />
+            <span>Novo Equipamento</span>
           </button>
         )}
       </div>
@@ -105,64 +100,68 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
         {filteredEquipments.map((eq: Equipment) => {
           const condo = data.condos.find((c: Condo) => c.id === eq.condo_id);
           const type = data.equipmentTypes.find((t: EquipmentType) => t.id === eq.type_id);
+          const status = getMaintenanceStatus(eq);
           
           return (
-            <div key={eq.id} className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden group hover:border-blue-400 transition-all flex flex-col h-full">
-              <div className="relative h-48 bg-slate-100 shrink-0 overflow-hidden">
+            <div key={eq.id} className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden group hover:border-blue-400 transition-all flex flex-col h-full">
+              <div className="relative h-44 bg-slate-100 shrink-0 overflow-hidden">
                 {eq.photos && eq.photos.length > 0 ? (
-                  <img src={eq.photos[0]} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt={eq.model} />
+                  <img src={eq.photos[0]} className="w-full h-full object-cover transition-transform group-hover:scale-110" alt={eq.model} />
                 ) : (
-                  <div className="w-full h-full flex flex-col items-center justify-center text-slate-300">
-                    <ImageIcon size={48} />
-                    <span className="text-[9px] font-black uppercase mt-2">Sem Foto</span>
-                  </div>
+                  <div className="w-full h-full flex items-center justify-center text-slate-300"><ImageIcon size={40} /></div>
                 )}
                 <div className="absolute top-4 left-4">
-                  <span className="px-2 py-1 bg-white/90 backdrop-blur shadow-sm text-slate-900 text-[9px] font-black uppercase tracking-widest rounded-lg border border-slate-100">
+                  <span className="px-3 py-1 bg-white/90 backdrop-blur shadow-sm text-slate-900 text-[9px] font-black uppercase tracking-widest rounded-lg border border-slate-100">
                     {type?.name || 'Inespecífico'}
                   </span>
                 </div>
+                {eq.maintenance_period && (
+                   <div className="absolute bottom-4 right-4 bg-slate-900/80 backdrop-blur px-3 py-1.5 rounded-xl border border-white/20">
+                      <p className="text-[7px] font-black text-slate-400 uppercase leading-none mb-1">Periodicidade</p>
+                      <p className="text-[10px] font-black text-white leading-none">{eq.maintenance_period} dias</p>
+                   </div>
+                )}
               </div>
 
               <div className="p-6 flex-1 flex flex-col">
-                <div className="flex justify-between items-start mb-4">
+                <div className="flex justify-between items-start mb-2">
                   <div className="min-w-0">
                     <h3 className="font-black text-slate-900 text-lg leading-tight truncate">{eq.manufacturer}</h3>
                     <p className="text-xs font-bold text-slate-500 truncate">{eq.model}</p>
                   </div>
-                  {(isAdmin || isTech || (isCondo && eq.condo_id === userCondoId)) && (
+                  {isAdminOrTech && (
                     <div className="flex space-x-1 shrink-0">
-                       <button onClick={() => openModal(eq)} className="p-2 text-slate-400 hover:text-blue-600 bg-slate-50 rounded-lg transition-colors"><Edit2 size={16} /></button>
-                       <button onClick={() => deleteEquipment(eq.id)} className="p-2 text-slate-400 hover:text-red-600 bg-slate-50 rounded-lg transition-colors"><Trash2 size={16} /></button>
+                       <button onClick={() => openModal(eq)} className="p-2.5 text-slate-400 hover:text-blue-600 bg-slate-50 rounded-xl transition-all"><Edit2 size={16} /></button>
                     </div>
                   )}
                 </div>
                 
-                <p className="text-[10px] text-blue-600 font-black uppercase mb-6 flex items-center">
-                  <Building2 size={12} className="mr-1.5" /> {condo?.name || 'SEM CONDOMÍNIO'}
+                <p className="text-[9px] text-blue-600 font-black uppercase mb-6 flex items-center">
+                  <Building2 size={12} className="mr-1.5" /> {condo?.name || 'Geral'}
                 </p>
 
-                <div className="grid grid-cols-2 gap-3 mb-6">
-                  <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                    <p className="text-[8px] text-slate-400 font-black uppercase mb-1">Corrente</p>
-                    <div className="text-sm font-black text-slate-900">{eq.measured_current}A</div>
-                  </div>
-                  <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                    <p className="text-[8px] text-slate-400 font-black uppercase mb-1">Temperatura</p>
-                    <div className="text-sm font-black text-slate-900">{eq.temperature}°C</div>
-                  </div>
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-6">
+                   <div className="flex justify-between items-center mb-2">
+                      <span className="text-[9px] font-black text-slate-400 uppercase">Saúde do Cronograma</span>
+                      <span className={`text-[9px] font-black uppercase ${status.color}`}>{status.label}</span>
+                   </div>
+                   <div className="flex items-center space-x-3">
+                      <Clock size={16} className="text-slate-300" />
+                      <div>
+                        <p className="text-[10px] font-black text-slate-900 leading-none">Próxima Revisão</p>
+                        <p className="text-[9px] text-slate-500 font-bold mt-0.5">
+                           {status.days !== undefined ? (status.label === 'Atrasada' ? `Atrasado há ${status.days} dias` : `Em ${status.days} dias`) : '---'}
+                        </p>
+                      </div>
+                   </div>
                 </div>
 
-                <div className="mt-auto pt-4 border-t border-slate-100 flex justify-between items-center">
-                  <div className="flex items-center text-[9px] font-black uppercase tracking-widest text-slate-400">
-                    <AlertCircle size={14} className="mr-1.5" />
-                    Ruído: <span className={eq.noise === 'Normal' ? 'text-emerald-600 ml-1' : 'text-red-500 ml-1'}>{eq.noise}</span>
+                <div className="mt-auto grid grid-cols-2 gap-4 pt-4 border-t border-slate-50">
+                  <div className="flex items-center text-[9px] font-black uppercase text-slate-400 tracking-widest">
+                    <Thermometer size={14} className="mr-1.5" /> {eq.temperature}°C
                   </div>
-                  <div className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-lg ${
-                    eq.electrical_state === 'Bom' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 
-                    eq.electrical_state === 'Regular' ? 'bg-amber-50 text-amber-600 border border-amber-100' : 'bg-red-50 text-red-600 border border-red-100'
-                  }`}>
-                    {eq.electrical_state}
+                  <div className="flex items-center text-[9px] font-black uppercase text-slate-400 tracking-widest">
+                    <Zap size={14} className="mr-1.5" /> {eq.measured_current}A
                   </div>
                 </div>
               </div>
@@ -175,91 +174,68 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-[2.5rem] w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[95vh] animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-              <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">{editingEq ? 'Editar Equipamento' : 'Novo Equipamento'}</h2>
-              <button onClick={() => { setIsModalOpen(false); setEditingEq(null); }} className="p-2.5 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm">
-                <X size={20} />
-              </button>
+              <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">{editingEq ? 'Configurar Ativo' : 'Novo Ativo'}</h2>
+              <button onClick={() => { setIsModalOpen(false); setEditingEq(null); }} className="p-2.5 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm"><X size={20} /></button>
             </div>
             
-            <form onSubmit={handleSubmit} className="p-6 md:p-8 space-y-6 overflow-y-auto custom-scrollbar">
+            <form onSubmit={handleSubmit} className="p-8 space-y-6 overflow-y-auto custom-scrollbar">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Condomínio</label>
-                  {isCondo ? (
-                    <div className="w-full px-4 py-3.5 bg-slate-100 border border-slate-200 rounded-2xl font-black text-xs text-slate-600">
-                      {data.condos.find((c: Condo) => c.id === userCondoId)?.name || 'ERRO DE VÍNCULO'}
-                    </div>
-                  ) : (
-                    <select required name="condoId" defaultValue={editingEq?.condo_id} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-xs focus:ring-2 focus:ring-blue-500/20 outline-none">
-                      <option value="">Selecione...</option>
-                      {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                  )}
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Condomínio</label>
+                  <select required name="condoId" defaultValue={editingEq?.condo_id} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none">
+                    <option value="">Selecione...</option>
+                    {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Tipo</label>
-                  <select required name="typeId" defaultValue={editingEq?.type_id} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-xs focus:ring-2 focus:ring-blue-500/20 outline-none">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Tipo de Equipamento</label>
+                  <select required name="typeId" defaultValue={editingEq?.type_id} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none">
                     {data.equipmentTypes.map((t: EquipmentType) => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                 </div>
               </div>
 
+              <div className="bg-blue-50/50 p-6 rounded-[2rem] border border-blue-100 space-y-5">
+                 <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest flex items-center">
+                   <Calendar size={16} className="mr-2" /> Cronograma de Preventivas
+                 </h4>
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-blue-500 uppercase tracking-widest ml-1">Periodicidade (em dias)</label>
+                      <input required type="number" name="maintenance_period" defaultValue={editingEq?.maintenance_period || 30} className="w-full px-5 py-4 bg-white border border-blue-100 rounded-2xl font-black text-blue-600 outline-none" placeholder="Ex: 30" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-blue-500 uppercase tracking-widest ml-1">Última Revisão Realizada</label>
+                      <input required type="date" name="last_maintenance" defaultValue={editingEq?.last_maintenance?.split('T')[0]} className="w-full px-5 py-4 bg-white border border-blue-100 rounded-2xl font-black text-blue-600 outline-none" />
+                    </div>
+                 </div>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Fabricante</label>
-                  <input required name="manufacturer" defaultValue={editingEq?.manufacturer} placeholder="Ex: WEG, Schneider..." className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-xs outline-none" />
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Fabricante</label>
+                  <input required name="manufacturer" defaultValue={editingEq?.manufacturer} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Modelo / Identificação</label>
-                  <input required name="model" defaultValue={editingEq?.model} placeholder="Ex: Motor Trifásico 5HP..." className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-xs outline-none" />
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Modelo</label>
+                  <input required name="model" defaultValue={editingEq?.model} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs" />
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Potência</label>
-                  <input required name="power" defaultValue={editingEq?.power} placeholder="HP/kW" className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-xs" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Tensão</label>
-                  <input required name="voltage" defaultValue={editingEq?.voltage} placeholder="V" className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-xs" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Corr. Nom.</label>
-                  <input required type="number" step="0.1" name="nominalCurrent" defaultValue={editingEq?.nominal_current} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-xs" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Corr. Med.</label>
-                  <input required type="number" step="0.1" name="measuredCurrent" defaultValue={editingEq?.measured_current} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-xs" />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                 <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Estado Elétrico</label>
-                    <select name="electricalState" defaultValue={editingEq?.electrical_state} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl font-black text-xs">
-                      <option value="Bom">Bom</option>
-                      <option value="Regular">Regular</option>
-                      <option value="Crítico">Crítico</option>
-                    </select>
-                 </div>
-                 <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Ruído</label>
-                    <select name="noise" defaultValue={editingEq?.noise} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl font-black text-xs">
-                      <option value="Normal">Normal</option>
-                      <option value="Anormal">Anormal</option>
-                    </select>
-                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Localização</label>
-                <input required name="location" defaultValue={editingEq?.location} placeholder="Ex: Casa de Máquinas Subsolo" className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-xs" />
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Fotos do Ativo</label>
+                <div className="flex gap-2 flex-wrap">
+                  {photos.map((p, i) => <img key={i} src={p} className="w-20 h-20 object-cover rounded-xl border" />)}
+                  <label className="w-20 h-20 border-2 border-dashed border-slate-200 rounded-xl flex items-center justify-center text-slate-400 cursor-pointer hover:border-blue-400 transition-all">
+                    <Camera size={24} />
+                    <input type="file" accept="image/*" multiple className="hidden" onChange={handleFileChange} />
+                  </label>
+                </div>
               </div>
 
               <div className="pt-6 flex gap-3">
-                <button type="button" onClick={() => { setIsModalOpen(false); setEditingEq(null); }} className="flex-1 py-4 border rounded-2xl font-black uppercase text-[10px] text-slate-400">Descartar</button>
-                <button type="submit" className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-slate-900/20 active:scale-95 transition-all">Gravar Ativo</button>
+                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 border rounded-2xl font-black uppercase text-[10px] text-slate-400">Cancelar</button>
+                <button type="submit" className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl">Salvar Cadastro</button>
               </div>
             </form>
           </div>
