@@ -8,7 +8,6 @@ import { OSType, OSStatus, ServiceOrder, Condo, System, UserRole, AppData, Equip
 
 const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void }> = ({ data, updateData }) => {
   const user = data.currentUser;
-  // Use SINDICO_ADMIN as the correct role for condo-level access
   const isCondoUser = user?.role === UserRole.SINDICO_ADMIN;
   const isRonda = user?.role === UserRole.RONDA;
   const isAdminOrTech = user?.role === UserRole.ADMIN || user?.role === UserRole.TECHNICIAN;

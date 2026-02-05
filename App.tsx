@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
-import { UserRole, AppData, User } from './types';
+import { UserRole, AppData, User, WaterLevel as WaterLevelType } from './types';
 import { supabase, isSupabaseActive } from './supabase';
 
 import Dashboard from './pages/Dashboard';
@@ -42,6 +42,30 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     dataRef.current = data;
   }, [data]);
+
+  // Sincronização Realtime para Níveis de Água
+  useEffect(() => {
+    if (!isSupabaseActive) return;
+
+    const channel = supabase
+      .channel('schema-db-changes')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'nivel_caixa' },
+        (payload) => {
+          const newReading = payload.new as WaterLevelType;
+          if (dataRef.current) {
+            const updatedLevels = [newReading, ...dataRef.current.waterLevels].slice(0, 200);
+            const newData = { ...dataRef.current, waterLevels: updatedLevels };
+            setData(newData);
+            saveStore(newData);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, []);
 
   const smartUnion = (local: any[], cloud: any[] | null) => {
     if (!cloud || cloud.length === 0) return local || [];
