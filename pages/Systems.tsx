@@ -13,7 +13,7 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
 
   const user = data.currentUser;
   const isAdminOrTech = user?.role === UserRole.ADMIN || user?.role === UserRole.TECHNICIAN;
-  // Fix: Replaced UserRole.CONDO_USER with UserRole.SINDICO_ADMIN
+  const isAdmin = user?.role === UserRole.ADMIN;
   const isCondo = user?.role === UserRole.SINDICO_ADMIN;
   const userCondoId = user?.condo_id;
 
@@ -26,6 +26,14 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
     setSelectedTypeId(sys?.type_id || '1');
     setPoints(sys?.monitoring_points || []);
     setIsModalOpen(true);
+  };
+
+  const deleteSystem = async (id: string) => {
+    if (!isAdmin) return;
+    if (window.confirm('ATENÇÃO: Deseja realmente excluir este sistema? Esta ação removerá também todos os vínculos de monitoramento IOT associados.')) {
+      const newSystemsList = data.systems.filter((s: System) => s.id !== id);
+      await updateData({ ...data, systems: newSystemsList });
+    }
   };
 
   const handleAddPoint = () => {
@@ -99,9 +107,14 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
                     <h3 className="text-lg font-black text-slate-900 leading-tight truncate">{sys.name}</h3>
                     <p className="text-[9px] font-black text-blue-600 uppercase mt-1 tracking-widest">{condo?.name || 'Localização Geral'}</p>
                    </div>
-                   {isAdminOrTech && (
-                     <button onClick={() => openModal(sys)} className="p-2.5 text-slate-400 hover:text-blue-600 bg-slate-50 rounded-xl transition-all"><Edit2 size={16} /></button>
-                   )}
+                   <div className="flex space-x-1 shrink-0">
+                      {isAdminOrTech && (
+                        <button onClick={() => openModal(sys)} className="p-2.5 text-slate-400 hover:text-blue-600 bg-slate-50 rounded-xl transition-all" title="Editar Sistema"><Edit2 size={16} /></button>
+                      )}
+                      {isAdmin && (
+                        <button onClick={() => deleteSystem(sys.id)} className="p-2.5 text-slate-400 hover:text-red-600 bg-slate-50 rounded-xl transition-all" title="Excluir Sistema"><Trash2 size={16} /></button>
+                      )}
+                   </div>
                 </div>
                 
                 <div className="grid grid-cols-2 gap-4 mb-4">
