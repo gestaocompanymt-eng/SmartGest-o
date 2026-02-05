@@ -47,24 +47,25 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     if (!isSupabaseActive) return;
 
-    // Escuta inserções na tabela nivel_caixa em tempo real
     const channel = supabase
-      .channel('water-level-updates')
+      .channel('schema-db-changes')
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'nivel_caixa' },
         (payload) => {
+          console.log('Novo nível recebido via Realtime:', payload.new);
           const newReading = payload.new as WaterLevelType;
           if (dataRef.current) {
-            // Adiciona a nova leitura no topo do histórico
-            const updatedLevels = [newReading, ...dataRef.current.waterLevels].slice(0, 300);
+            const updatedLevels = [newReading, ...dataRef.current.waterLevels].slice(0, 500);
             const newData = { ...dataRef.current, waterLevels: updatedLevels };
             setData(newData);
             saveStore(newData);
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('Status do Canal Realtime:', status);
+      });
 
     return () => { supabase.removeChannel(channel); };
   }, []);
@@ -103,7 +104,7 @@ const AppContent: React.FC = () => {
       let qSystems = supabase.from('systems').select('*');
       let qOS = supabase.from('service_orders').select('*');
       let qAppts = supabase.from('appointments').select('*');
-      let qLevels = supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(200);
+      let qLevels = supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(300);
 
       if (isRestricted && condoId) {
         qUsers = qUsers.eq('condo_id', condoId);
@@ -149,7 +150,7 @@ const AppContent: React.FC = () => {
           setData(updated);
           saveStore(updated);
         }
-      }, 45000); // Sincronização de fundo a cada 45s
+      }, 60000); 
     }
     return () => { if (interval) clearInterval(interval); };
   }, [fetchAllData, !!data?.currentUser]);
@@ -197,7 +198,7 @@ const AppContent: React.FC = () => {
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-center">
         <Wrench size={48} className="text-blue-500 animate-bounce mb-6" />
         <h2 className="text-white font-black uppercase tracking-widest text-lg mb-2">SmartGestão</h2>
-        <p className="text-slate-400 text-sm font-bold animate-pulse">Iniciando plataforma...</p>
+        <p className="text-slate-400 text-sm font-bold animate-pulse">Estabelecendo conexão técnica...</p>
       </div>
     );
   }
@@ -266,7 +267,7 @@ const AppContent: React.FC = () => {
           <div className="mt-auto pt-6 border-t border-slate-800">
             <div className="px-4 py-3 mb-4 bg-slate-800/50 rounded-xl">
                <p className="text-[10px] font-black text-slate-500 uppercase">
-                 Perfil: {user?.role === UserRole.SINDICO_ADMIN ? 'Síndico / Administrativo' : user?.role}
+                 Perfil: {user?.role === UserRole.SINDICO_ADMIN ? 'Gestão Predial' : user?.role}
                </p>
                <p className="text-xs font-bold text-white truncate">{user?.name}</p>
             </div>
