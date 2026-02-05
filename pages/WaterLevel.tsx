@@ -12,20 +12,24 @@ import {
   Cpu,
   AlertTriangle,
   Copy,
-  Check
+  Check,
+  BrainCircuit,
+  AlertOctagon,
+  Sparkles
 } from 'lucide-react';
 import { AppData, UserRole, MonitoringPoint, WaterLevel as WaterLevelType } from '../types';
+import { analyzeWaterLevelHistory } from '../geminiService';
 
 const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; onRefresh?: () => Promise<void> }> = ({ data, onRefresh }) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showDiscovery, setShowDiscovery] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [iaAnalysis, setIaAnalysis] = useState<Record<string, {text: string, loading: boolean}>>({});
   
   const user = data.currentUser;
-  const isCondoUser = user?.role === UserRole.CONDO_USER;
+  const isCondoUser = user?.role === UserRole.SINDICO_ADMIN;
   const isAdminOrTech = user?.role === UserRole.ADMIN || user?.role === UserRole.TECHNICIAN;
 
-  // Lista de IDs cadastrados (Normalizado)
   const registeredDeviceIds = useMemo(() => {
     const ids = new Set<string>();
     data.systems.forEach(s => {
@@ -36,7 +40,6 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
     return ids;
   }, [data.systems]);
 
-  // Identifica sinais órfãos (Dispositivos enviando sinal sem estar no cadastro)
   const orphanedSensors = useMemo(() => {
     const orphans = new Map<string, WaterLevelType>();
     data.waterLevels.forEach(level => {
@@ -82,10 +85,44 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
   };
 
+  const getHistoryForDevice = (deviceId: string) => {
+    return data.waterLevels
+      .filter(l => String(l.condominio_id || '').trim().toUpperCase() === deviceId.trim().toUpperCase())
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  };
+
+  const handleIaAnalysis = async (deviceId: string) => {
+    setIaAnalysis(prev => ({ ...prev, [deviceId]: { text: '', loading: true } }));
+    const history = getHistoryForDevice(deviceId);
+    const result = await analyzeWaterLevelHistory(history);
+    setIaAnalysis(prev => ({ ...prev, [deviceId]: { text: result || 'Análise falhou.', loading: false } }));
+  };
+
   const copyToClipboard = (id: string) => {
     navigator.clipboard.writeText(id);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const StageIndicator = ({ percent }: { percent: number }) => {
+    const stages = [0, 25, 50, 75, 100];
+    return (
+      <div className="flex justify-between items-end h-24 gap-3">
+        {stages.map((s) => (
+          <div key={s} className="flex-1 flex flex-col items-center">
+            <div 
+              className={`w-full rounded-t-xl transition-all duration-1000 ${
+                percent >= s 
+                  ? (s === 0 ? 'bg-red-500' : s <= 25 ? 'bg-orange-500' : s <= 50 ? 'bg-amber-400' : 'bg-blue-500') 
+                  : 'bg-slate-100'
+              }`}
+              style={{ height: `${s === 0 ? 15 : s}%` }}
+            ></div>
+            <span className={`text-[8px] font-black mt-2 ${percent >= s ? 'text-slate-900' : 'text-slate-300'}`}>{s}%</span>
+          </div>
+        ))}
+      </div>
+    );
   };
 
   return (
@@ -93,154 +130,84 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-900 leading-tight">Monitoramento Hidráulico</h1>
-          <p className="text-xs font-black text-slate-400 uppercase tracking-widest mt-1">Sinais IoT em Tempo Real</p>
+          <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-1">Escala de 5 Estágios</p>
         </div>
         <div className="flex space-x-2 w-full md:w-auto">
-          {isAdminOrTech && orphanedSensors.length > 0 && (
-            <button 
-              onClick={() => setShowDiscovery(!showDiscovery)}
-              className={`flex-1 md:flex-none px-4 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center space-x-2 relative overflow-hidden ${showDiscovery ? 'bg-amber-500 text-white shadow-lg' : 'bg-amber-50 border-2 text-amber-600 border-amber-200 animate-pulse'}`}
-            >
-              <Search size={16} />
-              <span>Novas Placas ({orphanedSensors.length})</span>
-            </button>
-          )}
           <button 
             onClick={handleManualRefresh}
             className="flex-1 md:flex-none p-3 bg-white border rounded-2xl shadow-sm hover:bg-slate-50 transition-all flex items-center justify-center space-x-2"
           >
             <RefreshCw size={18} className={`${isRefreshing ? 'animate-spin' : ''} text-blue-600`} />
-            <span className="text-[10px] font-black uppercase tracking-widest text-slate-600 tracking-tighter">Atualizar</span>
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-600">Atualizar</span>
           </button>
         </div>
       </div>
-
-      {showDiscovery && isAdminOrTech && (
-        <div className="bg-amber-50 border-2 border-amber-200 rounded-[2.5rem] p-8 animate-in zoom-in-95 duration-200 shadow-2xl shadow-amber-500/10">
-           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-              <div className="flex items-center space-x-4">
-                <div className="p-4 bg-amber-500 text-white rounded-[1.5rem] shadow-xl shadow-amber-500/20"><Wifi size={24} /></div>
-                <div>
-                   <h3 className="text-lg font-black text-amber-900 uppercase leading-none">Novas Placas Detectadas</h3>
-                   <p className="text-[10px] font-bold text-amber-700 uppercase mt-1 italic">Vincule estes IDs aos seus sistemas na aba "Sistemas".</p>
-                </div>
-              </div>
-              <button onClick={() => setShowDiscovery(false)} className="p-2 text-amber-800 hover:bg-amber-100 rounded-full transition-colors self-start md:self-center"><X size={20} /></button>
-           </div>
-           
-           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {orphanedSensors.map(sensor => (
-                <div key={sensor.id} className="bg-white p-6 rounded-[2rem] border-2 border-amber-100 shadow-sm relative overflow-hidden group hover:border-amber-400 transition-all">
-                   <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><Cpu size={60} /></div>
-                   <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">Sensor Encontrado</span>
-                   
-                   <div className="flex items-center justify-between mt-3 mb-4">
-                      <p className="text-xl font-black text-slate-900 font-mono select-all">{sensor.condominio_id}</p>
-                      <button 
-                        onClick={() => copyToClipboard(sensor.condominio_id)}
-                        className={`p-2 rounded-lg transition-all ${copiedId === sensor.condominio_id ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400 hover:text-blue-600'}`}
-                        title="Copiar ID"
-                      >
-                        {copiedId === sensor.condominio_id ? <Check size={16} /> : <Copy size={16} />}
-                      </button>
-                   </div>
-
-                   <div className="flex justify-between items-center pt-4 border-t border-slate-50">
-                      <div className="flex flex-col">
-                         <span className="text-[8px] font-black text-slate-400 uppercase">Sinal Recebido</span>
-                         <span className="text-[10px] font-bold text-slate-700">{new Date(sensor.created_at).toLocaleTimeString()}</span>
-                      </div>
-                      <div className="text-right">
-                         <span className="text-2xl font-black text-amber-500">{sensor.percentual}%</span>
-                      </div>
-                   </div>
-                </div>
-              ))}
-           </div>
-        </div>
-      )}
 
       <div className="space-y-12">
         {monitoringData.map((entry) => (
           <div key={entry.condo.id} className="space-y-6">
             <div className="flex items-center space-x-3 px-4 py-2 border-l-4 border-blue-600 bg-white rounded-r-2xl shadow-sm">
               <Building2 size={20} className="text-blue-600" />
-              <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">{entry.condo.name}</h2>
+              <h2 className="text-sm font-black text-slate-900 uppercase tracking-tight">{entry.condo.name}</h2>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {entry.points.map((point: MonitoringPoint) => {
                 const latest = getLatestReading(point.device_id);
-                const percent = latest ? Math.min(100, Math.max(0, latest.percentual)) : 0;
-                const isOffline = latest ? (new Date().getTime() - new Date(latest.created_at).getTime() > 300000) : true; 
+                const percent = latest ? latest.percentual : 0;
+                const isOffline = latest ? (new Date().getTime() - new Date(latest.created_at).getTime() > 600000) : true; 
+                const analysis = iaAnalysis[point.device_id];
 
                 return (
-                  <div key={point.id} className={`bg-white rounded-[3rem] border-2 overflow-hidden shadow-xl transition-all group ${isOffline ? 'border-slate-100 opacity-80' : 'border-slate-100 hover:border-blue-400 shadow-blue-500/5'}`}>
+                  <div key={point.id} className={`bg-white rounded-[2.5rem] border-2 overflow-hidden shadow-sm transition-all ${isOffline ? 'border-slate-100 opacity-90' : 'border-slate-100 hover:border-blue-200'}`}>
                     <div className="p-8">
-                      <div className="flex justify-between items-start mb-6">
-                        <div className="min-w-0">
-                          <span className="text-[8px] font-black text-blue-500 bg-blue-50 px-2 py-1 rounded-full uppercase tracking-widest border border-blue-100">ID: {point.device_id}</span>
-                          <h3 className="font-black text-slate-800 text-xl uppercase leading-tight mt-2 truncate">{point.name}</h3>
+                      <div className="flex justify-between items-start mb-8">
+                        <div>
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Ponto: {point.name}</p>
+                          <div className="flex items-center space-x-2 mt-1">
+                             <h3 className="font-black text-slate-900 text-2xl">{percent}%</h3>
+                             {isOffline && <span className="px-2 py-0.5 bg-red-50 text-red-500 text-[8px] font-black uppercase rounded-full">Offline</span>}
+                          </div>
                         </div>
-                        {latest && (
-                           <div className={`p-3 rounded-2xl shadow-lg ${percent < 25 ? 'bg-red-50 text-red-500 animate-pulse' : 'bg-emerald-50 text-emerald-600 shadow-emerald-500/10'}`}>
-                             {isOffline ? <Wifi size={20} className="text-slate-300" /> : <Activity size={20} />}
-                           </div>
-                        )}
+                        <button 
+                          onClick={() => handleIaAnalysis(point.device_id)}
+                          disabled={analysis?.loading}
+                          className="flex items-center space-x-2 bg-slate-900 text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all disabled:opacity-50"
+                        >
+                          {analysis?.loading ? <RefreshCw size={12} className="animate-spin" /> : <BrainCircuit size={12} />}
+                          <span>Análise IA</span>
+                        </button>
                       </div>
 
-                      {latest ? (
-                        <>
-                          <div className="relative h-56 w-full bg-slate-50 rounded-[2.5rem] overflow-hidden border-8 border-white shadow-2xl mb-8">
-                             <div className={`absolute bottom-0 left-0 w-full transition-all duration-[2000ms] ease-in-out z-10 
-                                ${percent <= 25 ? 'bg-gradient-to-t from-red-600 to-red-400' : 'bg-gradient-to-t from-blue-600 to-blue-400'}`} 
-                                style={{ height: `${percent}%` }}>
-                               <div className="absolute top-0 left-0 w-full h-4 bg-white/20 animate-pulse blur-sm"></div>
-                               <div className="absolute top-2 left-0 w-full h-1 bg-white/10"></div>
-                             </div>
-                             
-                             <div className="absolute inset-0 flex flex-col items-center justify-center z-20 pointer-events-none">
-                                <div className="bg-white/90 backdrop-blur-md shadow-2xl px-8 py-4 rounded-[2rem] border border-white text-center transform group-hover:scale-110 transition-transform">
-                                   <span className="block text-5xl font-black text-slate-900 leading-none tracking-tighter">{percent}%</span>
-                                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-2 block">Capacidade</span>
-                                </div>
-                             </div>
+                      <div className="mb-10 px-4">
+                        <StageIndicator percent={percent} />
+                      </div>
 
-                             {isOffline && (
-                               <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px] z-30 flex items-center justify-center p-6 text-center">
-                                  <div className="bg-white px-4 py-2 rounded-xl flex items-center space-x-2 shadow-xl">
-                                    <AlertTriangle size={16} className="text-amber-500" />
-                                    <span className="text-[10px] font-black uppercase text-slate-800">Sem Sinal Recente</span>
-                                  </div>
-                               </div>
-                             )}
-                          </div>
-                          
-                          <div className="grid grid-cols-2 gap-4">
-                             <div className="bg-slate-50 p-4 rounded-3xl border border-slate-100">
-                                <span className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] block mb-1">Nível Bruto</span>
-                                <span className="text-xs font-black text-slate-700">{latest.nivel_cm} cm</span>
-                             </div>
-                             <div className="bg-slate-50 p-4 rounded-3xl border border-slate-100 text-right">
-                                <span className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] block mb-1">Última Leitura</span>
-                                <span className="text-xs font-black text-slate-700">{new Date(latest.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                             </div>
-                          </div>
-                        </>
-                      ) : (
-                        <div className="py-24 flex flex-col items-center justify-center text-center space-y-5 bg-slate-50 rounded-[3rem] border-4 border-dashed border-slate-200">
-                          <div className="p-5 bg-white rounded-[1.5rem] shadow-xl"><Cpu size={36} className="text-amber-400 animate-bounce" /></div>
-                          <div className="px-10">
-                             <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-relaxed">Vínculo Criado. Aguardando sinal do sensor:</p>
-                             <div className="flex items-center justify-center space-x-2 mt-2">
-                                <p className="text-sm font-black text-amber-600 font-mono bg-amber-50 px-3 py-1 rounded-lg border border-amber-100">{point.device_id}</p>
-                                <button onClick={() => copyToClipboard(point.device_id)} className="p-1.5 bg-white border rounded-lg text-slate-400 hover:text-blue-600 transition-colors">
-                                  {copiedId === point.device_id ? <Check size={14} /> : <Copy size={14} />}
-                                </button>
-                             </div>
-                          </div>
+                      {analysis && (
+                        <div className={`p-6 rounded-3xl border-2 mb-6 animate-in slide-in-from-top ${analysis.text.includes('ANOMALIA') ? 'bg-red-50 border-red-200' : 'bg-blue-50 border-blue-100'}`}>
+                           <div className="flex items-center space-x-2 mb-3">
+                              {analysis.text.includes('ANOMALIA') ? <AlertOctagon size={16} className="text-red-500" /> : <Sparkles size={16} className="text-blue-500" />}
+                              <span className={`text-[10px] font-black uppercase tracking-widest ${analysis.text.includes('ANOMALIA') ? 'text-red-600' : 'text-blue-600'}`}>
+                                {analysis.text.includes('ANOMALIA') ? 'Anomalia Detectada' : 'Parecer da Inteligência'}
+                              </span>
+                           </div>
+                           <p className="text-xs font-bold text-slate-700 leading-relaxed italic">
+                             {analysis.loading ? 'Processando histórico...' : analysis.text}
+                           </p>
                         </div>
                       )}
+
+                      <div className="grid grid-cols-2 gap-4 pt-6 border-t border-slate-50">
+                        <div className="flex items-center space-x-2">
+                           <Clock size={14} className="text-slate-300" />
+                           <span className="text-[10px] font-bold text-slate-400">
+                             {latest ? new Date(latest.created_at).toLocaleTimeString() : 'Sem dados'}
+                           </span>
+                        </div>
+                        <div className="text-right">
+                           <span className="text-[10px] font-black text-slate-300 uppercase">ID: {point.device_id}</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 );
@@ -248,14 +215,6 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
             </div>
           </div>
         ))}
-
-        {monitoringData.length === 0 && (
-          <div className="py-32 bg-white border-2 border-dashed border-slate-200 rounded-[4rem] flex flex-col items-center justify-center text-center px-12 shadow-inner">
-            <Droplets size={64} className="text-blue-100 mb-6" />
-            <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Sem Reservatórios Conectados</h3>
-            <p className="text-sm font-medium text-slate-400 max-w-xs mt-3 leading-relaxed">Adicione um Ponto de Monitoramento em um Sistema e coloque o ID Serial da placa ESP32.</p>
-          </div>
-        )}
       </div>
     </div>
   );

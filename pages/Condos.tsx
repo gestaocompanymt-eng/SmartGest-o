@@ -10,7 +10,8 @@ const Condos: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, u
 
   const user = data.currentUser;
   const isAdminOrTech = user?.role === UserRole.ADMIN || user?.role === UserRole.TECHNICIAN;
-  const isCondo = user?.role === UserRole.CONDO_USER;
+  // Fix: Replaced UserRole.CONDO_USER with UserRole.SINDICO_ADMIN
+  const isCondo = user?.role === UserRole.SINDICO_ADMIN;
 
   // Filtro de isolamento total para o Síndico, global para os demais
   const filteredCondos = data.condos.filter((c: Condo) => {

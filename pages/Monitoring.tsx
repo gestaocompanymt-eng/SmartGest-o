@@ -21,7 +21,8 @@ const Monitoring: React.FC<{ data: AppData; updateData: (d: AppData) => void }> 
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const user = data.currentUser;
-  const isCondoUser = user?.role === UserRole.CONDO_USER;
+  // Corrected UserRole.CONDO_USER to UserRole.SINDICO_ADMIN
+  const isCondoUser = user?.role === UserRole.SINDICO_ADMIN;
 
   const monitoredEquipments = useMemo(() => {
     return data.equipments.filter(eq => {

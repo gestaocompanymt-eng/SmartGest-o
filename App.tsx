@@ -67,7 +67,7 @@ const AppContent: React.FC = () => {
     
     setSyncStatus('syncing');
     const user = currentLocalData.currentUser;
-    const isRestricted = user.role === UserRole.CONDO_USER || user.role === UserRole.RONDA || (user.role === UserRole.TECHNICIAN && user.condo_id);
+    const isRestricted = user.role === UserRole.SINDICO_ADMIN || user.role === UserRole.RONDA || (user.role === UserRole.TECHNICIAN && user.condo_id);
     const condoId = user.condo_id;
 
     try {
@@ -226,7 +226,7 @@ const AppContent: React.FC = () => {
             <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
             {user?.role !== UserRole.RONDA && (
               <>
-                <NavItem to="/condos" icon={Building2} label={(user?.role === UserRole.CONDO_USER || (user?.role === UserRole.TECHNICIAN && user.condo_id)) ? 'Meu Condomínio' : 'Condomínios'} />
+                <NavItem to="/condos" icon={Building2} label={(user?.role === UserRole.SINDICO_ADMIN || (user?.role === UserRole.TECHNICIAN && user.condo_id)) ? 'Meu Condomínio' : 'Condomínios'} />
                 <NavItem to="/reservatorios" icon={Droplets} label="Reservatórios" />
                 <NavItem to="/equipment" icon={Layers} label="Equipamentos" />
                 <NavItem to="/systems" icon={Wrench} label="Sistemas" />
@@ -239,7 +239,9 @@ const AppContent: React.FC = () => {
           </nav>
           <div className="mt-auto pt-6 border-t border-slate-800">
             <div className="px-4 py-3 mb-4 bg-slate-800/50 rounded-xl">
-               <p className="text-[10px] font-black text-slate-500 uppercase">Acesso: {user?.role}</p>
+               <p className="text-[10px] font-black text-slate-500 uppercase">
+                 Perfil: {user?.role === UserRole.SINDICO_ADMIN ? 'Síndico / Administrativo' : user?.role}
+               </p>
                <p className="text-xs font-bold text-white truncate">{user?.name}</p>
             </div>
             <button 

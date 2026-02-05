@@ -13,7 +13,8 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
 
   const user = data.currentUser;
   const isAdminOrTech = user?.role === UserRole.ADMIN || user?.role === UserRole.TECHNICIAN;
-  const isCondo = user?.role === UserRole.CONDO_USER;
+  // Fix: Replaced UserRole.CONDO_USER with UserRole.SINDICO_ADMIN
+  const isCondo = user?.role === UserRole.SINDICO_ADMIN;
   const userCondoId = user?.condo_id;
 
   const filteredSystems = isCondo

@@ -2,7 +2,7 @@
 export enum UserRole {
   ADMIN = 'ADMIN',
   TECHNICIAN = 'TECHNICIAN',
-  CONDO_USER = 'CONDO_USER',
+  SINDICO_ADMIN = 'SINDICO_ADMIN',
   RONDA = 'RONDA'
 }
 
@@ -156,7 +156,7 @@ export interface User {
   role: UserRole;
   email: string;
   password?: string;
-  condo_id?: string; // Se preenchido, restringe o acesso a este condomínio
+  condo_id?: string;
 }
 
 export interface AppData {

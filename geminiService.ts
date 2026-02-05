@@ -1,14 +1,12 @@
 
 import { GoogleGenAI } from "@google/genai";
-import { Equipment } from "./types";
+import { Equipment, WaterLevel } from "./types";
 
 /**
  * Analisa os dados técnicos de um equipamento para identificar riscos.
  */
 export const analyzeEquipmentState = async (equipment: Equipment) => {
-  // Fix: Direct initialization using process.env.API_KEY as per the required coding guidelines
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  // Fix: Property names updated to match the Equipment interface (snake_case)
   const prompt = `Analise os seguintes dados técnicos de um equipamento de condomínio e forneça um breve parecer técnico (máx 3 frases):
     Tipo: ${equipment.type_id}
     Corrente Nominal: ${equipment.nominal_current}A
@@ -24,7 +22,6 @@ export const analyzeEquipmentState = async (equipment: Equipment) => {
       model: 'gemini-3-pro-preview',
       contents: prompt,
     });
-    // Fix: Using property .text directly as per SDK requirements
     return response.text;
   } catch (error) {
     console.error("Erro na análise Gemini:", error);
@@ -33,10 +30,35 @@ export const analyzeEquipmentState = async (equipment: Equipment) => {
 };
 
 /**
+ * Realiza uma análise inteligente dos níveis de água para detectar vazamentos ou falhas de bomba.
+ */
+export const analyzeWaterLevelHistory = async (history: WaterLevel[]) => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const prompt = `Como um engenheiro hidráulico, analise este histórico de leituras de nível de água (0 a 100%):
+    ${JSON.stringify(history.slice(0, 20))}
+    
+    Verifique:
+    1. Se há queda brusca (possível vazamento ou consumo excessivo).
+    2. Se o nível não sobe (possível falha na bomba).
+    3. Se o comportamento está normal.
+    
+    Responda de forma direta e destaque qualquer ANOMALIA em letras maiúsculas. Máximo 2 parágrafos.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: prompt,
+    });
+    return response.text;
+  } catch (error) {
+    return "Erro ao analisar dados hídricos.";
+  }
+};
+
+/**
  * Gera um resumo executivo do status técnico de um condomínio.
  */
 export const generateTechnicalSummary = async (condoName: string, recentOS: any[]) => {
-  // Fix: Direct initialization using process.env.API_KEY
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const prompt = `Resuma o status técnico do condomínio ${condoName} baseado nas últimas ordens de serviço:
     ${JSON.stringify(recentOS)}
@@ -47,7 +69,6 @@ export const generateTechnicalSummary = async (condoName: string, recentOS: any[
       model: 'gemini-3-flash-preview',
       contents: prompt,
     });
-    // Fix: Using property .text directly
     return response.text;
   } catch (error) {
     console.error("Erro no resumo Gemini:", error);
