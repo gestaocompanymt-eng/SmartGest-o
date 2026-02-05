@@ -47,15 +47,17 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     if (!isSupabaseActive) return;
 
+    // Escuta inserções na tabela nivel_caixa em tempo real
     const channel = supabase
-      .channel('schema-db-changes')
+      .channel('water-level-updates')
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'nivel_caixa' },
         (payload) => {
           const newReading = payload.new as WaterLevelType;
           if (dataRef.current) {
-            const updatedLevels = [newReading, ...dataRef.current.waterLevels].slice(0, 200);
+            // Adiciona a nova leitura no topo do histórico
+            const updatedLevels = [newReading, ...dataRef.current.waterLevels].slice(0, 300);
             const newData = { ...dataRef.current, waterLevels: updatedLevels };
             setData(newData);
             saveStore(newData);
@@ -101,7 +103,7 @@ const AppContent: React.FC = () => {
       let qSystems = supabase.from('systems').select('*');
       let qOS = supabase.from('service_orders').select('*');
       let qAppts = supabase.from('appointments').select('*');
-      let qLevels = supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(100);
+      let qLevels = supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(200);
 
       if (isRestricted && condoId) {
         qUsers = qUsers.eq('condo_id', condoId);
@@ -147,7 +149,7 @@ const AppContent: React.FC = () => {
           setData(updated);
           saveStore(updated);
         }
-      }, 30000);
+      }, 45000); // Sincronização de fundo a cada 45s
     }
     return () => { if (interval) clearInterval(interval); };
   }, [fetchAllData, !!data?.currentUser]);

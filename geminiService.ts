@@ -26,16 +26,15 @@ export const analyzeEquipmentState = async (equipment: Equipment) => {
 export const analyzeWaterLevelHistory = async (history: WaterLevel[]) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const prompt = `Aja como um Engenheiro Especialista em Hidráulica Predial.
-    Analise este histórico de níveis (0, 25, 50, 75, 100%):
+    Analise este histórico de níveis discretos (0, 25, 50, 75, 100%) obtidos por eletrodos:
     ${JSON.stringify(history.slice(0, 30))}
     
-    CRITÉRIOS DE ERRO:
-    1. Queda rápida de nível (ex: de 100 para 50 em pouco tempo) = POSSÍVEL VAZAMENTO.
-    2. Nível parado em 0% ou 25% por muito tempo = FALHA NA BOMBA OU FALTA DE ÁGUA DA RUA.
-    3. Oscilações incoerentes = SENSOR COM DEFEITO.
+    CRITÉRIOS DE ANÁLISE:
+    1. Se o nível cair de 100% para 50% muito rápido, pode ser consumo excessivo ou vazamento.
+    2. Se o nível ficar em 0% por mais de 2 leituras, a bomba pode ter falhado ou falta água da rua.
+    3. Se o nível oscilar loucamente (ex: 100 -> 0 -> 100), um eletrodo pode estar oxidado ou solto.
 
-    Se encontrar um problema, inicie a frase com "ANOMALIA DETECTADA:" em letras maiúsculas e descreva o erro de forma alarmante.
-    Se estiver tudo bem, diga "SISTEMA OPERANDO NORMALMENTE" e elogie a estabilidade.`;
+    IMPORTANTE: Se detectar falha, comece com "ANOMALIA DETECTADA:". Caso contrário, "SISTEMA OPERANDO NORMALMENTE".`;
 
   try {
     const response = await ai.models.generateContent({
@@ -44,7 +43,7 @@ export const analyzeWaterLevelHistory = async (history: WaterLevel[]) => {
     });
     return response.text;
   } catch (error) {
-    return "Erro ao processar telemetria.";
+    return "Erro ao processar telemetria da IA.";
   }
 };
 
