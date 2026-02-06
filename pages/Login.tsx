@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Wrench, Shield, Key, Mail, ArrowRight, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import { Wrench, Shield, Key, Mail, ArrowRight, Eye, EyeOff, RefreshCw, Code } from 'lucide-react';
 import { getStore } from '../store';
 import { User } from '../types';
 import { supabase } from '../supabase';
@@ -18,13 +18,12 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
       const { data: remoteUsers } = await supabase.from('users').select('*');
       if (remoteUsers) {
         const local = getStore();
-        // Mesclar
         const userMap = new Map();
         local.users.forEach(u => userMap.set(u.id, u));
         remoteUsers.forEach(u => userMap.set(u.id, u));
         local.users = Array.from(userMap.values());
-        localStorage.setItem('smart_gestao_data_v2', JSON.stringify(local));
-        setError('Base de usuários atualizada com a nuvem!');
+        localStorage.setItem('smart_gestao_data_v5', JSON.stringify(local));
+        setError('Base de usuários atualizada!');
         setTimeout(() => setError(''), 3000);
       }
     } catch (e) {
@@ -37,10 +36,8 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     const data = getStore();
-    
     const inputEmail = email.trim().toLowerCase();
     const inputPassword = password.trim();
-
     const user = data.users.find(u => u.email.toLowerCase() === inputEmail);
     
     if (user) {
@@ -54,7 +51,7 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
         onLogin(user);
       }
     } else {
-      setError(`Usuário "${inputEmail}" não encontrado localmente.`);
+      setError(`Usuário "${inputEmail}" não encontrado.`);
     }
   };
 
@@ -63,47 +60,47 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
       <div className="absolute top-0 -left-1/4 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl animate-pulse"></div>
       <div className="absolute bottom-0 -right-1/4 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
 
-      <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 z-10 relative">
+      <div className="w-full max-w-md bg-white rounded-[2.5rem] shadow-2xl p-8 z-10 relative">
         <div className="flex flex-col items-center text-center mb-8">
           <div className="bg-slate-900 p-4 rounded-2xl shadow-xl shadow-blue-500/10 mb-6">
             <Wrench size={40} className="text-blue-500" />
           </div>
-          <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">SMARTGESTÃO</h1>
-          <p className="text-slate-500 mt-2 font-medium">Gestão Técnica e Manutenção</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">SMARTGESTÃO</h1>
+          <p className="text-slate-500 mt-2 font-bold uppercase text-[10px] tracking-widest">Condo Maintenance Engine</p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-6">
+        <form onSubmit={handleLogin} className="space-y-5">
           <div className="space-y-1">
-            <label className="text-sm font-bold text-slate-700 ml-1">Usuário / E-mail</label>
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Usuário</label>
             <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
               <input 
                 type="text" 
                 required 
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="Ex: admin"
-                className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 outline-none transition-all font-medium" 
+                placeholder="E-mail ou login"
+                className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/5 outline-none transition-all font-bold text-xs" 
               />
             </div>
           </div>
 
           <div className="space-y-1">
-            <label className="text-sm font-bold text-slate-700 ml-1">Senha</label>
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Senha de Acesso</label>
             <div className="relative">
-              <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
               <input 
                 type={showPassword ? "text" : "password"}
                 required 
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full pl-10 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 outline-none transition-all font-medium" 
+                className="w-full pl-12 pr-12 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/5 outline-none transition-all font-bold text-xs" 
               />
               <button 
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
@@ -111,34 +108,32 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
           </div>
 
           {error && (
-            <div className="text-xs text-red-500 font-bold text-center bg-red-50 p-3 rounded-xl border border-red-100">
+            <div className="text-[10px] text-red-600 font-black text-center bg-red-50 p-3 rounded-xl border border-red-100 uppercase tracking-tight">
               {error}
             </div>
           )}
 
           <button 
             type="submit" 
-            className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-4 rounded-xl shadow-lg shadow-slate-900/20 transition-all flex items-center justify-center group"
+            className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-4 rounded-2xl shadow-xl shadow-slate-900/20 transition-all flex items-center justify-center group uppercase text-xs tracking-widest"
           >
-            ACESSAR
+            Entrar no Sistema
             <ArrowRight size={18} className="ml-2 group-hover:translate-x-1 transition-transform" />
           </button>
         </form>
 
-        <div className="mt-6 text-center">
-           <button 
-            onClick={handleRefreshUsers}
-            disabled={isRefreshing}
-            className="text-[10px] font-black text-blue-600 uppercase tracking-widest flex items-center justify-center mx-auto hover:underline"
-           >
-             <RefreshCw size={12} className={`mr-2 ${isRefreshing ? 'animate-spin' : ''}`} /> 
-             Sincronizar usuários agora
-           </button>
-        </div>
-
-        <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-center space-x-2 text-slate-400">
-          <Shield size={14} />
-          <span className="text-[10px] font-black uppercase tracking-widest">Conexão Segura</span>
+        <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col items-center justify-center space-y-3">
+          <div className="flex items-center space-x-2 text-slate-400">
+            <Shield size={12} />
+            <span className="text-[9px] font-black uppercase tracking-widest">Terminal Seguro SmartGestão</span>
+          </div>
+          
+          <div className="flex flex-col items-center">
+            <p className="text-[7px] font-black text-slate-400 uppercase tracking-[0.4em] mb-1">Developed by</p>
+            <p className="text-[10px] font-black text-slate-900 tracking-tighter flex items-center">
+              <Code size={12} className="mr-1.5 text-blue-600" /> Adriano Pantaroto
+            </p>
+          </div>
         </div>
       </div>
     </div>

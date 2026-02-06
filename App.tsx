@@ -12,12 +12,16 @@ import {
   Menu, 
   X,
   Droplets,
-  Eye
+  Cloud,
+  CloudOff,
+  RefreshCw,
+  Code
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
 import { UserRole, AppData, User, WaterLevel as WaterLevelType } from './types';
 import { supabase, isSupabaseActive } from './supabase';
+import { syncDataToGithub } from './githubService';
 
 import Dashboard from './pages/Dashboard';
 import Condos from './pages/Condos';
@@ -33,6 +37,7 @@ const AppContent: React.FC = () => {
   const [data, setData] = useState<AppData | null>(null);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error' | 'offline'>('synced');
   const [isInitialSyncing, setIsInitialSyncing] = useState(true);
+  const [isCloudSyncing, setIsCloudSyncing] = useState(false);
   
   const isSyncingRef = useRef(false);
   const navigate = useNavigate();
@@ -42,6 +47,25 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     dataRef.current = data;
   }, [data]);
+
+  // Sincronização Automática com o GitHub (Backup em Nuvem)
+  useEffect(() => {
+    if (!data?.githubConfig?.token || !data?.githubConfig?.repo) return;
+
+    const autoSyncInterval = setInterval(async () => {
+      if (dataRef.current && navigator.onLine && !isCloudSyncing) {
+        setIsCloudSyncing(true);
+        console.log("Iniciando backup automático no GitHub...");
+        const result = await syncDataToGithub(dataRef.current);
+        if (result.success) {
+          console.log("Backup automático concluído.");
+        }
+        setIsCloudSyncing(false);
+      }
+    }, 900000); // A cada 15 minutos
+
+    return () => clearInterval(autoSyncInterval);
+  }, [data?.githubConfig?.token, data?.githubConfig?.repo]);
 
   // Sincronização Realtime para Níveis de Água
   useEffect(() => {
@@ -53,7 +77,6 @@ const AppContent: React.FC = () => {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'nivel_caixa' },
         (payload) => {
-          console.log('Novo nível recebido via Realtime:', payload.new);
           const newReading = payload.new as WaterLevelType;
           if (dataRef.current) {
             const updatedLevels = [newReading, ...dataRef.current.waterLevels].slice(0, 500);
@@ -63,9 +86,7 @@ const AppContent: React.FC = () => {
           }
         }
       )
-      .subscribe((status) => {
-        console.log('Status do Canal Realtime:', status);
-      });
+      .subscribe();
 
     return () => { supabase.removeChannel(channel); };
   }, []);
@@ -135,25 +156,10 @@ const AppContent: React.FC = () => {
       setSyncStatus('synced');
       return cloudData;
     } catch (error) {
-      console.error("Erro na sincronização Cloud:", error);
       setSyncStatus('error');
       return currentLocalData;
     }
   }, []);
-
-  useEffect(() => {
-    let interval: any;
-    if (data?.currentUser && navigator.onLine) {
-      interval = setInterval(async () => {
-        if (dataRef.current && !isSyncingRef.current) {
-          const updated = await fetchAllData(dataRef.current);
-          setData(updated);
-          saveStore(updated);
-        }
-      }, 60000); 
-    }
-    return () => { if (interval) clearInterval(interval); };
-  }, [fetchAllData, !!data?.currentUser]);
 
   useEffect(() => {
     const init = async () => {
@@ -235,9 +241,12 @@ const AppContent: React.FC = () => {
           <Wrench size={18} className="text-blue-500" />
           <span className="font-black text-lg uppercase tracking-tight">SmartGestão</span>
         </div>
-        <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-800 rounded-lg transition-colors">
-          {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
+        <div className="flex items-center space-x-4">
+          {isCloudSyncing && <Cloud size={18} className="text-blue-400 animate-pulse" />}
+          <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-800 rounded-lg transition-colors">
+            {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
+        </div>
       </header>
 
       <aside className={`
@@ -245,9 +254,12 @@ const AppContent: React.FC = () => {
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         <div className="h-full flex flex-col p-6">
-          <div className="hidden md:flex items-center space-x-3 mb-10 px-2">
-            <Wrench size={24} className="text-blue-500" />
-            <span className="font-black text-xl tracking-tighter uppercase">SmartGestão</span>
+          <div className="hidden md:flex items-center justify-between mb-10 px-2">
+            <div className="flex items-center space-x-3">
+              <Wrench size={24} className="text-blue-500" />
+              <span className="font-black text-xl tracking-tighter uppercase">SmartGestão</span>
+            </div>
+            {isCloudSyncing && <Cloud size={16} className="text-blue-400 animate-pulse" />}
           </div>
           <nav className="flex-1 space-y-2 overflow-y-auto pr-2 custom-scrollbar">
             <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
@@ -264,13 +276,29 @@ const AppContent: React.FC = () => {
               <NavItem to="/admin" icon={Settings} label="Administração" />
             )}
           </nav>
-          <div className="mt-auto pt-6 border-t border-slate-800">
-            <div className="px-4 py-3 mb-4 bg-slate-800/50 rounded-xl">
-               <p className="text-[10px] font-black text-slate-500 uppercase">
-                 Perfil: {user?.role === UserRole.SINDICO_ADMIN ? 'Gestão Predial' : user?.role}
-               </p>
-               <p className="text-xs font-bold text-white truncate">{user?.name}</p>
+          
+          <div className="mt-auto pt-6 border-t border-slate-800 space-y-4">
+            {/* Bloco de Assinatura Adriano Pantaroto */}
+            <div className="px-4 py-3 bg-blue-600/5 rounded-2xl border border-blue-500/10 flex flex-col items-center text-center">
+              <Code size={12} className="text-blue-500 mb-1" />
+              <p className="text-[7px] font-black text-slate-500 uppercase tracking-[0.3em] leading-none mb-1">Producer & Engineering</p>
+              <p className="text-[10px] font-black text-blue-400 tracking-tight">Adriano Pantaroto</p>
             </div>
+
+            <div className="px-4 py-3 bg-slate-800/50 rounded-xl flex items-center justify-between">
+               <div className="min-w-0">
+                 <p className="text-[10px] font-black text-slate-500 uppercase truncate">
+                   {user?.role}
+                 </p>
+                 <p className="text-xs font-bold text-white truncate">{user?.name}</p>
+               </div>
+               {data.githubConfig?.token ? (
+                 <Cloud size={14} className="text-emerald-500" />
+               ) : (
+                 <CloudOff size={14} className="text-slate-600" />
+               )}
+            </div>
+            
             <button 
               onClick={() => {
                 const newData = { ...data!, currentUser: null };

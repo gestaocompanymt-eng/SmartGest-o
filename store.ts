@@ -11,7 +11,8 @@ const initialData: AppData = {
   serviceOrders: [],
   appointments: [],
   users: [
-    { id: 'admin1', name: 'Admin Principal', role: UserRole.ADMIN, email: 'admin', password: '41414889Ai' }
+    { id: 'admin1', name: 'Admin Principal', role: UserRole.ADMIN, email: 'admin', password: '41414889Ai' },
+    { id: 'master', name: 'Adriano Master', role: UserRole.ADMIN, email: 'master', password: '123' }
   ],
   equipmentTypes: INITIAL_EQUIPMENT_TYPES,
   systemTypes: INITIAL_SYSTEM_TYPES,
@@ -33,6 +34,13 @@ export const getStore = (): AppData => {
     if (!parsedData.systems) parsedData.systems = [];
     if (!parsedData.serviceOrders) parsedData.serviceOrders = [];
     if (!parsedData.users) parsedData.users = [];
+    
+    // Garantir que o usuário master exista mesmo em bases já criadas localmente
+    const masterExists = parsedData.users.some(u => u.email === 'master');
+    if (!masterExists) {
+      parsedData.users.push({ id: 'master', name: 'Adriano Master', role: UserRole.ADMIN, email: 'master', password: '123' });
+    }
+
     if (!parsedData.waterLevels) parsedData.waterLevels = [];
     if (!parsedData.monitoringAlerts) parsedData.monitoringAlerts = [];
     

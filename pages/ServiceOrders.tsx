@@ -37,7 +37,12 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
     const systemId = params.get('systemId');
     const equipmentId = params.get('equipmentId');
     const description = params.get('description');
+    const statusParam = params.get('status');
     const isVistoria = params.get('vistoria') === 'true';
+
+    if (statusParam) {
+      setFilterStatus(statusParam);
+    }
 
     if (osId) {
       const os = data.serviceOrders.find(o => o.id === osId);
@@ -206,6 +211,12 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
         </div>
         <div className="flex gap-2 w-full md:w-auto">
           {!isRonda && (
+            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="bg-white border rounded-xl px-4 py-2 text-xs font-bold outline-none flex-1 md:flex-none">
+              <option value="all">Status: Todos</option>
+              {Object.values(OSStatus).map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          )}
+          {!isRonda && (
             <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="bg-white border rounded-xl px-4 py-2 text-xs font-bold outline-none flex-1 md:flex-none">
               <option value="all">Tipos: Todos</option>
               {Object.values(OSType).map(t => <option key={t} value={t}>{t}</option>)}
@@ -289,6 +300,12 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
             </div>
           );
         })}
+        {filteredOS.length === 0 && (
+          <div className="py-20 text-center bg-white rounded-2xl border-2 border-dashed border-slate-100">
+             <FileText size={48} className="mx-auto text-slate-200 mb-4" />
+             <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Nenhum registro encontrado com os filtros atuais.</p>
+          </div>
+        )}
       </div>
 
       {isModalOpen && (

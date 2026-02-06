@@ -159,6 +159,12 @@ export interface User {
   condo_id?: string;
 }
 
+export interface GithubConfig {
+  token: string;
+  repo: string;
+  lastSync?: string;
+}
+
 export interface AppData {
   condos: Condo[];
   equipments: Equipment[];
@@ -171,4 +177,5 @@ export interface AppData {
   currentUser: User | null;
   waterLevels: WaterLevel[];
   monitoringAlerts: MonitoringAlert[];
+  githubConfig?: GithubConfig;
 }

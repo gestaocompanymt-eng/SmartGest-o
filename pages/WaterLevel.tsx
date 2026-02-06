@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Droplets, 
   RefreshCw, 
@@ -7,13 +7,21 @@ import {
   Building2,
   Wifi,
   BrainCircuit,
-  ShieldAlert,
-  Sparkles,
   Zap,
-  Info,
   Activity,
-  CheckCircle2
+  CheckCircle2,
+  TrendingUp,
+  History
 } from 'lucide-react';
+import { 
+  AreaChart, 
+  Area, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer 
+} from 'recharts';
 import { AppData, UserRole, WaterLevel as WaterLevelType } from '../types';
 import { analyzeWaterLevelHistory } from '../geminiService';
 
@@ -23,7 +31,7 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
   const [showStatusHint, setShowStatusHint] = useState(true);
   
   const user = data.currentUser;
-  const isCondoUser = user?.role === UserRole.SINDICO_ADMIN;
+  const isCondoUser = user?.role === UserRole.SINDICO_ADMIN || user?.role === UserRole.RONDA;
 
   const monitoringData = useMemo(() => {
     const condosMap = new Map();
@@ -51,8 +59,8 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
     setTimeout(() => setIsRefreshing(false), 1000);
   };
 
-  const getLatestReading = (deviceId: string) => {
-    if (!deviceId) return null;
+  const getPointsHistory = (deviceId: string) => {
+    if (!deviceId) return [];
     const searchId = deviceId.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     
     return data.waterLevels
@@ -60,7 +68,13 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
         const entryId = String(l.condominio_id || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
         return entryId === searchId;
       })
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      .slice(-50) // Últimos 50 registros para o gráfico
+      .map(l => ({
+        time: new Date(l.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        level: l.percentual,
+        rawDate: l.created_at
+      }));
   };
 
   const handleIaAnalysis = async (deviceId: string) => {
@@ -82,27 +96,27 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
     ];
 
     return (
-      <div className="flex flex-col space-y-4 w-full">
+      <div className="flex flex-col space-y-3 w-full">
         {levels.map((l) => (
-          <div key={l.val} className="flex items-center space-x-4">
-             <div className={`w-3 h-3 rounded-full transition-all duration-500 ${percent >= l.val ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]' : 'bg-slate-200'}`}></div>
-             <div className={`flex-1 h-12 rounded-2xl border-2 flex items-center px-4 justify-between transition-all duration-500 ${
+          <div key={l.val} className="flex items-center space-x-3">
+             <div className={`w-2.5 h-2.5 rounded-full transition-all duration-500 ${percent >= l.val ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]' : 'bg-slate-200'}`}></div>
+             <div className={`flex-1 h-10 rounded-xl border flex items-center px-4 justify-between transition-all duration-500 ${
                percent >= l.val 
                 ? 'bg-blue-50 border-blue-200' 
                 : 'bg-slate-50 border-slate-100 opacity-50'
              }`}>
-               <span className={`text-[10px] font-black uppercase tracking-widest ${percent >= l.val ? 'text-blue-700' : 'text-slate-400'}`}>
+               <span className={`text-[9px] font-black uppercase tracking-widest ${percent >= l.val ? 'text-blue-700' : 'text-slate-400'}`}>
                  {l.label}
                </span>
                <span className={`text-xs font-black ${percent >= l.val ? 'text-blue-600' : 'text-slate-300'}`}>{l.val}%</span>
              </div>
           </div>
         ))}
-        <div className="flex items-center space-x-4 pt-2 border-t border-slate-100">
-           <div className="w-3 h-3 rounded-full bg-slate-900"></div>
-           <div className="flex-1 h-12 rounded-2xl bg-slate-900 flex items-center px-4 justify-between">
-              <span className="text-[10px] font-black uppercase tracking-widest text-white">Referência (GND)</span>
-              <span className="text-[10px] font-black text-slate-400">Pino Fundo</span>
+        <div className="flex items-center space-x-3 pt-2 border-t border-slate-100">
+           <div className="w-2.5 h-2.5 rounded-full bg-slate-900"></div>
+           <div className="flex-1 h-10 rounded-xl bg-slate-900 flex items-center px-4 justify-between">
+              <span className="text-[9px] font-black uppercase tracking-widest text-white">Referência (GND)</span>
+              <span className="text-[9px] font-black text-slate-400">Pino Fundo</span>
            </div>
         </div>
       </div>
@@ -114,14 +128,14 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-900 leading-tight">Monitoramento IOT</h1>
-          <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-1">Telemetria via Eletrodos (ESP32)</p>
+          <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-1">Telemetria de Reservatórios</p>
         </div>
         <button 
           onClick={handleManualRefresh} 
           className="flex items-center space-x-2 px-6 py-3 bg-white border-2 border-slate-100 rounded-2xl shadow-sm hover:border-blue-300 transition-all group"
         >
           <RefreshCw size={18} className={`${isRefreshing ? 'animate-spin' : 'group-hover:rotate-180'} text-blue-600 transition-transform duration-500`} />
-          <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Atualizar Agora</span>
+          <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Atualizar Sensores</span>
         </button>
       </div>
 
@@ -129,11 +143,11 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
         <div className="bg-slate-900 text-white p-6 rounded-[2rem] flex items-center justify-between shadow-xl animate-in fade-in slide-in-from-top-4">
           <div className="flex items-center space-x-4">
             <div className="p-3 bg-blue-600 rounded-2xl">
-              <Zap size={20} className="text-white" />
+              <TrendingUp size={20} className="text-white" />
             </div>
             <div>
-              <p className="text-xs font-black uppercase tracking-widest">Otimização Ativa</p>
-              <p className="text-[10px] text-slate-400 font-bold">O sistema registra novos dados apenas quando há alteração no nível de água, economizando recursos.</p>
+              <p className="text-xs font-black uppercase tracking-widest">Gráficos de Tendência</p>
+              <p className="text-[10px] text-slate-400 font-bold">Acompanhe a linha do tempo do consumo para identificar vazamentos ou falhas de bombas.</p>
             </div>
           </div>
           <button onClick={() => setShowStatusHint(false)} className="p-2 hover:bg-slate-800 rounded-xl transition-colors">
@@ -156,78 +170,135 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
               </div>
             </div>
             
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 gap-8">
               {entry.points.map((point: any) => {
-                const latest = getLatestReading(point.device_id);
-                const percent = latest ? latest.percentual : 0;
+                const history = getPointsHistory(point.device_id);
+                const latest = history.length > 0 ? history[history.length - 1] : null;
+                const percent = latest ? latest.level : 0;
                 const analysis = iaAnalysis[point.device_id];
                 const isAnomaly = analysis?.text.toUpperCase().includes('ANOMALIA');
 
                 return (
                   <div key={point.id} className="bg-white rounded-[3rem] border-4 border-white shadow-xl overflow-hidden p-8 flex flex-col hover:shadow-2xl transition-all relative">
-                    <div className="flex flex-col md:flex-row gap-10">
-                      <div className="md:w-1/2 space-y-6">
+                    <div className="flex flex-col xl:flex-row gap-10">
+                      
+                      {/* Lado Esquerdo: Info e Sensores */}
+                      <div className="xl:w-1/3 space-y-6">
                         <div>
-                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Localização</p>
-                          <h3 className="text-xl font-black text-slate-900 leading-tight mb-4">{point.name}</h3>
-                          <div className={`inline-flex items-center space-x-3 px-6 py-4 rounded-3xl ${percent === 0 ? 'bg-red-600' : 'bg-slate-900'} text-white shadow-xl relative overflow-hidden group`}>
-                             <div className="absolute inset-0 bg-blue-500/10 scale-0 group-hover:scale-150 transition-transform duration-700 rounded-full"></div>
-                             <Droplets size={24} className={percent > 0 ? 'animate-bounce relative z-10' : 'relative z-10'} />
-                             <span className="text-4xl font-black relative z-10">{percent}%</span>
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Ponto de Monitoramento</p>
+                          <h3 className="text-2xl font-black text-slate-900 leading-tight mb-4">{point.name}</h3>
+                          <div className={`inline-flex items-center space-x-3 px-6 py-4 rounded-3xl ${percent === 0 ? 'bg-red-600' : 'bg-slate-900'} text-white shadow-xl`}>
+                             <Droplets size={24} className={percent > 0 ? 'animate-bounce' : ''} />
+                             <span className="text-4xl font-black">{percent}%</span>
                           </div>
                         </div>
                         
+                        <div className="p-5 bg-slate-50 rounded-[2rem] border border-slate-100">
+                           <ElectrodeVisual percent={percent} />
+                        </div>
+
                         <div className="space-y-3">
                           <div className="flex items-center space-x-2">
                              <div className="flex h-2 w-2 rounded-full bg-emerald-500 animate-ping"></div>
-                             <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Aguardando Mudança</span>
+                             <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Monitoramento Ativo</span>
                           </div>
-                          
-                          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-2">
-                             <div className="flex items-center justify-between">
-                                <span className="text-[9px] font-black text-slate-400 uppercase">Estado do Sensor</span>
-                                <span className="text-[9px] font-black text-slate-900 uppercase">ONLINE</span>
-                             </div>
-                             <div className="flex items-center space-x-2 text-slate-600">
-                                <Clock size={12} />
-                                <span className="text-[9px] font-bold">Último Registro: {latest ? new Date(latest.created_at).toLocaleTimeString() : 'Buscando...'}</span>
-                             </div>
+                          <div className="flex items-center space-x-2 text-slate-400">
+                             <Clock size={12} />
+                             <span className="text-[9px] font-bold uppercase tracking-tight">Último sinal: {latest ? latest.time : '---'}</span>
                           </div>
-                          <p className="text-[9px] font-bold text-slate-300 italic uppercase ml-1">Serial: {point.device_id}</p>
                         </div>
 
-                        <div className="pt-4 border-t border-slate-50 space-y-4">
-                          <button 
-                            onClick={() => handleIaAnalysis(point.device_id)}
-                            disabled={analysis?.loading}
-                            className="w-full py-4 bg-blue-50 text-blue-600 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center space-x-2 hover:bg-blue-600 hover:text-white transition-all shadow-sm"
-                          >
-                            {analysis?.loading ? <RefreshCw size={14} className="animate-spin" /> : <BrainCircuit size={14} />}
-                            <span>Gerar Diagnóstico IA</span>
-                          </button>
-                        </div>
+                        <button 
+                          onClick={() => handleIaAnalysis(point.device_id)}
+                          disabled={analysis?.loading}
+                          className="w-full py-4 bg-blue-50 text-blue-600 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center space-x-2 hover:bg-blue-600 hover:text-white transition-all shadow-sm"
+                        >
+                          {analysis?.loading ? <RefreshCw size={14} className="animate-spin" /> : <BrainCircuit size={14} />}
+                          <span>Diagnóstico Inteligente</span>
+                        </button>
                       </div>
 
-                      <div className="md:w-1/2 bg-slate-50/50 rounded-[2.5rem] p-6 border border-slate-100 flex items-center justify-center">
-                         <ElectrodeVisual percent={percent} />
+                      {/* Lado Direito: Gráfico de Linha do Tempo */}
+                      <div className="xl:w-2/3 flex flex-col">
+                        <div className="flex items-center justify-between mb-6">
+                           <div className="flex items-center space-x-2">
+                              <History size={16} className="text-slate-400" />
+                              <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Histórico de Nível (Tempo x %)</span>
+                           </div>
+                           <span className="text-[9px] font-black text-blue-500 uppercase">Últimos 50 eventos</span>
+                        </div>
+                        
+                        <div className="h-[300px] w-full bg-slate-50/50 rounded-[2.5rem] p-6 border border-slate-100">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={history}>
+                              <defs>
+                                <linearGradient id={`colorLevel-${point.id}`} x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                                </linearGradient>
+                              </defs>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                              <XAxis 
+                                dataKey="time" 
+                                axisLine={false} 
+                                tickLine={false} 
+                                tick={{fontSize: 10, fontWeight: 'bold', fill: '#94a3b8'}}
+                                minTickGap={30}
+                              />
+                              <YAxis 
+                                domain={[0, 100]} 
+                                axisLine={false} 
+                                tickLine={false} 
+                                tick={{fontSize: 10, fontWeight: 'bold', fill: '#94a3b8'}}
+                                ticks={[0, 25, 50, 75, 100]}
+                              />
+                              <Tooltip 
+                                contentStyle={{ 
+                                  borderRadius: '16px', 
+                                  border: 'none', 
+                                  boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                                  fontSize: '10px',
+                                  fontWeight: 'bold'
+                                }}
+                                itemStyle={{ color: '#3b82f6' }}
+                              />
+                              <Area 
+                                type="stepAfter" 
+                                dataKey="level" 
+                                stroke="#3b82f6" 
+                                strokeWidth={3} 
+                                fillOpacity={1} 
+                                fill={`url(#colorLevel-${point.id})`} 
+                                animationDuration={1500}
+                              />
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        </div>
+
+                        {analysis && !analysis.loading && (
+                          <div className={`mt-6 p-5 rounded-2xl border-2 animate-in zoom-in-95 ${isAnomaly ? 'bg-red-50 border-red-200' : 'bg-blue-50 border-blue-100'}`}>
+                             <div className="flex items-center space-x-2 mb-2">
+                               <Activity size={14} className={isAnomaly ? 'text-red-600' : 'text-blue-600'} />
+                               <span className={`text-[10px] font-black uppercase ${isAnomaly ? 'text-red-700' : 'text-blue-700'}`}>Parecer do Engenheiro IA</span>
+                             </div>
+                             <p className="text-xs font-bold text-slate-700 leading-relaxed">{analysis.text}</p>
+                          </div>
+                        )}
                       </div>
                     </div>
-                    
-                    {analysis && !analysis.loading && (
-                      <div className={`mt-6 p-5 rounded-2xl border-2 animate-in zoom-in-95 ${isAnomaly ? 'bg-red-50 border-red-200' : 'bg-blue-50 border-blue-100'}`}>
-                         <div className="flex items-center space-x-2 mb-2">
-                           <Activity size={14} className={isAnomaly ? 'text-red-600' : 'text-blue-600'} />
-                           <span className={`text-[10px] font-black uppercase ${isAnomaly ? 'text-red-700' : 'text-blue-700'}`}>Parecer Técnico Automático</span>
-                         </div>
-                         <p className="text-xs font-bold text-slate-700 leading-relaxed">{analysis.text}</p>
-                      </div>
-                    )}
                   </div>
                 );
               })}
             </div>
           </div>
         ))}
+
+        {monitoringData.length === 0 && (
+          <div className="py-20 flex flex-col items-center justify-center text-center">
+            <Droplets size={48} className="text-slate-200 mb-4" />
+            <p className="text-slate-400 font-bold uppercase text-xs">Nenhum reservatório monitorado encontrado.</p>
+          </div>
+        )}
       </div>
     </div>
   );
