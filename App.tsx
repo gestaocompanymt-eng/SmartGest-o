@@ -15,7 +15,6 @@ import {
   Cloud,
   CloudOff,
   Code,
-  // Fix: Added missing RefreshCcw import
   RefreshCcw
 } from 'lucide-react';
 
@@ -38,6 +37,7 @@ const AppContent: React.FC = () => {
   const [data, setData] = useState<AppData | null>(null);
   const [isInitialSyncing, setIsInitialSyncing] = useState(true);
   const [isCloudSyncing, setIsCloudSyncing] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   
   const isSyncingRef = useRef(false);
   const navigate = useNavigate();
@@ -114,6 +114,7 @@ const AppContent: React.FC = () => {
         waterLevels: responses[6].data || []
       };
     } catch (error) {
+      console.error("Erro na sincronização de dados:", error);
       return currentLocalData;
     }
   }, []);
@@ -154,22 +155,37 @@ const AppContent: React.FC = () => {
   };
 
   if (!data) return null;
-  if (isInitialSyncing) {
+  if (isInitialSyncing || isLoggingIn) {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-center">
         <Wrench size={48} className="text-blue-500 animate-bounce mb-6" />
         <h2 className="text-white font-black uppercase tracking-widest text-lg mb-2">SmartGestão</h2>
-        <p className="text-slate-400 text-sm font-bold animate-pulse">Sincronizando sistemas...</p>
+        <p className="text-slate-400 text-sm font-bold animate-pulse">
+          {isLoggingIn ? "Atualizando sensores de nível..." : "Sincronizando sistemas..."}
+        </p>
       </div>
     );
   }
 
   if (!data.currentUser && location.pathname !== '/login') {
-    return <Login onLogin={(user) => {
-      const newData = { ...data, currentUser: user };
-      setData(newData);
-      saveStore(newData);
-      navigate('/');
+    return <Login onLogin={async (user) => {
+      setIsLoggingIn(true);
+      try {
+        const baseData = { ...data, currentUser: user };
+        // Busca dados frescos (incluindo nível de caixa) imediatamente no login
+        const updatedData = await fetchAllData(baseData);
+        setData(updatedData);
+        saveStore(updatedData);
+        navigate('/');
+      } catch (err) {
+        console.error("Erro ao carregar dados pós-login:", err);
+        const baseData = { ...data, currentUser: user };
+        setData(baseData);
+        saveStore(baseData);
+        navigate('/');
+      } finally {
+        setIsLoggingIn(false);
+      }
     }} />;
   }
 
@@ -237,7 +253,6 @@ const AppContent: React.FC = () => {
                  </p>
                  <p className="text-xs font-bold text-white truncate">{user?.name}</p>
                </div>
-               {/* Fix: Using RefreshCcw which is now imported */}
                {isCloudSyncing ? <RefreshCcw size={14} className="text-blue-400 animate-spin" /> : <CloudOff size={14} className="text-slate-600" />}
             </div>
             
@@ -254,7 +269,6 @@ const AppContent: React.FC = () => {
               <span>Encerrar Sessão</span>
             </button>
 
-            {/* Assinatura Técnica Discreta */}
             <div className="pt-2 text-center">
               <p className="text-[8px] font-bold text-slate-600 uppercase tracking-widest opacity-30 hover:opacity-100 transition-opacity">
                 v5.2 | by Adriano Pantaroto
