@@ -37,6 +37,9 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
   const isAdminOrTech = user?.role === UserRole.ADMIN || user?.role === UserRole.TECHNICIAN;
   const condoId = user?.condo_id;
 
+  // Permissão estendida para agendamento: Admin, Tech ou Síndico
+  const canSchedule = isAdminOrTech || isSindicoAdmin;
+
   const filteredOSList = useMemo(() => (isSindicoAdmin || (user?.role === UserRole.TECHNICIAN && condoId))
     ? data.serviceOrders.filter(os => os.condo_id === condoId)
     : data.serviceOrders, [data.serviceOrders, isSindicoAdmin, user?.role, condoId]);
@@ -48,7 +51,7 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
   }, [filteredOSList]);
 
   useEffect(() => {
-    if (!isAdminOrTech) return;
+    if (!canSchedule) return;
 
     const todayStr = new Date().toISOString().split('T')[0];
     const pendingToOpen = data.appointments.filter(a => 
@@ -93,7 +96,7 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
         appointments: updatedAppts
       });
     }
-  }, [data.appointments, isAdminOrTech]);
+  }, [data.appointments, canSchedule]);
 
   const periodicAlerts = useMemo(() => {
     const alerts: any[] = [];
@@ -134,9 +137,11 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
   const handleScheduleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+    const condoIdToSave = isSindicoAdmin ? (condoId || '') : (formData.get('condo_id') as string);
+    
     const newAppt: Appointment = {
       id: `APT-${Date.now()}`,
-      condo_id: formData.get('condo_id') as string,
+      condo_id: condoIdToSave,
       technician_id: user?.id || 'admin',
       equipment_id: formData.get('equipment_id') as string || undefined,
       system_id: formData.get('system_id') as string || undefined,
@@ -185,7 +190,7 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
               : "Visão consolidada da operação técnica."}
           </p>
         </div>
-        {isAdminOrTech && (
+        {canSchedule && (
           <button 
             onClick={() => {
               setSelectedCondoId(isSindicoAdmin ? (condoId || '') : '');
@@ -330,7 +335,14 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
             <form onSubmit={handleScheduleSubmit} className="p-8 space-y-6">
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Condomínio</label>
-                <select required name="condo_id" value={selectedCondoId} onChange={(e) => setSelectedCondoId(e.target.value)} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none">
+                <select 
+                  required 
+                  name="condo_id" 
+                  value={selectedCondoId} 
+                  onChange={(e) => setSelectedCondoId(e.target.value)} 
+                  disabled={isSindicoAdmin}
+                  className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none disabled:opacity-60"
+                >
                   <option value="">Selecione...</option>
                   {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
