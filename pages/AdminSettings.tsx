@@ -8,7 +8,7 @@ import {
 import { UserRole, User as UserType, Condo, GithubConfig } from '../types';
 import { syncDataToGithub } from '../githubService';
 
-const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
+const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void; deleteData?: (type: any, id: string) => void }> = ({ data, updateData, deleteData }) => {
   const user = data.currentUser;
   
   if (!user || user.role !== UserRole.ADMIN) {
@@ -23,10 +23,14 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const [syncLoading, setSyncLoading] = useState(false);
   const [syncStatus, setSyncStatus] = useState<{ type: 'success' | 'error' | null, msg: string }>({ type: null, msg: '' });
 
-  const deleteUser = (id: string) => {
-    if (window.confirm('Deseja realmente remover este acesso?')) {
-      const newUsers = data.users.filter((u: UserType) => u.id !== id);
-      updateData({ ...data, users: newUsers });
+  const handleDeleteUser = (id: string) => {
+    if (window.confirm('Deseja realmente remover este acesso? Esta ação é definitiva.')) {
+      if (deleteData) {
+        deleteData('users', id);
+      } else {
+        const newUsers = data.users.filter((u: UserType) => u.id !== id);
+        updateData({ ...data, users: newUsers });
+      }
     }
   };
 
@@ -131,7 +135,7 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                   </div>
                   <div className="flex space-x-1">
                     <button onClick={() => { setEditingUser(u); setSelectedRole(u.role); setIsUserModalOpen(true); }} className="p-2.5 text-slate-400 hover:text-blue-600 bg-slate-50 rounded-xl transition-all"><Edit2 size={16} /></button>
-                    <button onClick={() => deleteUser(u.id)} className="p-2.5 text-slate-400 hover:text-red-600 bg-slate-50 rounded-xl transition-all"><Trash2 size={16} /></button>
+                    <button onClick={() => handleDeleteUser(u.id)} className="p-2.5 text-slate-400 hover:text-red-600 bg-slate-50 rounded-xl transition-all"><Trash2 size={16} /></button>
                   </div>
                 </div>
               ))}

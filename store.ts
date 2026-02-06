@@ -43,12 +43,6 @@ export const getStore = (): AppData => {
       waterLevels: ensureArray(parsedData.waterLevels),
       monitoringAlerts: ensureArray(parsedData.monitoringAlerts),
     };
-
-    // Garantir que o usuário master exista
-    const masterExists = data.users.some(u => u.email === 'master');
-    if (!masterExists) {
-      data.users.push({ id: 'master', name: 'Adriano Master', role: UserRole.ADMIN, email: 'master', password: '123' });
-    }
     
     return data;
   } catch (e) {

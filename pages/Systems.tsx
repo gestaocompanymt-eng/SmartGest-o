@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Plus, Settings, Edit2, Trash2, X, MapPin, Droplets, Save, Cpu, Calendar, Clock } from 'lucide-react';
 import { System, SystemType, Condo, UserRole, MonitoringPoint } from '../types';
 
-const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
+const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void; deleteData?: (type: any, id: string) => void }> = ({ data, updateData, deleteData }) => {
   const navigate = useNavigate();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSys, setEditingSys] = useState<System | null>(null);
@@ -28,11 +28,15 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
     setIsModalOpen(true);
   };
 
-  const deleteSystem = async (id: string) => {
+  const handleDeleteSystem = async (id: string) => {
     if (!canManage) return;
-    if (window.confirm('ATENÇÃO: Deseja realmente excluir este sistema? Esta ação removerá também todos os vínculos de monitoramento IOT associados.')) {
-      const newSystemsList = data.systems.filter((s: System) => s.id !== id);
-      await updateData({ ...data, systems: newSystemsList });
+    if (window.confirm('ATENÇÃO: Deseja realmente excluir este sistema? Esta ação removerá também todos os vínculos de monitoramento IOT associados. Esta ação é definitiva.')) {
+      if (deleteData) {
+        await deleteData('systems', id);
+      } else {
+        const newSystemsList = data.systems.filter((s: System) => s.id !== id);
+        await updateData({ ...data, systems: newSystemsList });
+      }
     }
   };
 
@@ -111,7 +115,7 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
                       {canManage && (
                         <>
                           <button onClick={() => openModal(sys)} className="p-2.5 text-slate-400 hover:text-blue-600 bg-slate-50 rounded-xl transition-all" title="Editar Sistema"><Edit2 size={16} /></button>
-                          <button onClick={() => deleteSystem(sys.id)} className="p-2.5 text-slate-400 hover:text-red-600 bg-slate-50 rounded-xl transition-all" title="Excluir Sistema"><Trash2 size={16} /></button>
+                          <button onClick={() => handleDeleteSystem(sys.id)} className="p-2.5 text-slate-400 hover:text-red-600 bg-slate-50 rounded-xl transition-all" title="Excluir Sistema"><Trash2 size={16} /></button>
                         </>
                       )}
                    </div>

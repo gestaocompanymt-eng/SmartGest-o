@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Plus, Search, Building2, MapPin, Edit2, Trash2, X, FileText, Save, Calendar, User } from 'lucide-react';
 import { Condo, ContractType, UserRole } from '../types';
 
-const Condos: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
+const Condos: React.FC<{ data: any; updateData: (d: any) => void; deleteData?: (type: any, id: string) => void }> = ({ data, updateData, deleteData }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingCondo, setEditingCondo] = useState<Condo | null>(null);
@@ -32,7 +32,6 @@ const Condos: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, u
     if (!isAdminOrTech) return;
 
     const formData = new FormData(e.currentTarget);
-    // Fix: Removed 'monitoring_points' as it does not exist on type 'Condo'
     const condoData: Condo = {
       id: editingCondo?.id || Math.random().toString(36).substr(2, 9),
       name: formData.get('name') as string,
@@ -51,10 +50,14 @@ const Condos: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, u
     setEditingCondo(null);
   };
 
-  const deleteCondo = (id: string) => {
+  const handleDeleteCondo = (id: string) => {
     if (!isAdminOrTech) return;
-    if (confirm('Deseja realmente remover este condomínio?')) {
-      updateData({ ...data, condos: data.condos.filter((c: Condo) => c.id !== id) });
+    if (confirm('Deseja realmente remover este condomínio? Esta ação é definitiva.')) {
+      if (deleteData) {
+        deleteData('condos', id);
+      } else {
+        updateData({ ...data, condos: data.condos.filter((c: Condo) => c.id !== id) });
+      }
     }
   };
 
@@ -90,7 +93,7 @@ const Condos: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, u
                 {isAdminOrTech && (
                   <div className="flex space-x-1">
                     <button onClick={() => openEditModal(condo)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors"><Edit2 size={18} /></button>
-                    <button onClick={() => deleteCondo(condo.id)} className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={18} /></button>
+                    <button onClick={() => handleDeleteCondo(condo.id)} className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={18} /></button>
                   </div>
                 )}
               </div>

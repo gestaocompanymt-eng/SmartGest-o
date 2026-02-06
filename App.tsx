@@ -186,6 +186,38 @@ const AppContent: React.FC = () => {
     }
   };
 
+  const deleteData = async (type: 'users' | 'condos' | 'equipments' | 'systems' | 'serviceOrders' | 'appointments', id: string) => {
+    if (!data) return;
+
+    // 1. Atualizar estado local imediatamente para feedback instantâneo
+    const newData = { ...data };
+    newData[type] = (newData[type] as any[]).filter(item => item.id !== id);
+    setData(newData);
+    saveStore(newData);
+
+    // 2. Deletar do Supabase de forma explícita
+    if (navigator.onLine && isSupabaseActive) {
+      const tableMap: Record<string, string> = {
+        users: 'users',
+        condos: 'condos',
+        equipments: 'equipments',
+        systems: 'systems',
+        serviceOrders: 'service_orders',
+        appointments: 'appointments'
+      };
+      
+      const table = tableMap[type];
+      setSyncStatus('syncing');
+      try {
+        await supabase.from(table).delete().eq('id', id);
+        setSyncStatus('synced');
+      } catch (err) {
+        console.error(`Erro ao deletar em ${table}:`, err);
+        setSyncStatus('offline');
+      }
+    }
+  };
+
   if (!data) return null;
   if (isInitialSyncing) {
     return (
@@ -322,17 +354,17 @@ const AppContent: React.FC = () => {
         <div className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth custom-scrollbar print:p-0">
           <Routes>
             <Route path="/" element={<Dashboard data={data} updateData={updateData} />} />
-            <Route path="/condos" element={<Condos data={data} updateData={updateData} />} />
+            <Route path="/condos" element={<Condos data={data} updateData={updateData} deleteData={deleteData} />} />
             <Route path="/reservatorios" element={<WaterLevel data={data} updateData={updateData} onRefresh={async () => {
               const updated = await fetchAllData(data);
               setData(updated);
               saveStore(updated);
             }} />} />
-            <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} />} />
-            <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} />} />
+            <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} deleteData={deleteData} />} />
+            <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} deleteData={deleteData} />} />
             <Route path="/os" element={<ServiceOrders data={data} updateData={updateData} />} />
             <Route path="/reports" element={<Reports data={data} />} />
-            <Route path="/admin" element={<AdminSettings data={data} updateData={updateData} />} />
+            <Route path="/admin" element={<AdminSettings data={data} updateData={updateData} deleteData={deleteData} />} />
             <Route path="/login" element={<Navigate to="/" />} />
           </Routes>
         </div>

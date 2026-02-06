@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Plus, Layers, ShieldCheck, Thermometer, Zap, AlertCircle, Trash2, Edit2, X, MapPin, Camera, ImageIcon, ChevronLeft, ChevronRight, Building2, Clock, Calendar, Eye, Droplet } from 'lucide-react';
 import { Equipment, EquipmentType, Condo, UserRole } from '../types';
 
-const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
+const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void; deleteData?: (type: any, id: string) => void }> = ({ data, updateData, deleteData }) => {
   const navigate = useNavigate();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEq, setEditingEq] = useState<Equipment | null>(null);
@@ -38,9 +38,13 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     setIsModalOpen(true);
   };
 
-  const deleteEquipment = (id: string) => {
-    if (window.confirm('Deseja realmente remover este equipamento do inventário?')) {
-      updateData({ ...data, equipments: data.equipments.filter((e: Equipment) => e.id !== id) });
+  const handleDeleteEquipment = (id: string) => {
+    if (window.confirm('Deseja realmente remover este equipamento do inventário? Esta ação é definitiva.')) {
+      if (deleteData) {
+        deleteData('equipments', id);
+      } else {
+        updateData({ ...data, equipments: data.equipments.filter((e: Equipment) => e.id !== id) });
+      }
     }
   };
 
@@ -152,7 +156,7 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                      {canManage && (
                        <>
                         <button onClick={() => openModal(eq)} className="p-2.5 text-slate-400 hover:text-blue-600 bg-slate-50 rounded-xl transition-all"><Edit2 size={16} /></button>
-                        <button onClick={() => deleteEquipment(eq.id)} className="p-2.5 text-slate-400 hover:text-red-600 bg-slate-50 rounded-xl transition-all"><Trash2 size={16} /></button>
+                        <button onClick={() => handleDeleteEquipment(eq.id)} className="p-2.5 text-slate-400 hover:text-red-600 bg-slate-50 rounded-xl transition-all"><Trash2 size={16} /></button>
                        </>
                      )}
                   </div>
