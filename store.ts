@@ -28,23 +28,29 @@ export const getStore = (): AppData => {
   try {
     const parsedData: AppData = JSON.parse(saved);
     
-    if (!parsedData.appointments) parsedData.appointments = [];
-    if (!parsedData.condos) parsedData.condos = [];
-    if (!parsedData.equipments) parsedData.equipments = [];
-    if (!parsedData.systems) parsedData.systems = [];
-    if (!parsedData.serviceOrders) parsedData.serviceOrders = [];
-    if (!parsedData.users) parsedData.users = [];
+    // Garantir integridade de arrays
+    const ensureArray = (arr: any) => Array.isArray(arr) ? arr : [];
     
-    // Garantir que o usuário master exista mesmo em bases já criadas localmente
-    const masterExists = parsedData.users.some(u => u.email === 'master');
-    if (!masterExists) {
-      parsedData.users.push({ id: 'master', name: 'Adriano Master', role: UserRole.ADMIN, email: 'master', password: '123' });
-    }
+    const data: AppData = {
+      ...initialData,
+      ...parsedData,
+      condos: ensureArray(parsedData.condos),
+      equipments: ensureArray(parsedData.equipments),
+      systems: ensureArray(parsedData.systems),
+      serviceOrders: ensureArray(parsedData.serviceOrders),
+      appointments: ensureArray(parsedData.appointments),
+      users: ensureArray(parsedData.users),
+      waterLevels: ensureArray(parsedData.waterLevels),
+      monitoringAlerts: ensureArray(parsedData.monitoringAlerts),
+    };
 
-    if (!parsedData.waterLevels) parsedData.waterLevels = [];
-    if (!parsedData.monitoringAlerts) parsedData.monitoringAlerts = [];
+    // Garantir que o usuário master exista
+    const masterExists = data.users.some(u => u.email === 'master');
+    if (!masterExists) {
+      data.users.push({ id: 'master', name: 'Adriano Master', role: UserRole.ADMIN, email: 'master', password: '123' });
+    }
     
-    return parsedData;
+    return data;
   } catch (e) {
     return initialData;
   }
@@ -55,7 +61,7 @@ export const saveStore = (data: AppData): boolean => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     return true;
   } catch (e) {
-    console.error("Falha ao salvar no LocalStorage:", e);
+    console.error("Erro ao persistir dados localmente:", e);
     return false;
   }
 };

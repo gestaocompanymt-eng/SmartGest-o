@@ -102,16 +102,6 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
           <h1 className="text-2xl font-black text-slate-900 leading-tight">Administração</h1>
           <p className="text-sm text-slate-500 font-medium italic">Infraestrutura e segurança global.</p>
         </div>
-        
-        {/* Assinatura Técnica do Adriano Pantaroto */}
-        <div className="hidden md:flex flex-col items-end text-right">
-          <p className="text-[7px] font-black text-slate-400 uppercase tracking-[0.4em] mb-1">Developer Signature</p>
-          <div className="flex items-center space-x-2 px-4 py-2 bg-white border border-slate-100 rounded-xl shadow-sm">
-             <Code size={14} className="text-blue-600" />
-             <span className="text-[10px] font-black text-slate-900">Adriano Pantaroto</span>
-             <span className="text-[8px] font-bold text-slate-300">v5.2</span>
-          </div>
-        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -246,7 +236,7 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
 
       {isUserModalOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-[2.5rem] w-full max-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b flex justify-between items-center bg-slate-50">
               <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">Perfil de Acesso</h2>
               <button onClick={() => setIsUserModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm"><X size={24} /></button>

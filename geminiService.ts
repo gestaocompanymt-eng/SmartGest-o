@@ -4,59 +4,47 @@ import { Equipment, WaterLevel } from "./types";
 
 export const analyzeEquipmentState = async (equipment: Equipment) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const prompt = `Analise tecnicamente:
+  const prompt = `Analise tecnicamente o estado do equipamento e identifique riscos de falha catastrófica:
     Tipo: ${equipment.type_id}
-    Corrente: ${equipment.measured_current}A (Nominal: ${equipment.nominal_current}A)
+    Corrente Medida: ${equipment.measured_current}A (Nominal: ${equipment.nominal_current}A)
     Temperatura: ${equipment.temperature}°C
+    Estado Visual/Elétrico: ${equipment.electrical_state}
     Ruído: ${equipment.noise}
-    Estado: ${equipment.electrical_state}
-    Identifique riscos de quebra.`;
+    Seja conciso e técnico.`;
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-3-flash-preview',
       contents: prompt,
     });
     return response.text;
   } catch (error) {
-    return "Falha na análise técnica.";
+    return "Análise temporariamente indisponível.";
   }
 };
 
 export const analyzeWaterLevelHistory = async (history: WaterLevel[]) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const prompt = `Aja como um Engenheiro Especialista em Hidráulica Predial.
-    Analise este histórico de níveis discretos (0, 25, 50, 75, 100%) obtidos por eletrodos:
-    ${JSON.stringify(history.slice(0, 30))}
+  const dataSlice = history.slice(0, 30).map(l => ({ p: l.percentual, t: l.created_at }));
+  
+  const prompt = `Aja como um Engenheiro de Hidráulica. Analise a telemetria do reservatório:
+    Dados: ${JSON.stringify(dataSlice)}
     
-    CRITÉRIOS DE ANÁLISE:
-    1. Se o nível cair de 100% para 50% muito rápido, pode ser consumo excessivo ou vazamento.
-    2. Se o nível ficar em 0% por mais de 2 leituras, a bomba pode ter falhado ou falta água da rua.
-    3. Se o nível oscilar loucamente (ex: 100 -> 0 -> 100), um eletrodo pode estar oxidado ou solto.
-
-    IMPORTANTE: Se detectar falha, comece com "ANOMALIA DETECTADA:". Caso contrário, "SISTEMA OPERANDO NORMALMENTE".`;
+    Verifique:
+    1. Quedas bruscas (vazamentos).
+    2. Tempo de reposição (falha em bomba).
+    3. Oscilações incoerentes (erro de sensor).
+    
+    Comece com "NORMAL" ou "ANOMALIA" em letras maiúsculas.`;
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      // Fix: Updated model name to 'gemini-flash-lite-latest' as per alias guidelines
+      model: 'gemini-flash-lite-latest',
       contents: prompt,
     });
     return response.text;
   } catch (error) {
-    return "Erro ao processar telemetria da IA.";
-  }
-};
-
-export const generateTechnicalSummary = async (condoName: string, recentOS: any[]) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const prompt = `Resuma o status técnico de ${condoName}: ${JSON.stringify(recentOS)}`;
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-    });
-    return response.text;
-  } catch (error) {
-    return "Resumo indisponível.";
+    return "Erro ao processar diagnóstico IOT.";
   }
 };

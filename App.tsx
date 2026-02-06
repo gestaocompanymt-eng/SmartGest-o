@@ -14,12 +14,13 @@ import {
   Droplets,
   Cloud,
   CloudOff,
-  RefreshCw,
-  Code
+  Code,
+  // Fix: Added missing RefreshCcw import
+  RefreshCcw
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
-import { UserRole, AppData, User, WaterLevel as WaterLevelType } from './types';
+import { UserRole, AppData, WaterLevel as WaterLevelType } from './types';
 import { supabase, isSupabaseActive } from './supabase';
 import { syncDataToGithub } from './githubService';
 
@@ -35,7 +36,6 @@ import WaterLevel from './pages/WaterLevel';
 const AppContent: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [data, setData] = useState<AppData | null>(null);
-  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error' | 'offline'>('synced');
   const [isInitialSyncing, setIsInitialSyncing] = useState(true);
   const [isCloudSyncing, setIsCloudSyncing] = useState(false);
   
@@ -48,48 +48,20 @@ const AppContent: React.FC = () => {
     dataRef.current = data;
   }, [data]);
 
-  // Sincronização Automática com o GitHub (Backup em Nuvem)
+  // Sincronização Automática GitHub
   useEffect(() => {
     if (!data?.githubConfig?.token || !data?.githubConfig?.repo) return;
 
     const autoSyncInterval = setInterval(async () => {
       if (dataRef.current && navigator.onLine && !isCloudSyncing) {
         setIsCloudSyncing(true);
-        console.log("Iniciando backup automático no GitHub...");
-        const result = await syncDataToGithub(dataRef.current);
-        if (result.success) {
-          console.log("Backup automático concluído.");
-        }
+        await syncDataToGithub(dataRef.current);
         setIsCloudSyncing(false);
       }
-    }, 900000); // A cada 15 minutos
+    }, 900000); // 15 min
 
     return () => clearInterval(autoSyncInterval);
-  }, [data?.githubConfig?.token, data?.githubConfig?.repo]);
-
-  // Sincronização Realtime para Níveis de Água
-  useEffect(() => {
-    if (!isSupabaseActive) return;
-
-    const channel = supabase
-      .channel('schema-db-changes')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'nivel_caixa' },
-        (payload) => {
-          const newReading = payload.new as WaterLevelType;
-          if (dataRef.current) {
-            const updatedLevels = [newReading, ...dataRef.current.waterLevels].slice(0, 500);
-            const newData = { ...dataRef.current, waterLevels: updatedLevels };
-            setData(newData);
-            saveStore(newData);
-          }
-        }
-      )
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, []);
+  }, [data?.githubConfig?.token, data?.githubConfig?.repo, isCloudSyncing]);
 
   const smartUnion = (local: any[], cloud: any[] | null) => {
     if (!cloud || cloud.length === 0) return local || [];
@@ -113,50 +85,35 @@ const AppContent: React.FC = () => {
   const fetchAllData = useCallback(async (currentLocalData: AppData) => {
     if (!navigator.onLine || !isSupabaseActive || isSyncingRef.current || !currentLocalData.currentUser) return currentLocalData;
     
-    setSyncStatus('syncing');
     const user = currentLocalData.currentUser;
-    const isRestricted = user.role === UserRole.SINDICO_ADMIN || user.role === UserRole.RONDA || (user.role === UserRole.TECHNICIAN && user.condo_id);
     const condoId = user.condo_id;
 
     try {
-      let qUsers = supabase.from('users').select('*');
-      let qCondos = supabase.from('condos').select('*');
-      let qEquips = supabase.from('equipments').select('*');
-      let qSystems = supabase.from('systems').select('*');
-      let qOS = supabase.from('service_orders').select('*');
-      let qAppts = supabase.from('appointments').select('*');
-      let qLevels = supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(300);
+      const queries = [
+        supabase.from('users').select('*'),
+        supabase.from('condos').select('*'),
+        supabase.from('equipments').select('*'),
+        supabase.from('systems').select('*'),
+        supabase.from('service_orders').select('*'),
+        supabase.from('appointments').select('*'),
+        supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(300)
+      ];
 
-      if (isRestricted && condoId) {
-        qUsers = qUsers.eq('condo_id', condoId);
-        qCondos = qCondos.eq('id', condoId);
-        qEquips = qEquips.eq('condo_id', condoId);
-        qSystems = qSystems.eq('condo_id', condoId);
-        qOS = qOS.eq('condo_id', condoId);
-        qAppts = qAppts.eq('condo_id', condoId);
-      }
+      const responses = await Promise.all(queries);
 
-      const [resUsers, resCondos, resEquips, resSystems, resOS, resAppts, resLevels] = await Promise.all([
-        qUsers, qCondos, qEquips, qSystems, qOS, qAppts, qLevels
-      ]);
-
-      const cloudData: AppData = {
+      return {
         ...currentLocalData,
-        users: smartUnion(currentLocalData.users, resUsers.data),
-        condos: smartUnion(currentLocalData.condos, resCondos.data),
-        equipments: smartUnion(currentLocalData.equipments, resEquips.data),
-        systems: smartUnion(currentLocalData.systems, resSystems.data),
-        serviceOrders: smartUnion(currentLocalData.serviceOrders, resOS.data).sort((a: any, b: any) => 
+        users: smartUnion(currentLocalData.users, responses[0].data),
+        condos: smartUnion(currentLocalData.condos, responses[1].data),
+        equipments: smartUnion(currentLocalData.equipments, responses[2].data),
+        systems: smartUnion(currentLocalData.systems, responses[3].data),
+        serviceOrders: smartUnion(currentLocalData.serviceOrders, responses[4].data).sort((a: any, b: any) => 
           new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
         ),
-        appointments: smartUnion(currentLocalData.appointments, resAppts.data),
-        waterLevels: resLevels.data || []
+        appointments: smartUnion(currentLocalData.appointments, responses[5].data),
+        waterLevels: responses[6].data || []
       };
-      
-      setSyncStatus('synced');
-      return cloudData;
     } catch (error) {
-      setSyncStatus('error');
       return currentLocalData;
     }
   }, []);
@@ -180,7 +137,6 @@ const AppContent: React.FC = () => {
     saveStore(newData);
     if (navigator.onLine && isSupabaseActive) {
       isSyncingRef.current = true;
-      setSyncStatus('syncing');
       try {
         const syncPromises = [];
         if (newData.systems?.length > 0) syncPromises.push(supabase.from('systems').upsert(newData.systems));
@@ -189,9 +145,8 @@ const AppContent: React.FC = () => {
         if (newData.serviceOrders?.length > 0) syncPromises.push(supabase.from('service_orders').upsert(newData.serviceOrders));
         if (newData.users?.length > 0) syncPromises.push(supabase.from('users').upsert(newData.users.map(u => ({...u, password: u.password || ''}))));
         await Promise.all(syncPromises);
-        setSyncStatus('synced');
       } catch (err) {
-        setSyncStatus('error');
+        console.error("Erro ao sincronizar com nuvem:", err);
       } finally {
         isSyncingRef.current = false;
       }
@@ -204,7 +159,7 @@ const AppContent: React.FC = () => {
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-center">
         <Wrench size={48} className="text-blue-500 animate-bounce mb-6" />
         <h2 className="text-white font-black uppercase tracking-widest text-lg mb-2">SmartGestão</h2>
-        <p className="text-slate-400 text-sm font-bold animate-pulse">Estabelecendo conexão técnica...</p>
+        <p className="text-slate-400 text-sm font-bold animate-pulse">Sincronizando sistemas...</p>
       </div>
     );
   }
@@ -225,7 +180,7 @@ const AppContent: React.FC = () => {
       onClick={() => setSidebarOpen(false)}
       className={`flex items-center space-x-3 px-4 py-3.5 rounded-xl transition-all ${
         location.pathname === to 
-          ? 'bg-blue-600 text-white shadow-lg' 
+          ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' 
           : 'text-slate-400 hover:bg-slate-800 hover:text-white'
       }`}
     >
@@ -241,12 +196,9 @@ const AppContent: React.FC = () => {
           <Wrench size={18} className="text-blue-500" />
           <span className="font-black text-lg uppercase tracking-tight">SmartGestão</span>
         </div>
-        <div className="flex items-center space-x-4">
-          {isCloudSyncing && <Cloud size={18} className="text-blue-400 animate-pulse" />}
-          <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-800 rounded-lg transition-colors">
-            {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
-          </button>
-        </div>
+        <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-800 rounded-lg transition-colors">
+          {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
+        </button>
       </header>
 
       <aside className={`
@@ -265,26 +217,19 @@ const AppContent: React.FC = () => {
             <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
             {user?.role !== UserRole.RONDA && (
               <>
-                <NavItem to="/condos" icon={Building2} label={(user?.role === UserRole.SINDICO_ADMIN || (user?.role === UserRole.TECHNICIAN && user.condo_id)) ? 'Meu Condomínio' : 'Condomínios'} />
+                <NavItem to="/condos" icon={Building2} label="Condomínios" />
                 <NavItem to="/reservatorios" icon={Droplets} label="Reservatórios" />
                 <NavItem to="/equipment" icon={Layers} label="Equipamentos" />
                 <NavItem to="/systems" icon={Wrench} label="Sistemas" />
               </>
             )}
             <NavItem to="/os" icon={FileText} label={user?.role === UserRole.RONDA ? 'Minhas Vistorias' : 'Ordens de Serviço'} />
-            {data.currentUser?.role === UserRole.ADMIN && (
+            {user?.role === UserRole.ADMIN && (
               <NavItem to="/admin" icon={Settings} label="Administração" />
             )}
           </nav>
           
-          <div className="mt-auto pt-6 border-t border-slate-800 space-y-4">
-            {/* Bloco de Assinatura Adriano Pantaroto */}
-            <div className="px-4 py-3 bg-blue-600/5 rounded-2xl border border-blue-500/10 flex flex-col items-center text-center">
-              <Code size={12} className="text-blue-500 mb-1" />
-              <p className="text-[7px] font-black text-slate-500 uppercase tracking-[0.3em] leading-none mb-1">Producer & Engineering</p>
-              <p className="text-[10px] font-black text-blue-400 tracking-tight">Adriano Pantaroto</p>
-            </div>
-
+          <div className="mt-auto pt-6 border-t border-slate-800 space-y-3">
             <div className="px-4 py-3 bg-slate-800/50 rounded-xl flex items-center justify-between">
                <div className="min-w-0">
                  <p className="text-[10px] font-black text-slate-500 uppercase truncate">
@@ -292,11 +237,8 @@ const AppContent: React.FC = () => {
                  </p>
                  <p className="text-xs font-bold text-white truncate">{user?.name}</p>
                </div>
-               {data.githubConfig?.token ? (
-                 <Cloud size={14} className="text-emerald-500" />
-               ) : (
-                 <CloudOff size={14} className="text-slate-600" />
-               )}
+               {/* Fix: Using RefreshCcw which is now imported */}
+               {isCloudSyncing ? <RefreshCcw size={14} className="text-blue-400 animate-spin" /> : <CloudOff size={14} className="text-slate-600" />}
             </div>
             
             <button 
@@ -309,8 +251,15 @@ const AppContent: React.FC = () => {
               className="w-full flex items-center space-x-3 px-4 py-3.5 rounded-xl text-slate-400 hover:bg-red-500/10 hover:text-red-500 transition-all font-bold text-sm"
             >
               <LogOut size={20} />
-              <span>Sair da Conta</span>
+              <span>Encerrar Sessão</span>
             </button>
+
+            {/* Assinatura Técnica Discreta */}
+            <div className="pt-2 text-center">
+              <p className="text-[8px] font-bold text-slate-600 uppercase tracking-widest opacity-30 hover:opacity-100 transition-opacity">
+                v5.2 | by Adriano Pantaroto
+              </p>
+            </div>
           </div>
         </div>
       </aside>
@@ -319,14 +268,14 @@ const AppContent: React.FC = () => {
         <div className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth custom-scrollbar">
           <Routes>
             <Route path="/" element={<Dashboard data={data} updateData={updateData} />} />
-            <Route path="/condos" element={user?.role === UserRole.RONDA ? <Navigate to="/" /> : <Condos data={data} updateData={updateData} />} />
-            <Route path="/reservatorios" element={user?.role === UserRole.RONDA ? <Navigate to="/" /> : <WaterLevel data={data} updateData={updateData} onRefresh={async () => {
+            <Route path="/condos" element={<Condos data={data} updateData={updateData} />} />
+            <Route path="/reservatorios" element={<WaterLevel data={data} updateData={updateData} onRefresh={async () => {
               const updated = await fetchAllData(data);
               setData(updated);
               saveStore(updated);
             }} />} />
-            <Route path="/equipment" element={user?.role === UserRole.RONDA ? <Navigate to="/" /> : <EquipmentPage data={data} updateData={updateData} />} />
-            <Route path="/systems" element={user?.role === UserRole.RONDA ? <Navigate to="/" /> : <SystemsPage data={data} updateData={updateData} />} />
+            <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} />} />
+            <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} />} />
             <Route path="/os" element={<ServiceOrders data={data} updateData={updateData} />} />
             <Route path="/admin" element={<AdminSettings data={data} updateData={updateData} />} />
             <Route path="/login" element={<Navigate to="/" />} />

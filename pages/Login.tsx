@@ -1,72 +1,46 @@
 
 import React, { useState } from 'react';
-import { Wrench, Shield, Key, Mail, ArrowRight, Eye, EyeOff, RefreshCw, Code } from 'lucide-react';
+import { Wrench, Shield, Key, Mail, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { getStore } from '../store';
 import { User } from '../types';
-import { supabase } from '../supabase';
 
 const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
-  const [isRefreshing, setIsRefreshing] = useState(false);
-
-  const handleRefreshUsers = async () => {
-    setIsRefreshing(true);
-    try {
-      const { data: remoteUsers } = await supabase.from('users').select('*');
-      if (remoteUsers) {
-        const local = getStore();
-        const userMap = new Map();
-        local.users.forEach(u => userMap.set(u.id, u));
-        remoteUsers.forEach(u => userMap.set(u.id, u));
-        local.users = Array.from(userMap.values());
-        localStorage.setItem('smart_gestao_data_v5', JSON.stringify(local));
-        setError('Base de usuários atualizada!');
-        setTimeout(() => setError(''), 3000);
-      }
-    } catch (e) {
-      setError('Erro ao conectar com o servidor.');
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     const data = getStore();
     const inputEmail = email.trim().toLowerCase();
     const inputPassword = password.trim();
+    
     const user = data.users.find(u => u.email.toLowerCase() === inputEmail);
     
     if (user) {
-      if (user.password) {
-        if (inputPassword === user.password) {
-          onLogin(user);
-        } else {
-          setError('Senha incorreta.');
-        }
-      } else {
+      if (user.password === inputPassword) {
         onLogin(user);
+      } else {
+        setError('Senha inválida para este usuário.');
       }
     } else {
-      setError(`Usuário "${inputEmail}" não encontrado.`);
+      setError(`Acesso "${inputEmail}" não reconhecido.`);
     }
   };
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 relative overflow-hidden">
-      <div className="absolute top-0 -left-1/4 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl animate-pulse"></div>
-      <div className="absolute bottom-0 -right-1/4 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
+      <div className="absolute top-0 -left-1/4 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl"></div>
+      <div className="absolute bottom-0 -right-1/4 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl"></div>
 
       <div className="w-full max-w-md bg-white rounded-[2.5rem] shadow-2xl p-8 z-10 relative">
-        <div className="flex flex-col items-center text-center mb-8">
+        <div className="flex flex-col items-center text-center mb-10">
           <div className="bg-slate-900 p-4 rounded-2xl shadow-xl shadow-blue-500/10 mb-6">
             <Wrench size={40} className="text-blue-500" />
           </div>
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">SMARTGESTÃO</h1>
-          <p className="text-slate-500 mt-2 font-bold uppercase text-[10px] tracking-widest">Condo Maintenance Engine</p>
+          <p className="text-slate-500 mt-2 font-bold uppercase text-[10px] tracking-widest">Manutenção Inteligente</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-5">
@@ -79,14 +53,14 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
                 required 
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="E-mail ou login"
-                className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/5 outline-none transition-all font-bold text-xs" 
+                placeholder="nome.sobrenome"
+                className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/5 outline-none transition-all font-bold text-sm" 
               />
             </div>
           </div>
 
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Senha de Acesso</label>
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Senha</label>
             <div className="relative">
               <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
               <input 
@@ -95,7 +69,7 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full pl-12 pr-12 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/5 outline-none transition-all font-bold text-xs" 
+                className="w-full pl-12 pr-12 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/5 outline-none transition-all font-bold text-sm" 
               />
               <button 
                 type="button"
@@ -117,23 +91,19 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
             type="submit" 
             className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-4 rounded-2xl shadow-xl shadow-slate-900/20 transition-all flex items-center justify-center group uppercase text-xs tracking-widest"
           >
-            Entrar no Sistema
+            Acessar Terminal
             <ArrowRight size={18} className="ml-2 group-hover:translate-x-1 transition-transform" />
           </button>
         </form>
 
-        <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col items-center justify-center space-y-3">
-          <div className="flex items-center space-x-2 text-slate-400">
-            <Shield size={12} />
-            <span className="text-[9px] font-black uppercase tracking-widest">Terminal Seguro SmartGestão</span>
+        <div className="mt-10 pt-6 border-t border-slate-100 flex flex-col items-center justify-center text-slate-300">
+          <div className="flex items-center space-x-2 mb-1">
+            <Shield size={10} />
+            <span className="text-[8px] font-black uppercase tracking-widest">Protocolo Seguro SSL-256</span>
           </div>
-          
-          <div className="flex flex-col items-center">
-            <p className="text-[7px] font-black text-slate-400 uppercase tracking-[0.4em] mb-1">Developed by</p>
-            <p className="text-[10px] font-black text-slate-900 tracking-tighter flex items-center">
-              <Code size={12} className="mr-1.5 text-blue-600" /> Adriano Pantaroto
-            </p>
-          </div>
+          <p className="text-[9px] font-bold uppercase tracking-tighter opacity-50">
+            by Adriano Pantaroto
+          </p>
         </div>
       </div>
     </div>
