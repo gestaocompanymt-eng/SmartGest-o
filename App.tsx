@@ -16,7 +16,8 @@ import {
   CloudOff,
   Code,
   RefreshCcw,
-  CheckCircle2
+  CheckCircle2,
+  FileBarChart
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
@@ -32,6 +33,7 @@ import ServiceOrders from './pages/ServiceOrders';
 import AdminSettings from './pages/AdminSettings';
 import Login from './pages/Login';
 import WaterLevel from './pages/WaterLevel';
+import Reports from './pages/Reports';
 
 const AppContent: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
@@ -51,11 +53,7 @@ const AppContent: React.FC = () => {
   const smartUnion = (local: any[], cloud: any[] | null) => {
     if (!cloud || cloud.length === 0) return local || [];
     const map = new Map();
-    
-    // Indexa dados locais
     (local || []).forEach(item => map.set(item.id, item));
-    
-    // Mescla com dados da nuvem baseado no updated_at
     (cloud || []).forEach(cloudItem => {
       if (!map.has(cloudItem.id)) {
         map.set(cloudItem.id, cloudItem);
@@ -63,13 +61,11 @@ const AppContent: React.FC = () => {
         const localItem = map.get(cloudItem.id);
         const localDate = new Date(localItem.updated_at || 0).getTime();
         const cloudDate = new Date(cloudItem.updated_at || 0).getTime();
-        
         if (cloudDate >= localDate) {
           map.set(cloudItem.id, cloudItem);
         }
       }
     });
-    
     return Array.from(map.values());
   };
 
@@ -115,7 +111,6 @@ const AppContent: React.FC = () => {
     }
   }, []);
 
-  // Inicialização e Realtime
   useEffect(() => {
     const init = async () => {
       const local = getStore();
@@ -127,7 +122,6 @@ const AppContent: React.FC = () => {
         setData(updated);
         saveStore(updated);
         
-        // Ativar Realtime para todas as tabelas
         const channel = supabase.channel('global-sync')
           .on('postgres_changes', { event: '*', schema: 'public' }, async () => {
              if (dataRef.current) {
@@ -147,14 +141,10 @@ const AppContent: React.FC = () => {
   }, [fetchAllData]);
 
   const updateData = async (newData: AppData) => {
-    // Adiciona timestamp de atualização em tudo que mudou
     const now = new Date().toISOString();
-    
-    // Helper para marcar atualizados
     const markUpdated = (arr: any[], oldArr: any[]) => {
       return arr.map(item => {
         const old = oldArr.find(o => o.id === item.id);
-        // Se o item é novo ou mudou, atualiza o timestamp
         if (!old || JSON.stringify(item) !== JSON.stringify(old)) {
           return { ...item, updated_at: now };
         }
@@ -185,7 +175,6 @@ const AppContent: React.FC = () => {
         syncPromises.push(supabase.from('service_orders').upsert(finalData.serviceOrders));
         syncPromises.push(supabase.from('appointments').upsert(finalData.appointments));
         syncPromises.push(supabase.from('users').upsert(finalData.users.map(u => ({...u, password: u.password || ''}))));
-        
         await Promise.all(syncPromises);
         setSyncStatus('synced');
       } catch (err) {
@@ -236,7 +225,7 @@ const AppContent: React.FC = () => {
 
   return (
     <div className="h-screen w-full flex flex-col md:flex-row bg-slate-50 overflow-hidden">
-      <header className="md:hidden bg-slate-900 text-white p-4 flex justify-between items-center z-50 h-16 shrink-0 shadow-lg">
+      <header className="md:hidden bg-slate-900 text-white p-4 flex justify-between items-center z-50 h-16 shrink-0 shadow-lg no-print">
         <div className="flex items-center space-x-3">
           <Wrench size={18} className="text-blue-500" />
           <span className="font-black text-lg uppercase tracking-tight">SmartGestão</span>
@@ -247,7 +236,7 @@ const AppContent: React.FC = () => {
       </header>
 
       <aside className={`
-        fixed inset-y-0 left-0 z-[60] w-72 bg-slate-900 text-white transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0
+        fixed inset-y-0 left-0 z-[60] w-72 bg-slate-900 text-white transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 no-print
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         <div className="h-full flex flex-col p-6">
@@ -271,6 +260,9 @@ const AppContent: React.FC = () => {
               </>
             )}
             <NavItem to="/os" icon={FileText} label={user?.role === UserRole.RONDA ? 'Minhas Vistorias' : 'Ordens de Serviço'} />
+            {(user?.role === UserRole.ADMIN || user?.role === UserRole.SINDICO_ADMIN) && (
+              <NavItem to="/reports" icon={FileBarChart} label="Relatórios" />
+            )}
             {user?.role === UserRole.ADMIN && (
               <NavItem to="/admin" icon={Settings} label="Administração" />
             )}
@@ -306,7 +298,7 @@ const AppContent: React.FC = () => {
 
             <div className="pt-2 text-center">
               <p className="text-[8px] font-bold text-slate-600 uppercase tracking-widest opacity-30 hover:opacity-100 transition-opacity">
-                v5.5 | by Adriano Pantaroto
+                v5.6 | by Adriano Pantaroto
               </p>
             </div>
           </div>
@@ -314,7 +306,7 @@ const AppContent: React.FC = () => {
       </aside>
 
       <main className="flex-1 flex flex-col overflow-hidden relative">
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth custom-scrollbar print:p-0">
           <Routes>
             <Route path="/" element={<Dashboard data={data} updateData={updateData} />} />
             <Route path="/condos" element={<Condos data={data} updateData={updateData} />} />
@@ -326,13 +318,14 @@ const AppContent: React.FC = () => {
             <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} />} />
             <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} />} />
             <Route path="/os" element={<ServiceOrders data={data} updateData={updateData} />} />
+            <Route path="/reports" element={<Reports data={data} />} />
             <Route path="/admin" element={<AdminSettings data={data} updateData={updateData} />} />
             <Route path="/login" element={<Navigate to="/" />} />
           </Routes>
         </div>
       </main>
       {isSidebarOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[55] md:hidden" onClick={() => setSidebarOpen(false)} />
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[55] md:hidden no-print" onClick={() => setSidebarOpen(false)} />
       )}
     </div>
   );

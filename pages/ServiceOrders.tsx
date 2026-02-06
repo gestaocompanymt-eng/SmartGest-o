@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { 
-  Plus, FileText, ChevronDown, ChevronUp, X, DollarSign, Edit2, Share2, Wrench, MapPin, Camera, Trash2, Image as ImageIcon, CheckCircle2, Save, Layers, Settings, Building2, RefreshCcw, Play, Eye
+  Plus, FileText, ChevronDown, ChevronUp, X, DollarSign, Edit2, Share2, Wrench, MapPin, Camera, Trash2, Image as ImageIcon, CheckCircle2, Save, Layers, Settings, Building2, RefreshCcw, Play, Eye, Thermometer, Droplet, Wind
 } from 'lucide-react';
 import { OSType, OSStatus, ServiceOrder, Condo, System, UserRole, AppData, Equipment } from '../types';
 
@@ -31,6 +31,10 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
   const [photosBefore, setPhotosBefore] = useState<string[]>([]);
   const [photosAfter, setPhotosAfter] = useState<string[]>([]);
 
+  const currentEquipment = useMemo(() => {
+    return data.equipments.find(e => e.id === selectedEquipmentId);
+  }, [selectedEquipmentId, data.equipments]);
+
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const osId = params.get('id');
@@ -40,9 +44,7 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
     const statusParam = params.get('status');
     const isVistoria = params.get('vistoria') === 'true';
 
-    if (statusParam) {
-      setFilterStatus(statusParam);
-    }
+    if (statusParam) setFilterStatus(statusParam);
 
     if (osId) {
       const os = data.serviceOrders.find(o => o.id === osId);
@@ -132,8 +134,8 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
       status: statusFromForm || editingOS?.status || OSStatus.OPEN,
       condo_id: condoId,
       location: formData.get('location') as string,
-      equipment_id: assignmentType === 'equipment' ? (formData.get('equipment_id') as string) : undefined,
-      system_id: assignmentType === 'system' ? (formData.get('system_id') as string) : undefined,
+      equipment_id: assignmentType === 'equipment' ? selectedEquipmentId : undefined,
+      system_id: assignmentType === 'system' ? selectedSystemId : undefined,
       problem_description: formData.get('description') as string,
       actions_performed: (formData.get('actions') as string) || editingOS?.actions_performed || '',
       parts_replaced: editingOS?.parts_replaced || [],
@@ -144,7 +146,17 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
       service_value: Number(formData.get('service_value')) || 0,
       material_value: Number(formData.get('material_value')) || 0,
       completed_at: statusFromForm === OSStatus.COMPLETED ? new Date().toISOString() : editingOS?.completed_at,
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
+      refrigeration_readings: currentEquipment?.type_id === '8' ? {
+         high_pressure: Number(formData.get('high_pressure')),
+         low_pressure: Number(formData.get('low_pressure')),
+         superheat: Number(formData.get('superheat')),
+         subcooling: Number(formData.get('subcooling')),
+         filter_clean: formData.get('filter_clean') === 'on',
+         drain_clean: formData.get('drain_clean') === 'on',
+         evaporator_temp: Number(formData.get('evaporator_temp')),
+         condenser_temp: Number(formData.get('condenser_temp')),
+      } : undefined
     };
 
     await updateData({ 
@@ -174,19 +186,9 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
   const filteredOS = data.serviceOrders.filter((os: ServiceOrder) => {
     const matchStatus = filterStatus === 'all' || os.status === filterStatus;
     const matchType = filterType === 'all' || os.type === filterType;
-    
-    if (isRonda) {
-      return os.type === OSType.VISTORIA && os.condo_id === userCondoId && matchStatus;
-    }
-
-    if (user?.role === UserRole.TECHNICIAN && user.condo_id) {
-       return os.condo_id === user.condo_id && matchStatus && matchType;
-    }
-
-    if (isCondoUser) {
-       return os.condo_id === userCondoId && matchStatus && matchType;
-    }
-    
+    if (isRonda) return os.type === OSType.VISTORIA && os.condo_id === userCondoId && matchStatus;
+    if (user?.role === UserRole.TECHNICIAN && user.condo_id) return os.condo_id === user.condo_id && matchStatus && matchType;
+    if (isCondoUser) return os.condo_id === userCondoId && matchStatus && matchType;
     return matchStatus && matchType;
   });
 
@@ -200,14 +202,12 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
 
   return (
     <div className="space-y-6 pb-12">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 no-print">
         <div>
           <h1 className="text-2xl font-black text-slate-900 leading-tight">
             {isRonda ? 'Minhas Vistorias' : 'Ordens de Serviço'}
           </h1>
-          <p className="text-sm text-slate-500 font-medium">
-            {isRonda ? 'Inspeções e rondas periódicas.' : 'Gestão técnica e atendimentos.'}
-          </p>
+          <p className="text-sm text-slate-500 font-medium">{isRonda ? 'Inspeções e rondas periódicas.' : 'Gestão técnica e atendimentos.'}</p>
         </div>
         <div className="flex gap-2 w-full md:w-auto">
           {!isRonda && (
@@ -222,10 +222,7 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
               {Object.values(OSType).map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           )}
-          <button 
-            onClick={() => { setEditingOS(null); setOsType(isRonda ? OSType.VISTORIA : OSType.SERVICE); setIsModalOpen(true); }} 
-            className="bg-blue-600 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-500/20 active:scale-95 flex-1 md:flex-none"
-          >
+          <button onClick={() => { setEditingOS(null); setOsType(isRonda ? OSType.VISTORIA : OSType.SERVICE); setIsModalOpen(true); }} className="bg-blue-600 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-500/20 active:scale-95 flex-1 md:flex-none">
             <Plus size={16} className="inline mr-1" /> {isRonda ? 'Nova Vistoria' : 'Novo Chamado'}
           </button>
         </div>
@@ -267,69 +264,47 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                     </div>
                     <div className="space-y-2">
                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ações Executadas</p>
-                       <p className="text-slate-600 leading-relaxed bg-slate-900 text-white p-4 rounded-xl font-mono text-[10px]">{os.actions_performed || 'Em aguardo...'}</p>
+                       <p className="text-slate-600 leading-relaxed bg-slate-900 text-white p-4 rounded-xl font-mono text-[10px] whitespace-pre-wrap">{os.actions_performed || 'Em aguardo...'}</p>
                     </div>
                   </div>
 
+                  {os.refrigeration_readings && (
+                    <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+                       <h5 className="text-[9px] font-black text-blue-600 uppercase tracking-widest mb-3 flex items-center">
+                         <Wind size={12} className="mr-2" /> Laudo de Refrigeração
+                       </h5>
+                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          <div><span className="text-[8px] text-slate-400 uppercase">Pressão Alta</span><p className="text-xs font-black">{os.refrigeration_readings.high_pressure} PSI</p></div>
+                          <div><span className="text-[8px] text-slate-400 uppercase">Pressão Baixa</span><p className="text-xs font-black">{os.refrigeration_readings.low_pressure} PSI</p></div>
+                          <div><span className="text-[8px] text-slate-400 uppercase">Superaquecimento</span><p className="text-xs font-black">{os.refrigeration_readings.superheat} K</p></div>
+                          <div><span className="text-[8px] text-slate-400 uppercase">Filtros</span><p className="text-xs font-black">{os.refrigeration_readings.filter_clean ? 'Limpos' : 'Sujeira'}</p></div>
+                       </div>
+                    </div>
+                  )}
+
                   <div className="flex flex-wrap gap-3 pt-2">
-                    <button 
-                      onClick={() => { 
-                        setEditingOS(os); 
-                        setSelectedCondoId(os.condo_id);
-                        setAssignmentType(os.equipment_id ? 'equipment' : os.system_id ? 'system' : 'general');
-                        setSelectedEquipmentId(os.equipment_id || '');
-                        setSelectedSystemId(os.system_id || '');
-                        setPhotosBefore(os.photos_before || []);
-                        setPhotosAfter(os.photos_after || []);
-                        setOsType(os.type);
-                        setIsModalOpen(true); 
-                      }} 
-                      className="bg-slate-900 text-white text-[9px] font-black uppercase px-6 py-3 rounded-xl flex items-center transition-all shadow-lg active:scale-95"
-                    >
-                      <Edit2 size={14} className="mr-2" /> {os.status === OSStatus.COMPLETED ? 'Ver Detalhes' : 'Editar / Finalizar'}
-                    </button>
-                    <button 
-                      onClick={() => handleShare(os, condo?.name)}
-                      className="bg-slate-100 hover:bg-slate-200 text-slate-500 text-[9px] font-black uppercase px-6 py-3 rounded-xl flex items-center transition-colors"
-                    >
-                      <Share2 size={14} className="mr-2" /> Compartilhar
-                    </button>
+                    <button onClick={() => { setEditingOS(os); setSelectedCondoId(os.condo_id); setAssignmentType(os.equipment_id ? 'equipment' : os.system_id ? 'system' : 'general'); setSelectedEquipmentId(os.equipment_id || ''); setSelectedSystemId(os.system_id || ''); setPhotosBefore(os.photos_before || []); setPhotosAfter(os.photos_after || []); setOsType(os.type); setIsModalOpen(true); }} className="bg-slate-900 text-white text-[9px] font-black uppercase px-6 py-3 rounded-xl flex items-center shadow-lg active:scale-95"><Edit2 size={14} className="mr-2" /> {os.status === OSStatus.COMPLETED ? 'Ver Detalhes' : 'Editar / Finalizar'}</button>
+                    <button onClick={() => handleShare(os, condo?.name)} className="bg-slate-100 hover:bg-slate-200 text-slate-500 text-[9px] font-black uppercase px-6 py-3 rounded-xl flex items-center"><Share2 size={14} className="mr-2" /> Compartilhar</button>
                   </div>
                 </div>
               )}
             </div>
           );
         })}
-        {filteredOS.length === 0 && (
-          <div className="py-20 text-center bg-white rounded-2xl border-2 border-dashed border-slate-100">
-             <FileText size={48} className="mx-auto text-slate-200 mb-4" />
-             <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Nenhum registro encontrado com os filtros atuais.</p>
-          </div>
-        )}
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 no-print">
           <div className="bg-white rounded-[2.5rem] w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[95vh] animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-              <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">
-                {editingOS ? 'Editar Registro' : (isRonda ? 'Nova Vistoria' : 'Novo Chamado')}
-              </h2>
+              <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">{editingOS ? 'Editar Registro' : (isRonda ? 'Nova Vistoria' : 'Novo Chamado')}</h2>
               <button onClick={closeModal} className="p-2.5 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm"><X size={20} /></button>
             </div>
-            
             <form onSubmit={handleSubmit} className="p-8 space-y-6 overflow-y-auto custom-scrollbar">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Condomínio</label>
-                  <select 
-                    required 
-                    name="condo_id" 
-                    value={selectedCondoId} 
-                    onChange={(e) => setSelectedCondoId(e.target.value)}
-                    disabled={!!userCondoId}
-                    className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none disabled:opacity-50"
-                  >
+                  <select required name="condo_id" value={selectedCondoId} onChange={(e) => setSelectedCondoId(e.target.value)} disabled={!!userCondoId} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none disabled:opacity-50">
                     <option value="">Selecione...</option>
                     {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
@@ -380,6 +355,42 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                 <textarea required name="description" defaultValue={editingOS?.problem_description || initialDescription} rows={3} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none resize-none" />
               </div>
 
+              {currentEquipment?.type_id === '8' && (
+                <div className="bg-blue-50 p-6 rounded-[2rem] border border-blue-100 space-y-4 animate-in zoom-in-95">
+                   <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest flex items-center">
+                     <Wind size={16} className="mr-2" /> Parâmetros de Refrigeração
+                   </h4>
+                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="space-y-1 col-span-1">
+                        <label className="text-[8px] font-black text-blue-500 uppercase ml-1">Alta (PSI)</label>
+                        <input name="high_pressure" type="number" step="0.1" defaultValue={editingOS?.refrigeration_readings?.high_pressure} className="w-full px-3 py-3 bg-white border border-blue-100 rounded-xl text-xs font-bold" />
+                      </div>
+                      <div className="space-y-1 col-span-1">
+                        <label className="text-[8px] font-black text-blue-500 uppercase ml-1">Baixa (PSI)</label>
+                        <input name="low_pressure" type="number" step="0.1" defaultValue={editingOS?.refrigeration_readings?.low_pressure} className="w-full px-3 py-3 bg-white border border-blue-100 rounded-xl text-xs font-bold" />
+                      </div>
+                      <div className="space-y-1 col-span-1">
+                        <label className="text-[8px] font-black text-blue-500 uppercase ml-1">Superaq. (K)</label>
+                        <input name="superheat" type="number" step="0.1" defaultValue={editingOS?.refrigeration_readings?.superheat} className="w-full px-3 py-3 bg-white border border-blue-100 rounded-xl text-xs font-bold" />
+                      </div>
+                      <div className="space-y-1 col-span-1">
+                        <label className="text-[8px] font-black text-blue-500 uppercase ml-1">Sub-resf. (K)</label>
+                        <input name="subcooling" type="number" step="0.1" defaultValue={editingOS?.refrigeration_readings?.subcooling} className="w-full px-3 py-3 bg-white border border-blue-100 rounded-xl text-xs font-bold" />
+                      </div>
+                   </div>
+                   <div className="flex gap-4">
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                         <input type="checkbox" name="filter_clean" defaultChecked={editingOS?.refrigeration_readings?.filter_clean} className="w-4 h-4 text-blue-600 rounded" />
+                         <span className="text-[9px] font-black text-slate-600 uppercase">Filtros Limpos</span>
+                      </label>
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                         <input type="checkbox" name="drain_clean" defaultChecked={editingOS?.refrigeration_readings?.drain_clean} className="w-4 h-4 text-blue-600 rounded" />
+                         <span className="text-[9px] font-black text-slate-600 uppercase">Dreno Desobstruído</span>
+                      </label>
+                   </div>
+                </div>
+              )}
+
               <div className="space-y-4 pt-4 border-t border-slate-100">
                 <h4 className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Relatório Técnico</h4>
                 <div className="space-y-1">
@@ -429,13 +440,7 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
 
               <div className="pt-6 flex gap-3">
                 <button type="button" onClick={closeModal} className="flex-1 py-4 border rounded-2xl font-black uppercase text-[10px] text-slate-400">Cancelar</button>
-                <button 
-                  type="submit" 
-                  disabled={saveStatus === 'saving'}
-                  className={`flex-1 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl transition-all flex items-center justify-center ${
-                    saveStatus === 'success' ? 'bg-emerald-500 text-white' : 'bg-slate-900 text-white hover:bg-slate-800'
-                  }`}
-                >
+                <button type="submit" disabled={saveStatus === 'saving'} className={`flex-1 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl transition-all flex items-center justify-center ${saveStatus === 'success' ? 'bg-emerald-500 text-white' : 'bg-slate-900 text-white hover:bg-slate-800'}`}>
                   {saveStatus === 'saving' ? <RefreshCcw size={16} className="animate-spin mr-2" /> : saveStatus === 'success' ? <CheckCircle2 size={16} className="mr-2" /> : <Save size={16} className="mr-2" />}
                   {saveStatus === 'saving' ? 'Gravando...' : saveStatus === 'success' ? 'Salvo!' : 'Salvar Registro'}
                 </button>

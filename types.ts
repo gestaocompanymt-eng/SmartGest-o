@@ -69,6 +69,24 @@ export interface Condo {
   updated_at?: string;
 }
 
+export interface RefrigerationSpecs {
+  refrigerant_type?: string;
+  gas_charge?: string;
+  capacity_btu?: string;
+  compressor_model?: string;
+}
+
+export interface RefrigerationReadings {
+  high_pressure?: number;
+  low_pressure?: number;
+  superheat?: number;
+  subcooling?: number;
+  filter_clean?: boolean;
+  drain_clean?: boolean;
+  evaporator_temp?: number;
+  condenser_temp?: number;
+}
+
 export interface Equipment {
   id: string;
   condo_id: string;
@@ -98,6 +116,7 @@ export interface Equipment {
     voltage: number;
     timestamp: string;
   };
+  refrigeration_specs?: RefrigerationSpecs;
 }
 
 export interface System {
@@ -134,6 +153,7 @@ export interface ServiceOrder {
   service_value?: number;
   material_value?: number;
   updated_at?: string;
+  refrigeration_readings?: RefrigerationReadings;
 }
 
 export interface Appointment {

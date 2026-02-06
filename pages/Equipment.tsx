@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Layers, ShieldCheck, Thermometer, Zap, AlertCircle, Trash2, Edit2, X, MapPin, Camera, ImageIcon, ChevronLeft, ChevronRight, Building2, Clock, Calendar, Eye } from 'lucide-react';
+import { Plus, Layers, ShieldCheck, Thermometer, Zap, AlertCircle, Trash2, Edit2, X, MapPin, Camera, ImageIcon, ChevronLeft, ChevronRight, Building2, Clock, Calendar, Eye, Droplet } from 'lucide-react';
 import { Equipment, EquipmentType, Condo, UserRole } from '../types';
 
 const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ data, updateData }) => {
@@ -9,10 +9,10 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEq, setEditingEq] = useState<Equipment | null>(null);
   const [photos, setPhotos] = useState<string[]>([]);
+  const [selectedTypeId, setSelectedTypeId] = useState('');
 
   const user = data.currentUser;
   const isAdminOrTech = user?.role === UserRole.ADMIN || user?.role === UserRole.TECHNICIAN;
-  // Fix: Replaced UserRole.CONDO_USER with UserRole.SINDICO_ADMIN
   const isCondo = user?.role === UserRole.SINDICO_ADMIN;
   const userCondoId = user?.condo_id;
 
@@ -32,6 +32,7 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
 
   const openModal = (eq: Equipment | null) => {
     setEditingEq(eq);
+    setSelectedTypeId(eq?.type_id || '1');
     setPhotos(eq?.photos || []);
     setIsModalOpen(true);
   };
@@ -40,11 +41,12 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const condoId = (isCondo || userCondoId) ? userCondoId : (formData.get('condoId') as string);
+    const typeId = formData.get('typeId') as string;
 
     const eqData: Equipment = {
       id: editingEq?.id || `eq-${Date.now()}`,
       condo_id: condoId || '',
-      type_id: formData.get('typeId') as string,
+      type_id: typeId,
       manufacturer: formData.get('manufacturer') as string,
       model: formData.get('model') as string,
       power: formData.get('power') as string,
@@ -58,7 +60,13 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
       observations: formData.get('observations') as string,
       photos: photos,
       last_maintenance: formData.get('last_maintenance') as string || new Date().toISOString(),
-      maintenance_period: Number(formData.get('maintenance_period')) || 30
+      maintenance_period: Number(formData.get('maintenance_period')) || 30,
+      refrigeration_specs: typeId === '8' ? {
+        refrigerant_type: formData.get('refrigerant_type') as string,
+        capacity_btu: formData.get('capacity_btu') as string,
+        compressor_model: formData.get('compressor_model') as string,
+        gas_charge: formData.get('gas_charge') as string,
+      } : undefined
     };
 
     const newEquipments = editingEq
@@ -114,7 +122,7 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                   <div className="w-full h-full flex items-center justify-center text-slate-300"><ImageIcon size={40} /></div>
                 )}
                 <div className="absolute top-4 left-4 flex gap-2">
-                  <span className="px-3 py-1 bg-white/90 backdrop-blur shadow-sm text-slate-900 text-[9px] font-black uppercase tracking-widest rounded-lg border border-slate-100">
+                  <span className={`px-3 py-1 bg-white/90 backdrop-blur shadow-sm text-slate-900 text-[9px] font-black uppercase tracking-widest rounded-lg border border-slate-100 ${eq.type_id === '8' ? 'text-blue-600' : ''}`}>
                     {type?.name || 'Inespecífico'}
                   </span>
                 </div>
@@ -144,7 +152,20 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                   <Building2 size={12} className="mr-1.5" /> {condo?.name || 'Geral'}
                 </p>
 
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-6">
+                {eq.type_id === '8' && eq.refrigeration_specs && (
+                   <div className="mb-4 grid grid-cols-2 gap-2">
+                      <div className="px-3 py-2 bg-blue-50 rounded-xl border border-blue-100 flex items-center">
+                         <Droplet size={14} className="text-blue-500 mr-2" />
+                         <span className="text-[9px] font-black text-blue-700 uppercase">{eq.refrigeration_specs.refrigerant_type || 'Gás'}</span>
+                      </div>
+                      <div className="px-3 py-2 bg-blue-50 rounded-xl border border-blue-100 flex items-center">
+                         <Zap size={14} className="text-blue-500 mr-2" />
+                         <span className="text-[9px] font-black text-blue-700 uppercase">{eq.refrigeration_specs.capacity_btu || 'Capacidade'}</span>
+                      </div>
+                   </div>
+                )}
+
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-6 mt-auto">
                    <div className="flex justify-between items-center mb-2">
                       <span className="text-[9px] font-black text-slate-400 uppercase">Manutenção</span>
                       <span className={`text-[9px] font-black uppercase ${status.color}`}>{status.label}</span>
@@ -160,7 +181,7 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                    </div>
                 </div>
 
-                <div className="mt-auto grid grid-cols-2 gap-4 pt-4 border-t border-slate-50">
+                <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-50">
                   <div className="flex items-center text-[9px] font-black uppercase text-slate-400 tracking-widest">
                     <Thermometer size={14} className="mr-1.5" /> {eq.temperature}°C
                   </div>
@@ -193,24 +214,50 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Tipo de Equipamento</label>
-                  <select required name="typeId" defaultValue={editingEq?.type_id} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none">
+                  <select required name="typeId" value={selectedTypeId} onChange={(e) => setSelectedTypeId(e.target.value)} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none">
                     {data.equipmentTypes.map((t: EquipmentType) => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                 </div>
               </div>
 
-              <div className="bg-blue-50/50 p-6 rounded-[2rem] border border-blue-100 space-y-5">
-                 <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest flex items-center">
+              {selectedTypeId === '8' && (
+                <div className="bg-blue-50 p-6 rounded-[2rem] border border-blue-100 space-y-4 animate-in slide-in-from-top-2">
+                   <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest flex items-center">
+                     <Droplet size={16} className="mr-2" /> Dados Técnicos de Refrigeração
+                   </h4>
+                   <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-blue-500 uppercase tracking-widest ml-1">Tipo de Gás</label>
+                        <input name="refrigerant_type" defaultValue={editingEq?.refrigeration_specs?.refrigerant_type} placeholder="Ex: R410A" className="w-full px-4 py-3 bg-white border border-blue-100 rounded-xl font-bold text-xs" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-blue-500 uppercase tracking-widest ml-1">Capacidade</label>
+                        <input name="capacity_btu" defaultValue={editingEq?.refrigeration_specs?.capacity_btu} placeholder="Ex: 36.000 BTU" className="w-full px-4 py-3 bg-white border border-blue-100 rounded-xl font-bold text-xs" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-blue-500 uppercase tracking-widest ml-1">Modelo Compressor</label>
+                        <input name="compressor_model" defaultValue={editingEq?.refrigeration_specs?.compressor_model} className="w-full px-4 py-3 bg-white border border-blue-100 rounded-xl font-bold text-xs" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-blue-500 uppercase tracking-widest ml-1">Carga de Gás (kg)</label>
+                        <input name="gas_charge" defaultValue={editingEq?.refrigeration_specs?.gas_charge} className="w-full px-4 py-3 bg-white border border-blue-100 rounded-xl font-bold text-xs" />
+                      </div>
+                   </div>
+                </div>
+              )}
+
+              <div className="bg-slate-50/50 p-6 rounded-[2rem] border border-slate-100 space-y-5">
+                 <h4 className="text-[10px] font-black text-slate-900 uppercase tracking-widest flex items-center">
                    <Calendar size={16} className="mr-2" /> Cronograma de Preventivas
                  </h4>
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1">
-                      <label className="text-[10px] font-black text-blue-500 uppercase tracking-widest ml-1">Periodicidade (em dias)</label>
-                      <input required type="number" name="maintenance_period" defaultValue={editingEq?.maintenance_period || 30} className="w-full px-5 py-4 bg-white border border-blue-100 rounded-2xl font-black text-blue-600 outline-none" placeholder="Ex: 30" />
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Periodicidade (em dias)</label>
+                      <input required type="number" name="maintenance_period" defaultValue={editingEq?.maintenance_period || 30} className="w-full px-5 py-4 bg-white border border-slate-200 rounded-2xl font-black text-slate-900 outline-none" placeholder="Ex: 30" />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[10px] font-black text-blue-500 uppercase tracking-widest ml-1">Última Revisão Realizada</label>
-                      <input required type="date" name="last_maintenance" defaultValue={editingEq?.last_maintenance?.split('T')[0]} className="w-full px-5 py-4 bg-white border border-blue-100 rounded-2xl font-black text-blue-600 outline-none" />
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Última Revisão Realizada</label>
+                      <input required type="date" name="last_maintenance" defaultValue={editingEq?.last_maintenance?.split('T')[0]} className="w-full px-5 py-4 bg-white border border-slate-200 rounded-2xl font-black text-slate-900 outline-none" />
                     </div>
                  </div>
               </div>
