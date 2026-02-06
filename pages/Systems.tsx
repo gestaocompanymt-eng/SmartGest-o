@@ -12,8 +12,8 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
   const [selectedTypeId, setSelectedTypeId] = useState('1');
 
   const user = data.currentUser;
-  const isAdminOrTech = user?.role === UserRole.ADMIN || user?.role === UserRole.TECHNICIAN;
-  const isAdmin = user?.role === UserRole.ADMIN;
+  // Permissão expandida: Admin, Técnico ou Síndico/Gestor
+  const canManage = user?.role === UserRole.ADMIN || user?.role === UserRole.TECHNICIAN || user?.role === UserRole.SINDICO_ADMIN;
   const isCondo = user?.role === UserRole.SINDICO_ADMIN;
   const userCondoId = user?.condo_id;
 
@@ -29,7 +29,7 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
   };
 
   const deleteSystem = async (id: string) => {
-    if (!isAdmin) return;
+    if (!canManage) return;
     if (window.confirm('ATENÇÃO: Deseja realmente excluir este sistema? Esta ação removerá também todos os vínculos de monitoramento IOT associados.')) {
       const newSystemsList = data.systems.filter((s: System) => s.id !== id);
       await updateData({ ...data, systems: newSystemsList });
@@ -77,7 +77,7 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
           <h1 className="text-2xl font-black text-slate-900 leading-tight">Sistemas Prediais</h1>
           <p className="text-sm text-slate-500 font-medium">Cronogramas de manutenção e telemetria IOT.</p>
         </div>
-        {isAdminOrTech && (
+        {canManage && (
           <button onClick={() => openModal(null)} className="bg-slate-900 text-white px-6 py-3 rounded-2xl flex items-center space-x-2 font-black uppercase text-[10px] tracking-widest shadow-xl">
             <Plus size={18} />
             <span>Novo Sistema</span>
@@ -108,11 +108,11 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
                     <p className="text-[9px] font-black text-blue-600 uppercase mt-1 tracking-widest">{condo?.name || 'Localização Geral'}</p>
                    </div>
                    <div className="flex space-x-1 shrink-0">
-                      {isAdminOrTech && (
-                        <button onClick={() => openModal(sys)} className="p-2.5 text-slate-400 hover:text-blue-600 bg-slate-50 rounded-xl transition-all" title="Editar Sistema"><Edit2 size={16} /></button>
-                      )}
-                      {isAdmin && (
-                        <button onClick={() => deleteSystem(sys.id)} className="p-2.5 text-slate-400 hover:text-red-600 bg-slate-50 rounded-xl transition-all" title="Excluir Sistema"><Trash2 size={16} /></button>
+                      {canManage && (
+                        <>
+                          <button onClick={() => openModal(sys)} className="p-2.5 text-slate-400 hover:text-blue-600 bg-slate-50 rounded-xl transition-all" title="Editar Sistema"><Edit2 size={16} /></button>
+                          <button onClick={() => deleteSystem(sys.id)} className="p-2.5 text-slate-400 hover:text-red-600 bg-slate-50 rounded-xl transition-all" title="Excluir Sistema"><Trash2 size={16} /></button>
+                        </>
                       )}
                    </div>
                 </div>
@@ -152,7 +152,7 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ da
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                  <div className="space-y-1">
                     <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Condomínio</label>
-                    <select required name="condoId" defaultValue={editingSys?.condo_id} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none">
+                    <select required name="condoId" defaultValue={editingSys?.condo_id} disabled={isCondo} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none disabled:opacity-60">
                        <option value="">Selecione...</option>
                        {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>

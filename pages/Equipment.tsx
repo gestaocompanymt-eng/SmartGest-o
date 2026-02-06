@@ -12,7 +12,8 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
   const [selectedTypeId, setSelectedTypeId] = useState('');
 
   const user = data.currentUser;
-  const isAdminOrTech = user?.role === UserRole.ADMIN || user?.role === UserRole.TECHNICIAN;
+  // Permissão expandida: Admin, Técnico ou Síndico/Gestor
+  const canManage = user?.role === UserRole.ADMIN || user?.role === UserRole.TECHNICIAN || user?.role === UserRole.SINDICO_ADMIN;
   const isCondo = user?.role === UserRole.SINDICO_ADMIN;
   const userCondoId = user?.condo_id;
 
@@ -35,6 +36,12 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
     setSelectedTypeId(eq?.type_id || '1');
     setPhotos(eq?.photos || []);
     setIsModalOpen(true);
+  };
+
+  const deleteEquipment = (id: string) => {
+    if (window.confirm('Deseja realmente remover este equipamento do inventário?')) {
+      updateData({ ...data, equipments: data.equipments.filter((e: Equipment) => e.id !== id) });
+    }
   };
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -99,7 +106,7 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
           <h1 className="text-2xl font-black text-slate-900 leading-tight">Gestão de Ativos</h1>
           <p className="text-sm text-slate-500 font-medium italic">Inventário técnico e preventivas.</p>
         </div>
-        {isAdminOrTech && (
+        {canManage && (
           <button onClick={() => openModal(null)} className="w-full md:w-auto bg-slate-900 text-white px-6 py-3 rounded-2xl flex items-center justify-center space-x-2 font-black uppercase text-[10px] tracking-widest shadow-xl">
             <Plus size={18} />
             <span>Novo Equipamento</span>
@@ -142,8 +149,11 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
                      >
                        <Eye size={16} />
                      </button>
-                     {isAdminOrTech && (
-                       <button onClick={() => openModal(eq)} className="p-2.5 text-slate-400 hover:text-blue-600 bg-slate-50 rounded-xl transition-all"><Edit2 size={16} /></button>
+                     {canManage && (
+                       <>
+                        <button onClick={() => openModal(eq)} className="p-2.5 text-slate-400 hover:text-blue-600 bg-slate-50 rounded-xl transition-all"><Edit2 size={16} /></button>
+                        <button onClick={() => deleteEquipment(eq.id)} className="p-2.5 text-slate-400 hover:text-red-600 bg-slate-50 rounded-xl transition-all"><Trash2 size={16} /></button>
+                       </>
                      )}
                   </div>
                 </div>
@@ -207,7 +217,7 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void }> = ({ 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Condomínio</label>
-                  <select required name="condoId" defaultValue={editingEq?.condo_id} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none">
+                  <select required name="condoId" defaultValue={editingEq?.condo_id} disabled={isCondo} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none disabled:opacity-60">
                     <option value="">Selecione...</option>
                     {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
