@@ -15,7 +15,8 @@ import {
   Cloud,
   CloudOff,
   Code,
-  RefreshCcw
+  RefreshCcw,
+  CheckCircle2
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
@@ -36,8 +37,7 @@ const AppContent: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [data, setData] = useState<AppData | null>(null);
   const [isInitialSyncing, setIsInitialSyncing] = useState(true);
-  const [isCloudSyncing, setIsCloudSyncing] = useState(false);
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'offline'>('syncing');
   
   const isSyncingRef = useRef(false);
   const navigate = useNavigate();
@@ -48,46 +48,38 @@ const AppContent: React.FC = () => {
     dataRef.current = data;
   }, [data]);
 
-  // Sincronização Automática GitHub
-  useEffect(() => {
-    if (!data?.githubConfig?.token || !data?.githubConfig?.repo) return;
-
-    const autoSyncInterval = setInterval(async () => {
-      if (dataRef.current && navigator.onLine && !isCloudSyncing) {
-        setIsCloudSyncing(true);
-        await syncDataToGithub(dataRef.current);
-        setIsCloudSyncing(false);
-      }
-    }, 900000); // 15 min
-
-    return () => clearInterval(autoSyncInterval);
-  }, [data?.githubConfig?.token, data?.githubConfig?.repo, isCloudSyncing]);
-
   const smartUnion = (local: any[], cloud: any[] | null) => {
     if (!cloud || cloud.length === 0) return local || [];
     const map = new Map();
-    cloud.forEach(item => map.set(item.id, item));
-    (local || []).forEach(item => {
-      if (!map.has(item.id)) {
-        map.set(item.id, item);
+    
+    // Indexa dados locais
+    (local || []).forEach(item => map.set(item.id, item));
+    
+    // Mescla com dados da nuvem baseado no updated_at
+    (cloud || []).forEach(cloudItem => {
+      if (!map.has(cloudItem.id)) {
+        map.set(cloudItem.id, cloudItem);
       } else {
-        const cloudItem = map.get(item.id);
-        const localDate = new Date(item.updated_at || 0).getTime();
+        const localItem = map.get(cloudItem.id);
+        const localDate = new Date(localItem.updated_at || 0).getTime();
         const cloudDate = new Date(cloudItem.updated_at || 0).getTime();
-        if (localDate > cloudDate) {
-          map.set(item.id, item);
+        
+        if (cloudDate >= localDate) {
+          map.set(cloudItem.id, cloudItem);
         }
       }
     });
+    
     return Array.from(map.values());
   };
 
   const fetchAllData = useCallback(async (currentLocalData: AppData) => {
-    if (!navigator.onLine || !isSupabaseActive || isSyncingRef.current || !currentLocalData.currentUser) return currentLocalData;
+    if (!navigator.onLine || !isSupabaseActive || isSyncingRef.current || !currentLocalData.currentUser) {
+      setSyncStatus(navigator.onLine ? 'synced' : 'offline');
+      return currentLocalData;
+    }
     
-    const user = currentLocalData.currentUser;
-    const condoId = user.condo_id;
-
+    setSyncStatus('syncing');
     try {
       const queries = [
         supabase.from('users').select('*'),
@@ -101,7 +93,7 @@ const AppContent: React.FC = () => {
 
       const responses = await Promise.all(queries);
 
-      return {
+      const updated = {
         ...currentLocalData,
         users: smartUnion(currentLocalData.users, responses[0].data),
         condos: smartUnion(currentLocalData.condos, responses[1].data),
@@ -113,41 +105,92 @@ const AppContent: React.FC = () => {
         appointments: smartUnion(currentLocalData.appointments, responses[5].data),
         waterLevels: responses[6].data || []
       };
+      
+      setSyncStatus('synced');
+      return updated;
     } catch (error) {
-      console.error("Erro na sincronização de dados:", error);
+      console.error("Erro na sincronização:", error);
+      setSyncStatus('offline');
       return currentLocalData;
     }
   }, []);
 
+  // Inicialização e Realtime
   useEffect(() => {
     const init = async () => {
       const local = getStore();
       setData(local);
       setIsInitialSyncing(false); 
-      if (navigator.onLine && local.currentUser) {
+      
+      if (local.currentUser) {
         const updated = await fetchAllData(local);
         setData(updated);
         saveStore(updated);
+        
+        // Ativar Realtime para todas as tabelas
+        const channel = supabase.channel('global-sync')
+          .on('postgres_changes', { event: '*', schema: 'public' }, async () => {
+             if (dataRef.current) {
+               const fresh = await fetchAllData(dataRef.current);
+               setData(fresh);
+               saveStore(fresh);
+             }
+          })
+          .subscribe();
+
+        return () => {
+          supabase.removeChannel(channel);
+        };
       }
     };
     init();
   }, [fetchAllData]);
 
   const updateData = async (newData: AppData) => {
-    setData(newData);
-    saveStore(newData);
+    // Adiciona timestamp de atualização em tudo que mudou
+    const now = new Date().toISOString();
+    
+    // Helper para marcar atualizados
+    const markUpdated = (arr: any[], oldArr: any[]) => {
+      return arr.map(item => {
+        const old = oldArr.find(o => o.id === item.id);
+        // Se o item é novo ou mudou, atualiza o timestamp
+        if (!old || JSON.stringify(item) !== JSON.stringify(old)) {
+          return { ...item, updated_at: now };
+        }
+        return item;
+      });
+    };
+
+    const finalData = {
+      ...newData,
+      condos: markUpdated(newData.condos, data?.condos || []),
+      equipments: markUpdated(newData.equipments, data?.equipments || []),
+      systems: markUpdated(newData.systems, data?.systems || []),
+      serviceOrders: markUpdated(newData.serviceOrders, data?.serviceOrders || []),
+      appointments: markUpdated(newData.appointments, data?.appointments || []),
+    };
+
+    setData(finalData);
+    saveStore(finalData);
+
     if (navigator.onLine && isSupabaseActive) {
       isSyncingRef.current = true;
+      setSyncStatus('syncing');
       try {
         const syncPromises = [];
-        if (newData.systems?.length > 0) syncPromises.push(supabase.from('systems').upsert(newData.systems));
-        if (newData.equipments?.length > 0) syncPromises.push(supabase.from('equipments').upsert(newData.equipments));
-        if (newData.condos?.length > 0) syncPromises.push(supabase.from('condos').upsert(newData.condos));
-        if (newData.serviceOrders?.length > 0) syncPromises.push(supabase.from('service_orders').upsert(newData.serviceOrders));
-        if (newData.users?.length > 0) syncPromises.push(supabase.from('users').upsert(newData.users.map(u => ({...u, password: u.password || ''}))));
+        syncPromises.push(supabase.from('systems').upsert(finalData.systems));
+        syncPromises.push(supabase.from('equipments').upsert(finalData.equipments));
+        syncPromises.push(supabase.from('condos').upsert(finalData.condos));
+        syncPromises.push(supabase.from('service_orders').upsert(finalData.serviceOrders));
+        syncPromises.push(supabase.from('appointments').upsert(finalData.appointments));
+        syncPromises.push(supabase.from('users').upsert(finalData.users.map(u => ({...u, password: u.password || ''}))));
+        
         await Promise.all(syncPromises);
+        setSyncStatus('synced');
       } catch (err) {
-        console.error("Erro ao sincronizar com nuvem:", err);
+        console.error("Erro ao subir dados:", err);
+        setSyncStatus('offline');
       } finally {
         isSyncingRef.current = false;
       }
@@ -155,37 +198,23 @@ const AppContent: React.FC = () => {
   };
 
   if (!data) return null;
-  if (isInitialSyncing || isLoggingIn) {
+  if (isInitialSyncing) {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-center">
         <Wrench size={48} className="text-blue-500 animate-bounce mb-6" />
         <h2 className="text-white font-black uppercase tracking-widest text-lg mb-2">SmartGestão</h2>
-        <p className="text-slate-400 text-sm font-bold animate-pulse">
-          {isLoggingIn ? "Atualizando sensores de nível..." : "Sincronizando sistemas..."}
-        </p>
+        <p className="text-slate-400 text-sm font-bold animate-pulse">Sincronizando Banco de Dados...</p>
       </div>
     );
   }
 
   if (!data.currentUser && location.pathname !== '/login') {
     return <Login onLogin={async (user) => {
-      setIsLoggingIn(true);
-      try {
-        const baseData = { ...data, currentUser: user };
-        // Busca dados frescos (incluindo nível de caixa) imediatamente no login
-        const updatedData = await fetchAllData(baseData);
-        setData(updatedData);
-        saveStore(updatedData);
-        navigate('/');
-      } catch (err) {
-        console.error("Erro ao carregar dados pós-login:", err);
-        const baseData = { ...data, currentUser: user };
-        setData(baseData);
-        saveStore(baseData);
-        navigate('/');
-      } finally {
-        setIsLoggingIn(false);
-      }
+      const baseData = { ...data, currentUser: user };
+      const updatedData = await fetchAllData(baseData);
+      setData(updatedData);
+      saveStore(updatedData);
+      navigate('/');
     }} />;
   }
 
@@ -227,7 +256,9 @@ const AppContent: React.FC = () => {
               <Wrench size={24} className="text-blue-500" />
               <span className="font-black text-xl tracking-tighter uppercase">SmartGestão</span>
             </div>
-            {isCloudSyncing && <Cloud size={16} className="text-blue-400 animate-pulse" />}
+            {syncStatus === 'syncing' && <RefreshCcw size={16} className="text-blue-400 animate-spin" />}
+            {syncStatus === 'synced' && <CheckCircle2 size={16} className="text-emerald-400" />}
+            {syncStatus === 'offline' && <CloudOff size={16} className="text-slate-600" />}
           </div>
           <nav className="flex-1 space-y-2 overflow-y-auto pr-2 custom-scrollbar">
             <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
@@ -253,7 +284,11 @@ const AppContent: React.FC = () => {
                  </p>
                  <p className="text-xs font-bold text-white truncate">{user?.name}</p>
                </div>
-               {isCloudSyncing ? <RefreshCcw size={14} className="text-blue-400 animate-spin" /> : <CloudOff size={14} className="text-slate-600" />}
+               <div title={syncStatus === 'synced' ? 'Nuvem Conectada' : 'Modo Offline'}>
+                {syncStatus === 'synced' ? <Cloud size={14} className="text-emerald-400" /> : 
+                 syncStatus === 'syncing' ? <RefreshCcw size={14} className="text-blue-400 animate-spin" /> : 
+                 <CloudOff size={14} className="text-red-400" />}
+               </div>
             </div>
             
             <button 
@@ -271,7 +306,7 @@ const AppContent: React.FC = () => {
 
             <div className="pt-2 text-center">
               <p className="text-[8px] font-bold text-slate-600 uppercase tracking-widest opacity-30 hover:opacity-100 transition-opacity">
-                v5.2 | by Adriano Pantaroto
+                v5.5 | by Adriano Pantaroto
               </p>
             </div>
           </div>
