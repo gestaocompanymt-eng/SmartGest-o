@@ -40,9 +40,10 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
   // Permissão estendida para agendamento: Admin, Tech ou Síndico
   const canSchedule = isAdminOrTech || isSindicoAdmin;
 
-  const filteredOSList = useMemo(() => (isSindicoAdmin || (user?.role === UserRole.TECHNICIAN && condoId))
+  // Filtro centralizado por condomínio (Isolamento de dados)
+  const filteredOSList = useMemo(() => (condoId)
     ? data.serviceOrders.filter(os => os.condo_id === condoId)
-    : data.serviceOrders, [data.serviceOrders, isSindicoAdmin, user?.role, condoId]);
+    : data.serviceOrders, [data.serviceOrders, condoId]);
 
   const totalCost = useMemo(() => {
     return filteredOSList
@@ -57,7 +58,8 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
     const pendingToOpen = data.appointments.filter(a => 
       a.date <= todayStr && 
       a.status === 'Pendente' && 
-      !a.service_order_id
+      !a.service_order_id &&
+      (!condoId || a.condo_id === condoId)
     );
 
     if (pendingToOpen.length > 0) {
@@ -96,13 +98,13 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
         appointments: updatedAppts
       });
     }
-  }, [data.appointments, canSchedule]);
+  }, [data.appointments, canSchedule, condoId]);
 
   const periodicAlerts = useMemo(() => {
     const alerts: any[] = [];
     const today = new Date();
 
-    const relevantEquips = (isSindicoAdmin || (user?.role === UserRole.TECHNICIAN && condoId))
+    const relevantEquips = (condoId)
       ? data.equipments.filter(e => e.condo_id === condoId)
       : data.equipments;
 
@@ -127,17 +129,17 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
     });
 
     return alerts.sort((a, b) => a.days - b.days);
-  }, [data.equipments, data.condos, isSindicoAdmin, user?.role, condoId]);
+  }, [data.equipments, data.condos, condoId]);
 
-  const filteredAppointments = useMemo(() => (isSindicoAdmin || (user?.role === UserRole.TECHNICIAN && condoId))
+  const filteredAppointments = useMemo(() => (condoId)
     ? data.appointments.filter(a => a.condo_id === condoId)
     : data.appointments,
-  [data.appointments, isSindicoAdmin, user?.role, condoId]);
+  [data.appointments, condoId]);
 
   const handleScheduleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    const condoIdToSave = isSindicoAdmin ? (condoId || '') : (formData.get('condo_id') as string);
+    const condoIdToSave = condoId || (formData.get('condo_id') as string);
     
     const newAppt: Appointment = {
       id: `APT-${Date.now()}`,
@@ -185,7 +187,7 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
         <div>
           <h1 className="text-2xl font-black text-slate-900 leading-tight">Painel de Gestão</h1>
           <p className="text-sm text-slate-500 font-medium">
-            {isSindicoAdmin 
+            {condoId 
               ? `Administração: ${data.condos.find(c => c.id === condoId)?.name}` 
               : "Visão consolidada da operação técnica."}
           </p>
@@ -193,7 +195,7 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
         {canSchedule && (
           <button 
             onClick={() => {
-              setSelectedCondoId(isSindicoAdmin ? (condoId || '') : '');
+              setSelectedCondoId(condoId || '');
               setIsScheduleModalOpen(true);
             }}
             className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-slate-900/20 flex items-center space-x-2 active:scale-95 transition-all"
@@ -326,7 +328,7 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
 
       {isScheduleModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-xl overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-[2.5rem] w-full max-xl overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">Programar Preventiva</h2>
               <button onClick={() => setIsScheduleModalOpen(false)} className="p-2.5 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm"><X size={20} /></button>
@@ -338,9 +340,9 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
                 <select 
                   required 
                   name="condo_id" 
-                  value={selectedCondoId} 
+                  value={condoId || selectedCondoId} 
                   onChange={(e) => setSelectedCondoId(e.target.value)} 
-                  disabled={isSindicoAdmin}
+                  disabled={!!condoId}
                   className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none disabled:opacity-60"
                 >
                   <option value="">Selecione...</option>
@@ -373,7 +375,7 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
                   <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Equipamento</label>
                   <select name="equipment_id" className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs">
                     <option value="">Selecionar...</option>
-                    {data.equipments.filter(e => e.condo_id === selectedCondoId).map(e => <option key={e.id} value={e.id}>{e.manufacturer} {e.model}</option>)}
+                    {data.equipments.filter(e => e.condo_id === (condoId || selectedCondoId)).map(e => <option key={e.id} value={e.id}>{e.manufacturer} {e.model}</option>)}
                   </select>
                 </div>
               )}
@@ -383,7 +385,7 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
                   <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Sistema</label>
                   <select name="system_id" className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs">
                     <option value="">Selecionar...</option>
-                    {data.systems.filter(s => s.condo_id === selectedCondoId).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    {data.systems.filter(s => s.condo_id === (condoId || selectedCondoId)).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 </div>
               )}

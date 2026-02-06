@@ -251,18 +251,26 @@ const AppContent: React.FC = () => {
           </div>
           <nav className="flex-1 space-y-2 overflow-y-auto pr-2 custom-scrollbar">
             <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
-            {user?.role !== UserRole.RONDA && (
+            
+            {/* RONDA: Vê apenas OS (Vistorias) e Reservatórios vinculados */}
+            {user?.role === UserRole.RONDA ? (
+               <>
+                 <NavItem to="/reservatorios" icon={Droplets} label="Reservatórios" />
+                 <NavItem to="/os" icon={FileText} label="Minhas Vistorias" />
+               </>
+            ) : (
               <>
                 <NavItem to="/condos" icon={Building2} label="Condomínios" />
                 <NavItem to="/reservatorios" icon={Droplets} label="Reservatórios" />
                 <NavItem to="/equipment" icon={Layers} label="Equipamentos" />
                 <NavItem to="/systems" icon={Wrench} label="Sistemas" />
+                <NavItem to="/os" icon={FileText} label="Ordens de Serviço" />
+                {(user?.role === UserRole.ADMIN || user?.role === UserRole.SINDICO_ADMIN) && (
+                  <NavItem to="/reports" icon={FileBarChart} label="Relatórios" />
+                )}
               </>
             )}
-            <NavItem to="/os" icon={FileText} label={user?.role === UserRole.RONDA ? 'Minhas Vistorias' : 'Ordens de Serviço'} />
-            {(user?.role === UserRole.ADMIN || user?.role === UserRole.SINDICO_ADMIN) && (
-              <NavItem to="/reports" icon={FileBarChart} label="Relatórios" />
-            )}
+
             {user?.role === UserRole.ADMIN && (
               <NavItem to="/admin" icon={Settings} label="Administração" />
             )}
@@ -272,9 +280,14 @@ const AppContent: React.FC = () => {
             <div className="px-4 py-3 bg-slate-800/50 rounded-xl flex items-center justify-between">
                <div className="min-w-0">
                  <p className="text-[10px] font-black text-slate-500 uppercase truncate">
-                   {user?.role}
+                   {user?.role === UserRole.SINDICO_ADMIN ? 'SÍNDICO / GESTOR' : user?.role}
                  </p>
                  <p className="text-xs font-bold text-white truncate">{user?.name}</p>
+                 {user?.condo_id && (
+                    <p className="text-[8px] font-bold text-blue-400 truncate mt-0.5">
+                      {data.condos.find(c => c.id === user.condo_id)?.name}
+                    </p>
+                 )}
                </div>
                <div title={syncStatus === 'synced' ? 'Nuvem Conectada' : 'Modo Offline'}>
                 {syncStatus === 'synced' ? <Cloud size={14} className="text-emerald-400" /> : 

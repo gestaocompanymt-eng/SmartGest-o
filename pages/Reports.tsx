@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   FileText, 
   Printer, 
@@ -19,37 +19,44 @@ import {
 import { AppData, UserRole, Condo, Equipment, System, ServiceOrder, OSStatus, OSType } from '../types';
 
 const Reports: React.FC<{ data: AppData }> = ({ data }) => {
-  const [reportType, setReportType] = useState<'condo' | 'equipment' | 'system' | 'os'>('condo');
-  const [selectedCondoId, setSelectedCondoId] = useState('');
-  const [selectedTargetId, setSelectedTargetId] = useState('');
-  const [dateStart, setDateStart] = useState('');
-  const [dateEnd, setDateEnd] = useState('');
-  const [showPrintView, setShowPrintView] = useState(false);
-
   const user = data.currentUser;
   const isAdmin = user?.role === UserRole.ADMIN;
   const isSindico = user?.role === UserRole.SINDICO_ADMIN;
   const userCondoId = user?.condo_id;
 
+  const [reportType, setReportType] = useState<'condo' | 'equipment' | 'system' | 'os'>('condo');
+  const [selectedCondoId, setSelectedCondoId] = useState(userCondoId || '');
+  const [selectedTargetId, setSelectedTargetId] = useState('');
+  const [dateStart, setDateStart] = useState('');
+  const [dateEnd, setDateEnd] = useState('');
+  const [showPrintView, setShowPrintView] = useState(false);
+
+  // Garante que o condoId esteja correto no carregamento se for síndico
+  useEffect(() => {
+    if (userCondoId) {
+      setSelectedCondoId(userCondoId);
+    }
+  }, [userCondoId]);
+
   // Filtragem de condomínios por acesso
   const accessibleCondos = useMemo(() => {
-    return isSindico 
+    return userCondoId 
       ? data.condos.filter(c => c.id === userCondoId) 
       : data.condos;
-  }, [data.condos, isSindico, userCondoId]);
+  }, [data.condos, userCondoId]);
 
   // Alvos secundários baseados no condomínio selecionado
   const targets = useMemo(() => {
-    const condoId = isSindico ? userCondoId : selectedCondoId;
+    const condoId = userCondoId || selectedCondoId;
     if (!condoId) return [];
     
     if (reportType === 'equipment') return data.equipments.filter(e => e.condo_id === condoId);
     if (reportType === 'system') return data.systems.filter(s => s.condo_id === condoId);
     return [];
-  }, [reportType, selectedCondoId, userCondoId, isSindico, data.equipments, data.systems]);
+  }, [reportType, selectedCondoId, userCondoId, data.equipments, data.systems]);
 
   const generateReportData = () => {
-    const condoId = isSindico ? userCondoId : selectedCondoId;
+    const condoId = userCondoId || selectedCondoId;
     const condo = data.condos.find(c => c.id === condoId);
     
     let filteredOS = data.serviceOrders.filter(os => os.condo_id === condoId);
@@ -216,7 +223,7 @@ const Reports: React.FC<{ data: AppData }> = ({ data }) => {
                   value={selectedCondoId} 
                   onChange={(e) => setSelectedCondoId(e.target.value)}
                   disabled={!!userCondoId}
-                  className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none"
+                  className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none disabled:opacity-60"
                 >
                   <option value="">Selecione...</option>
                   {accessibleCondos.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -268,7 +275,7 @@ const Reports: React.FC<{ data: AppData }> = ({ data }) => {
 
               <button 
                 onClick={() => setShowPrintView(true)}
-                disabled={!selectedCondoId && !isSindico}
+                disabled={!selectedCondoId && !userCondoId}
                 className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl flex items-center justify-center space-x-2 active:scale-95 transition-all disabled:opacity-50"
               >
                 <TrendingUp size={16} />
