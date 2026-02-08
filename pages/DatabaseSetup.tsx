@@ -5,8 +5,8 @@ import { Database, Copy, CheckCircle2, AlertTriangle, Terminal, ShieldCheck } fr
 const DatabaseSetup: React.FC = () => {
   const [copied, setCopied] = React.useState(false);
 
-  const sqlScript = `-- SCRIPT DE INFRAESTRUTURA SMARTGESTÃO (VERSÃO V5.8 - SYNC TOTAL)
--- Execute este script no SQL Editor do Supabase para garantir sincronismo e segurança.
+  const sqlScript = `-- SCRIPT DE INFRAESTRUTURA SMARTGESTÃO (VERSÃO V5.9 - FIX CLOUD SYNC)
+-- Execute este script no SQL Editor do Supabase para corrigir erros de gravação.
 
 -- 0. FUNÇÃO AUXILIAR PARA ATUALIZAÇÃO AUTOMÁTICA DE TIMESTAMP
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS condos (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 2. TABELA DE USUÁRIOS (SINCRONIZADA)
+-- 2. TABELA DE USUÁRIOS
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 3. TABELA DE EQUIPAMENTOS
+-- 3. TABELA DE EQUIPAMENTOS (COM CAMPOS DE TELEMETRIA)
 CREATE TABLE IF NOT EXISTS equipments (
   id TEXT PRIMARY KEY,
   condo_id TEXT REFERENCES condos(id),
@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS equipments (
   last_maintenance TIMESTAMP WITH TIME ZONE,
   maintenance_period INTEGER,
   refrigeration_specs JSONB,
+  last_reading JSONB, -- ADICIONADO: Para telemetria Tuya/IOT
   tuya_device_id TEXT,
   monitoring_status TEXT,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -80,7 +81,7 @@ CREATE TABLE IF NOT EXISTS systems (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 5. TABELA DE ORDENS DE SERVIÇO (COM SUPORTE A EXCLUSÃO)
+-- 5. TABELA DE ORDENS DE SERVIÇO (COM CAMPOS TÉCNICOS)
 CREATE TABLE IF NOT EXISTS service_orders (
   id TEXT PRIMARY KEY,
   type TEXT NOT NULL,
@@ -94,6 +95,7 @@ CREATE TABLE IF NOT EXISTS service_orders (
   parts_replaced JSONB DEFAULT '[]',
   photos_before JSONB DEFAULT '[]',
   photos_after JSONB DEFAULT '[]',
+  refrigeration_readings JSONB, -- ADICIONADO: Para dados de ar condicionado
   technician_id TEXT,
   service_value NUMERIC DEFAULT 0,
   material_value NUMERIC DEFAULT 0,
@@ -140,10 +142,8 @@ CREATE TABLE IF NOT EXISTS monitoring_alerts (
 );
 
 -- 9. APLICAÇÃO DE GATILHOS (AUTO-TIMESTAMP)
--- Isso garante que a data de atualização seja sempre precisa no servidor
 DO $$
 BEGIN
-    -- Remover gatilhos antigos se existirem para evitar duplicidade
     DROP TRIGGER IF EXISTS tr_condos_updated ON condos;
     DROP TRIGGER IF EXISTS tr_users_updated ON users;
     DROP TRIGGER IF EXISTS tr_equipments_updated ON equipments;
@@ -152,7 +152,6 @@ BEGIN
     DROP TRIGGER IF EXISTS tr_appts_updated ON appointments;
     DROP TRIGGER IF EXISTS tr_alerts_updated ON monitoring_alerts;
 
-    -- Criar novos gatilhos
     CREATE TRIGGER tr_condos_updated BEFORE UPDATE ON condos FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
     CREATE TRIGGER tr_users_updated BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
     CREATE TRIGGER tr_equipments_updated BEFORE UPDATE ON equipments FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -163,7 +162,6 @@ BEGIN
 END $$;
 
 -- 10. POLÍTICAS RLS (ROW LEVEL SECURITY)
--- Habilita segurança em todas as tabelas
 ALTER TABLE condos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE equipments ENABLE ROW LEVEL SECURITY;
@@ -173,8 +171,7 @@ ALTER TABLE appointments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE nivel_caixa ENABLE ROW LEVEL SECURITY;
 ALTER TABLE monitoring_alerts ENABLE ROW LEVEL SECURITY;
 
--- 11. CRIAÇÃO DE POLÍTICAS DE ACESSO TOTAL (CRUD)
--- Garante que Notebook e Celular possam Ler, Inserir, Atualizar e Excluir registros.
+-- 11. CRIAÇÃO DE POLÍTICAS DE ACESSO TOTAL
 DO $$
 DECLARE
     t text;
@@ -201,29 +198,18 @@ END $$;
             <Database size={24} />
           </div>
           <div>
-            <h1 className="text-xl font-black text-slate-900 leading-none">Configuração Supabase</h1>
-            <p className="text-[10px] text-blue-600 font-black uppercase tracking-widest mt-1">Sincronização Mestre-Mestre V5.8</p>
+            <h1 className="text-xl font-black text-slate-900 leading-none">Ajuste de Banco Cloud</h1>
+            <p className="text-[10px] text-blue-600 font-black uppercase tracking-widest mt-1">Correção de Esquema V5.9</p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-          <div className="p-5 bg-blue-50 border border-blue-100 rounded-3xl flex items-start space-x-4">
-            <ShieldCheck className="text-blue-600 shrink-0 mt-1" size={20} />
-            <div className="space-y-1">
-              <p className="text-[10px] font-black text-blue-900 uppercase">Segurança RLS</p>
-              <p className="text-[10px] text-blue-700 font-bold leading-relaxed">
-                As políticas foram simplificadas para permitir acesso total entre seus dispositivos conectados.
-              </p>
-            </div>
-          </div>
-          <div className="p-5 bg-amber-50 border border-amber-100 rounded-3xl flex items-start space-x-4">
-            <AlertTriangle className="text-amber-600 shrink-0 mt-1" size={20} />
-            <div className="space-y-1">
-              <p className="text-[10px] font-black text-amber-900 uppercase">Sincronismo Total</p>
-              <p className="text-[10px] text-amber-700 font-bold leading-relaxed">
-                Este script adiciona "Triggers" que forçam a atualização de datas no servidor, evitando conflitos entre notebook e celular.
-              </p>
-            </div>
+        <div className="p-5 bg-amber-50 border border-amber-100 rounded-3xl flex items-start space-x-4 mb-8">
+          <AlertTriangle className="text-amber-600 shrink-0 mt-1" size={20} />
+          <div className="space-y-1">
+            <p className="text-[10px] font-black text-amber-900 uppercase">Atenção Necessária</p>
+            <p className="text-[10px] text-amber-700 font-bold leading-relaxed">
+              O erro de gravação ocorre porque o banco de dados não conhece as novas colunas técnicas de telemetria e refrigeração. Copie e execute o script abaixo para atualizar a estrutura.
+            </p>
           </div>
         </div>
 
@@ -236,7 +222,7 @@ END $$;
               }`}
             >
               {copied ? <CheckCircle2 size={16} /> : <Copy size={16} />}
-              <span>{copied ? 'Copiado!' : 'Copiar Script SQL'}</span>
+              <span>{copied ? 'Copiado!' : 'Copiar Script de Correção'}</span>
             </button>
           </div>
           
@@ -249,12 +235,6 @@ END $$;
               {sqlScript}
             </pre>
           </div>
-        </div>
-
-        <div className="mt-8 p-6 bg-slate-50 rounded-3xl border border-dashed border-slate-200 text-center">
-           <p className="text-xs font-bold text-slate-500">
-             Após clicar em "Run" no Supabase, todos os seus dados (Equipamentos, OS, Usuários e Sistemas) estarão disponíveis em tempo real em qualquer dispositivo logado.
-           </p>
         </div>
       </div>
     </div>

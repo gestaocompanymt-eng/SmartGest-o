@@ -54,9 +54,7 @@ const AppContent: React.FC = () => {
   const smartUnion = (local: any[], cloud: any[] | null) => {
     if (!cloud || cloud.length === 0) return local || [];
     const map = new Map();
-    // Primeiro carrega o local
     (local || []).forEach(item => map.set(item.id, item));
-    // Depois mescla com a nuvem usando timestamp
     (cloud || []).forEach(cloudItem => {
       if (!map.has(cloudItem.id)) {
         map.set(cloudItem.id, cloudItem);
@@ -64,7 +62,6 @@ const AppContent: React.FC = () => {
         const localItem = map.get(cloudItem.id);
         const localDate = new Date(localItem.updated_at || 0).getTime();
         const cloudDate = new Date(cloudItem.updated_at || 0).getTime();
-        // A nuvem só vence se for estritamente mais recente ou se o local não tiver timestamp
         if (cloudDate >= localDate || !localItem.updated_at) {
           map.set(cloudItem.id, cloudItem);
         }
@@ -131,10 +128,8 @@ const AppContent: React.FC = () => {
         setData(updated);
         saveStore(updated);
         
-        // Canal de sincronização em tempo real ultra-reativo
         const channel = supabase.channel('global-sync')
           .on('postgres_changes', { event: '*', schema: 'public' }, async () => {
-             // Quando algo mudar na nuvem, força um refresh se o usuário estiver logado
              if (dataRef.current?.currentUser) {
                const fresh = await fetchAllData(dataRef.current);
                setData(fresh);
@@ -154,28 +149,42 @@ const AppContent: React.FC = () => {
   const updateData = async (newData: AppData) => {
     const timestamp = new Date().toISOString();
     
-    // Atualiza estado local e persistência imediatamente para UI fluida
+    // Atualiza estado local imediatamente para UI fluida
     setData(newData);
     saveStore(newData);
 
     if (navigator.onLine && isSupabaseActive) {
       setSyncStatus('syncing');
+      
+      const tables = [
+        { name: 'users', data: newData.users },
+        { name: 'condos', data: newData.condos },
+        { name: 'equipments', data: newData.equipments },
+        { name: 'systems', data: newData.systems },
+        { name: 'service_orders', data: newData.serviceOrders },
+        { name: 'appointments', data: newData.appointments },
+        { name: 'monitoring_alerts', data: newData.monitoringAlerts }
+      ];
+
       try {
-        // Agora sincronizamos também a tabela de usuários (essencial para novos cadastros sincronizarem)
-        const syncPromises = [
-          supabase.from('users').upsert(newData.users.map(u => ({ ...u, updated_at: u.updated_at || timestamp }))),
-          supabase.from('condos').upsert(newData.condos.map(item => ({ ...item, updated_at: item.updated_at || timestamp }))),
-          supabase.from('equipments').upsert(newData.equipments.map(item => ({ ...item, updated_at: item.updated_at || timestamp }))),
-          supabase.from('systems').upsert(newData.systems.map(item => ({ ...item, updated_at: item.updated_at || timestamp }))),
-          supabase.from('service_orders').upsert(newData.serviceOrders.map(item => ({ ...item, updated_at: item.updated_at || timestamp }))),
-          supabase.from('appointments').upsert(newData.appointments.map(item => ({ ...item, updated_at: item.updated_at || timestamp }))),
-          supabase.from('monitoring_alerts').upsert(newData.monitoringAlerts.map(item => ({ ...item, updated_at: item.updated_at || timestamp })))
-        ];
-        
-        await Promise.all(syncPromises);
+        // Processar cada tabela individualmente para evitar que erro em uma pare todas
+        for (const table of tables) {
+          if (table.data && table.data.length > 0) {
+            const cleanData = table.data.map((item: any) => ({
+              ...item,
+              updated_at: item.updated_at || timestamp
+            }));
+            
+            const { error } = await supabase.from(table.name).upsert(cleanData);
+            if (error) {
+              console.warn(`Aviso de sincronização na tabela ${table.name}:`, error.message);
+              // Se o erro for de coluna ausente, o usuário deve atualizar o DB via DatabaseSetup
+            }
+          }
+        }
         setSyncStatus('synced');
       } catch (err) {
-        console.error("Falha crítica no upload de dados:", err);
+        console.error("Falha na sincronização cloud:", err);
         setSyncStatus('offline');
       }
     }
@@ -312,7 +321,7 @@ const AppContent: React.FC = () => {
 
             <div className="pt-4 text-center border-t border-slate-800/50">
               <p className="text-[9px] font-black text-slate-200 uppercase tracking-[0.2em] opacity-100 transition-opacity">
-                V5.7 | POR ENG. ADRIANO PANTAROTO
+                V5.9 | POR ENG. ADRIANO PANTAROTO
               </p>
             </div>
           </div>
