@@ -86,17 +86,25 @@ const Dashboard: React.FC<{
     const updatedAppts = [...data.appointments];
     let hasChanges = false;
 
+    // Filtra rotinas pendentes que precisam de OS
     const pendingToOpen = data.appointments.filter(a => {
+      // Ignorar se já foi cancelada
+      if (a.status === 'Cancelada' as any) return false;
+      
       const isOneTimePending = !a.is_recurring && a.date <= todayStr && a.status === 'Pendente' && !a.service_order_id;
+      
       let isRecurringDue = false;
       if (a.is_recurring && a.date <= todayStr) {
+        // Verifica se já existe uma OS aberta HOJE para esta rotina recorrente
         const alreadyCreatedToday = data.serviceOrders.some(os => 
           os.condo_id === a.condo_id && 
           os.problem_description.includes(`[ID:${a.id}]`) && 
-          os.created_at.startsWith(todayStr)
+          os.created_at.startsWith(todayStr) &&
+          os.status !== OSStatus.CANCELLED
         );
         isRecurringDue = !alreadyCreatedToday;
       }
+      
       return (isOneTimePending || isRecurringDue) && (!condoId || a.condo_id === condoId);
     });
 
@@ -130,6 +138,7 @@ const Dashboard: React.FC<{
       hasChanges = true;
     });
 
+    // Monitoramento de Manutenção Preventiva de Equipamentos
     data.equipments.forEach(eq => {
       if (condoId && eq.condo_id !== condoId) return;
       if (!eq.last_maintenance || !eq.maintenance_period) return;
@@ -139,6 +148,7 @@ const Dashboard: React.FC<{
       nextDate.setHours(0, 0, 0, 0);
 
       if (nextDate <= today) {
+        // Verifica se já existe uma OS aberta recente para evitar duplicação
         const alreadyHasOS = data.serviceOrders.some(os => 
           os.equipment_id === eq.id && 
           os.type === OSType.PREVENTIVE &&
@@ -184,6 +194,9 @@ const Dashboard: React.FC<{
     const base = condoId ? data.appointments.filter(a => a.condo_id === condoId) : data.appointments;
     
     return base.filter(a => {
+      // Ignorar canceladas da lista ativa
+      if (a.status === 'Cancelada' as any) return false;
+
       const hasCompletedOS = data.serviceOrders.some(os => 
         os.status === OSStatus.COMPLETED && 
         (os.id === a.service_order_id || (a.is_recurring && os.problem_description.includes(`[ID:${a.id}]`) && os.created_at.startsWith(todayStr)))
@@ -238,7 +251,7 @@ const Dashboard: React.FC<{
 
   const handleDeleteAppointment = async (id: string) => {
     if (!canManageSchedule) return;
-    if (window.confirm('Excluir esta programação definitiva?')) {
+    if (window.confirm('Excluir esta programação definitiva? Isso também impedirá a criação automática de novas OS para esta rotina.')) {
       if (deleteData) {
         await deleteData('appointments', id);
       } else {

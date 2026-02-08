@@ -4,7 +4,7 @@ import { useLocation } from 'react-router-dom';
 import { 
   Plus, FileText, ChevronDown, ChevronUp, X, DollarSign, Edit2, Share2, Wrench, MapPin, Camera, Trash2, Image as ImageIcon, CheckCircle2, Save, Layers, Settings, Building2, RefreshCcw, Play, Eye, Thermometer, Droplet, Wind, User as UserIcon, Activity
 } from 'lucide-react';
-import { OSType, OSStatus, ServiceOrder, Condo, System, UserRole, AppData, Equipment } from '../types';
+import { OSType, OSStatus, ServiceOrder, Condo, System, UserRole, AppData, Equipment, Appointment } from '../types';
 
 const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void; deleteData?: (table: string, id: string) => void }> = ({ data, updateData, deleteData }) => {
   const user = data.currentUser;
@@ -126,13 +126,41 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
 
   const handleDeleteOS = async (id: string) => {
     if (!canDelete) return;
-    if (window.confirm('Deseja realmente excluir esta Ordem de Serviço?')) {
-      if (deleteData) {
-        await deleteData('service_orders', id);
-      } else {
-        const newOrders = data.serviceOrders.filter(o => o.id !== id);
-        updateData({ ...data, serviceOrders: newOrders });
+    
+    const osToDelete = data.serviceOrders.find(o => o.id === id);
+    if (!osToDelete) return;
+
+    if (window.confirm('Deseja realmente excluir esta Ordem de Serviço? Se for uma preventiva agendada, a rotina também será cancelada para evitar recriação.')) {
+      
+      let updatedData = { ...data };
+
+      // 1. Verificar se veio de um Agendamento (ID no texto)
+      const apptMatch = osToDelete.problem_description.match(/\[ID:(APT-[0-9]+)\]/);
+      if (apptMatch && apptMatch[1]) {
+        const apptId = apptMatch[1];
+        updatedData.appointments = data.appointments.map(a => 
+          a.id === apptId ? { ...a, status: 'Cancelada' as any, updated_at: new Date().toISOString() } : a
+        );
       }
+
+      // 2. Verificar se é Preventiva Automática de Equipamento
+      if (osToDelete.type === OSType.PREVENTIVE && osToDelete.equipment_id) {
+        updatedData.equipments = data.equipments.map(e => 
+          e.id === osToDelete.equipment_id ? { ...e, last_maintenance: new Date().toISOString(), updated_at: new Date().toISOString() } : e
+        );
+      }
+
+      // 3. Executar Exclusão
+      if (deleteData) {
+        // Se houver exclusão cloud, removemos o registro do cloud
+        await deleteData('service_orders', id);
+        // Atualizamos as tabelas vinculadas (Equipamento/Agenda) para parar o loop
+        await updateData(updatedData);
+      } else {
+        updatedData.serviceOrders = data.serviceOrders.filter(o => o.id !== id);
+        updateData(updatedData);
+      }
+      
       setExpandedOS(null);
     }
   };
