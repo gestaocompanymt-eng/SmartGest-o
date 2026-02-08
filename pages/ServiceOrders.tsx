@@ -124,53 +124,55 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
     setOsType(isRonda ? OSType.VISTORIA : OSType.SERVICE);
   };
 
-  // FUNÇÃO CORRIGIDA PARA EVITAR O RETORNO DA OS
   const handleDeleteOS = async (id: string) => {
-    if (!canDelete) return;
+    if (!canDelete) {
+      alert("Você não tem permissão para excluir ordens de serviço.");
+      return;
+    }
     
     const osToDelete = data.serviceOrders.find(o => o.id === id);
     if (!osToDelete) return;
 
-    if (window.confirm('Deseja realmente excluir esta Ordem de Serviço? Se for uma rotina programada, o agendamento também será cancelado para evitar que o sistema a recrie automaticamente.')) {
-      
-      // 1. Criamos um clone do estado para modificação atômica
-      let nextData = { ...data };
-
-      // 2. IMPORTANTÍSSIMO: Removemos a OS da lista LOCAL antes de qualquer outra coisa
-      // Isso impede que a função updateData reinira a OS no banco por acidente (upsert)
-      nextData.serviceOrders = data.serviceOrders.filter(o => o.id !== id);
-
-      // 3. Verificamos se veio de um Agendamento para cancelar a rotina e quebrar o loop
-      const apptMatch = osToDelete.problem_description.match(/\[ID:(APT-[0-9]+)\]/);
-      if (apptMatch && apptMatch[1]) {
-        const apptId = apptMatch[1];
-        nextData.appointments = data.appointments.map(a => 
-          a.id === apptId ? { ...a, status: 'Cancelada' as any, updated_at: new Date().toISOString() } : a
-        );
-      }
-
-      // 4. Se for Preventiva de Equipamento, "empurramos" a data da última manutenção para hoje
-      // Isso impede que o motor de preventivas crie outra OS imediatamente
-      if (osToDelete.type === OSType.PREVENTIVE && osToDelete.equipment_id) {
-        nextData.equipments = data.equipments.map(e => 
-          e.id === osToDelete.equipment_id ? { ...e, last_maintenance: new Date().toISOString(), updated_at: new Date().toISOString() } : e
-        );
-      }
-
+    if (window.confirm('Excluir esta Ordem de Serviço permanentemente?')) {
       try {
-        // 5. Chamamos a exclusão física no banco de dados
+        setSaveStatus('saving');
+        // 1. Clonar o estado inteiro para modificação atômica
+        const nextData = { ...data };
+
+        // 2. Cancelar agendamento se houver vínculo na descrição
+        const apptMatch = osToDelete.problem_description.match(/\[ID:(APT-[0-9]+)\]/);
+        if (apptMatch && apptMatch[1]) {
+          const apptId = apptMatch[1];
+          nextData.appointments = nextData.appointments.map(a => 
+            a.id === apptId ? { ...a, status: 'Cancelada' as any, updated_at: new Date().toISOString() } : a
+          );
+        }
+
+        // 3. Atualizar data de última manutenção se for preventiva
+        if (osToDelete.type === OSType.PREVENTIVE && osToDelete.equipment_id) {
+          nextData.equipments = nextData.equipments.map(e => 
+            e.id === osToDelete.equipment_id ? { ...e, last_maintenance: new Date().toISOString(), updated_at: new Date().toISOString() } : e
+          );
+        }
+
+        // 4. Remover a OS da lista local (Crucial antes de chamar deleteData)
+        nextData.serviceOrders = nextData.serviceOrders.filter(o => o.id !== id);
+
+        // 5. Primeiro chamamos a exclusão física do Cloud
         if (deleteData) {
           await deleteData('service_orders', id);
         }
-        
-        // 6. Atualizamos o restante do estado (Equipamentos e Agendamentos)
-        // Como removemos a OS de nextData.serviceOrders no passo 2, o updateData não vai ressuscitá-la.
+
+        // 6. Depois atualizamos o estado global para persistir os cancelamentos e a remoção
         await updateData(nextData);
         
         setExpandedOS(null);
+        setSaveStatus('idle');
+        console.log(`SmartGestão: OS ${id} e vínculos processados.`);
       } catch (error) {
-        console.error("Erro na exclusão definitiva:", error);
-        alert("Erro ao excluir. Verifique sua conexão.");
+        console.error("Erro ao excluir OS:", error);
+        setSaveStatus('error');
+        alert("Falha na exclusão. Verifique sua conexão e permissões.");
       }
     }
   };
@@ -298,10 +300,11 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
                         {canDelete && (
                           <button 
                             onClick={(e) => { e.stopPropagation(); handleDeleteOS(os.id); }} 
-                            className="px-4 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-colors"
+                            className="px-4 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-colors flex items-center justify-center"
                             title="Excluir Ordem de Serviço"
+                            disabled={saveStatus === 'saving'}
                           >
-                            <Trash2 size={18} />
+                            {saveStatus === 'saving' && expandedOS === os.id ? <RefreshCcw size={16} className="animate-spin" /> : <Trash2 size={18} />}
                           </button>
                         )}
                       </div>

@@ -192,21 +192,21 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // FUNÇÃO DEFINITIVA PARA EXCLUSÃO (Resolve o erro de "dobrar" ou reaparecer)
   const deleteData = async (tableName: string, id: string) => {
-    if (!data) return;
-
-    // 1. Atualiza Localmente (Optimistic UI)
-    const newData = { ...data };
-    if (tableName === 'service_orders') newData.serviceOrders = data.serviceOrders.filter(o => o.id !== id);
-    if (tableName === 'condos') newData.condos = data.condos.filter(c => c.id !== id);
-    if (tableName === 'equipments') newData.equipments = data.equipments.filter(e => e.id !== id);
-    if (tableName === 'systems') newData.systems = data.systems.filter(s => s.id !== id);
-    if (tableName === 'users') newData.users = data.users.filter(u => u.id !== id);
-    if (tableName === 'appointments') newData.appointments = data.appointments.filter(a => a.id !== id);
-    
-    setData(newData);
-    saveStore(newData);
+    // 1. Atualiza Localmente utilizando prev para evitar closures obsoletas
+    setData(prev => {
+      if (!prev) return prev;
+      const newData = { ...prev };
+      if (tableName === 'service_orders' || tableName === 'service_orders') newData.serviceOrders = prev.serviceOrders.filter(o => o.id !== id);
+      if (tableName === 'condos') newData.condos = prev.condos.filter(c => c.id !== id);
+      if (tableName === 'equipments') newData.equipments = prev.equipments.filter(e => e.id !== id);
+      if (tableName === 'systems') newData.systems = prev.systems.filter(s => s.id !== id);
+      if (tableName === 'users') newData.users = prev.users.filter(u => u.id !== id);
+      if (tableName === 'appointments') newData.appointments = prev.appointments.filter(a => a.id !== id);
+      
+      saveStore(newData);
+      return newData;
+    });
 
     // 2. Remove do Cloud
     if (navigator.onLine && isSupabaseActive) {
