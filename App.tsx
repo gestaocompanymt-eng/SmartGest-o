@@ -2,23 +2,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { HashRouter, Routes, Route, Link, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { 
-  LayoutDashboard, 
-  Building2, 
-  Wrench, 
-  Layers, 
-  FileText, 
-  Settings, 
-  LogOut, 
-  Menu, 
-  X,
-  Droplets,
-  Cloud,
-  CloudOff,
-  Code,
-  RefreshCcw,
-  CheckCircle2,
-  FileBarChart,
-  Database
+  LayoutDashboard, Building2, Wrench, Layers, FileText, Settings, LogOut, Menu, X,
+  Droplets, Cloud, CloudOff, RefreshCcw, CheckCircle2, FileBarChart, Database
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
@@ -50,6 +35,34 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     dataRef.current = data;
   }, [data]);
+
+  // Função para limpar dados para o Supabase (Postgres não aceita undefined ou colunas extras)
+  const sanitizeForSupabase = (item: any, tableName: string) => {
+    const clean: any = {};
+    const timestamp = new Date().toISOString();
+    
+    // Lista de colunas permitidas por tabela para evitar erro de "coluna inexistente"
+    const schema: Record<string, string[]> = {
+      users: ['id', 'name', 'email', 'password', 'role', 'condo_id', 'updated_at'],
+      condos: ['id', 'name', 'address', 'manager', 'contract_type', 'start_date', 'updated_at'],
+      equipments: ['id', 'condo_id', 'type_id', 'manufacturer', 'model', 'power', 'voltage', 'nominal_current', 'measured_current', 'temperature', 'noise', 'electrical_state', 'location', 'observations', 'photos', 'last_maintenance', 'maintenance_period', 'refrigeration_specs', 'last_reading', 'tuya_device_id', 'monitoring_status', 'updated_at'],
+      systems: ['id', 'condo_id', 'type_id', 'name', 'location', 'equipment_ids', 'monitoring_points', 'parameters', 'observations', 'last_maintenance', 'maintenance_period', 'updated_at'],
+      service_orders: ['id', 'type', 'status', 'condo_id', 'location', 'equipment_id', 'system_id', 'problem_description', 'actions_performed', 'parts_replaced', 'photos_before', 'photos_after', 'refrigeration_readings', 'technician_id', 'service_value', 'material_value', 'created_at', 'completed_at', 'updated_at'],
+      appointments: ['id', 'condo_id', 'technician_id', 'equipment_id', 'system_id', 'date', 'time', 'description', 'status', 'is_recurring', 'service_order_id', 'updated_at'],
+      monitoring_alerts: ['id', 'equipment_id', 'message', 'value', 'is_resolved', 'created_at', 'updated_at']
+    };
+
+    const allowedColumns = schema[tableName] || [];
+    
+    allowedColumns.forEach(col => {
+      const val = item[col];
+      // Converte undefined para null (essencial para o Postgres)
+      clean[col] = val === undefined ? null : val;
+    });
+
+    if (!clean.updated_at) clean.updated_at = timestamp;
+    return clean;
+  };
 
   const smartUnion = (local: any[], cloud: any[] | null) => {
     if (!cloud || cloud.length === 0) return local || [];
@@ -147,16 +160,13 @@ const AppContent: React.FC = () => {
   }, [fetchAllData]);
 
   const updateData = async (newData: AppData) => {
-    const timestamp = new Date().toISOString();
-    
-    // Atualiza estado local imediatamente para UI fluida
     setData(newData);
     saveStore(newData);
 
     if (navigator.onLine && isSupabaseActive) {
       setSyncStatus('syncing');
       
-      const tables = [
+      const tableConfigs = [
         { name: 'users', data: newData.users },
         { name: 'condos', data: newData.condos },
         { name: 'equipments', data: newData.equipments },
@@ -167,24 +177,20 @@ const AppContent: React.FC = () => {
       ];
 
       try {
-        // Processar cada tabela individualmente para evitar que erro em uma pare todas
-        for (const table of tables) {
-          if (table.data && table.data.length > 0) {
-            const cleanData = table.data.map((item: any) => ({
-              ...item,
-              updated_at: item.updated_at || timestamp
-            }));
+        for (const config of tableConfigs) {
+          if (config.data && config.data.length > 0) {
+            // Limpa cada item individualmente antes de enviar
+            const cleanBatch = config.data.map(item => sanitizeForSupabase(item, config.name));
             
-            const { error } = await supabase.from(table.name).upsert(cleanData);
+            const { error } = await supabase.from(config.name).upsert(cleanBatch, { onConflict: 'id' });
             if (error) {
-              console.warn(`Aviso de sincronização na tabela ${table.name}:`, error.message);
-              // Se o erro for de coluna ausente, o usuário deve atualizar o DB via DatabaseSetup
+              console.error(`Erro crítico na tabela ${config.name}:`, error.message, error.details);
             }
           }
         }
         setSyncStatus('synced');
       } catch (err) {
-        console.error("Falha na sincronização cloud:", err);
+        console.error("Falha geral na sincronização cloud:", err);
         setSyncStatus('offline');
       }
     }
@@ -196,7 +202,7 @@ const AppContent: React.FC = () => {
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-center">
         <Wrench size={48} className="text-blue-500 animate-bounce mb-6" />
         <h2 className="text-white font-black uppercase tracking-widest text-lg mb-2">SmartGestão</h2>
-        <p className="text-slate-400 text-sm font-bold animate-pulse">Sincronizando Banco de Dados Cloud...</p>
+        <p className="text-slate-400 text-sm font-bold animate-pulse">Estabelecendo Conexão Segura Cloud...</p>
       </div>
     );
   }
@@ -293,11 +299,6 @@ const AppContent: React.FC = () => {
                    {user?.role === UserRole.SINDICO_ADMIN ? 'SÍNDICO / GESTOR' : user?.role}
                  </p>
                  <p className="text-xs font-bold text-white truncate">{user?.name}</p>
-                 {user?.condo_id && (
-                    <p className="text-[8px] font-bold text-blue-400 truncate mt-0.5">
-                      {data.condos.find(c => c.id === user.condo_id)?.name}
-                    </p>
-                 )}
                </div>
                <div title={syncStatus === 'synced' ? 'Nuvem Conectada' : 'Modo Offline'}>
                 {syncStatus === 'synced' ? <Cloud size={14} className="text-emerald-400" /> : 
@@ -321,7 +322,7 @@ const AppContent: React.FC = () => {
 
             <div className="pt-4 text-center border-t border-slate-800/50">
               <p className="text-[9px] font-black text-slate-200 uppercase tracking-[0.2em] opacity-100 transition-opacity">
-                V5.9 | POR ENG. ADRIANO PANTAROTO
+                V6.0 | POR ENG. ADRIANO PANTAROTO
               </p>
             </div>
           </div>

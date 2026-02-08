@@ -5,7 +5,6 @@ import {
   Plus, FileText, ChevronDown, ChevronUp, X, DollarSign, Edit2, Share2, Wrench, MapPin, Camera, Trash2, Image as ImageIcon, CheckCircle2, Save, Layers, Settings, Building2, RefreshCcw, Play, Eye, Thermometer, Droplet, Wind, User as UserIcon, Activity
 } from 'lucide-react';
 import { OSType, OSStatus, ServiceOrder, Condo, System, UserRole, AppData, Equipment } from '../types';
-import { supabase, isSupabaseActive } from '../supabase';
 
 const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void }> = ({ data, updateData }) => {
   const user = data.currentUser;
@@ -99,13 +98,7 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
     };
 
     try {
-      // 1. Tenta salvar no Supabase primeiro
-      if (navigator.onLine && isSupabaseActive) {
-        const { error } = await supabase.from('service_orders').upsert(osData);
-        if (error) throw error;
-      }
-
-      // 2. Atualiza o estado global (que salvará no LocalStorage)
+      // Atualiza apenas o estado global. O App.tsx cuidará da sincronização cloud de forma segura e limpa.
       const newOrders = editingOS 
         ? data.serviceOrders.map((o: ServiceOrder) => o.id === editingOS.id ? osData : o) 
         : [osData, ...data.serviceOrders];
@@ -117,9 +110,8 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
         closeModal();
       }, 800);
     } catch (err) {
-      console.error("Erro crítico ao salvar OS:", err);
+      console.error("Erro ao processar OS localmente:", err);
       setSaveStatus('error');
-      alert("Erro ao gravar dados na nuvem. Verifique sua conexão.");
     }
   };
 
@@ -135,20 +127,10 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
 
   const handleDeleteOS = async (id: string) => {
     if (!canDelete) return;
-    if (window.confirm('ATENÇÃO: Deseja realmente excluir esta Ordem de Serviço permanentemente? Esta ação não pode ser desfeita.')) {
-      try {
-        if (navigator.onLine && isSupabaseActive) {
-          const { error } = await supabase.from('service_orders').delete().eq('id', id);
-          if (error) throw error;
-        }
-        
-        const newOrders = data.serviceOrders.filter(o => o.id !== id);
-        updateData({ ...data, serviceOrders: newOrders });
-        setExpandedOS(null);
-      } catch (err) {
-        console.error("Erro ao excluir OS:", err);
-        alert("Falha ao excluir Ordem de Serviço do servidor.");
-      }
+    if (window.confirm('Deseja realmente excluir esta Ordem de Serviço?')) {
+      const newOrders = data.serviceOrders.filter(o => o.id !== id);
+      updateData({ ...data, serviceOrders: newOrders });
+      setExpandedOS(null);
     }
   };
 
@@ -459,7 +441,7 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                 >
                   {saveStatus === 'saving' ? <RefreshCcw size={16} className="animate-spin" /> : 
                    saveStatus === 'success' ? <CheckCircle2 size={16} className="mr-2" /> : <Save size={16} className="mr-2" />}
-                  <span>{saveStatus === 'saving' ? 'Gravando...' : saveStatus === 'success' ? 'Salvo!' : 'Confirmar Registro'}</span>
+                  <span>{saveStatus === 'saving' ? 'Sincronizando...' : saveStatus === 'success' ? 'Salvo!' : 'Confirmar Registro'}</span>
                 </button>
               </div>
             </form>
