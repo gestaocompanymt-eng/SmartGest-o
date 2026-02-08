@@ -53,7 +53,6 @@ const AppContent: React.FC = () => {
     const allowedColumns = schema[tableName] || [];
     allowedColumns.forEach(col => {
       const val = item[col];
-      // Regra Crítica: Postgres recusa '' em campos numéricos ou PKs
       if (val === undefined || val === '') {
         clean[col] = null;
       } else {
@@ -66,7 +65,7 @@ const AppContent: React.FC = () => {
   };
 
   const smartUnion = (local: any[], cloud: any[] | null) => {
-    if (!cloud || cloud.length === 0) return local || [];
+    if (!cloud) return local || [];
     const map = new Map();
     (local || []).forEach(item => map.set(item.id, item));
     (cloud || []).forEach(cloudItem => {
@@ -182,17 +181,42 @@ const AppContent: React.FC = () => {
           if (config.data && config.data.length > 0) {
             const cleanBatch = config.data.map(item => sanitizeForSupabase(item, config.name));
             const { error } = await supabase.from(config.name).upsert(cleanBatch, { onConflict: 'id' });
-            
-            if (error) {
-              console.error(`Falha na tabela ${config.name}:`, error.message);
-              // Lógica de Retentativa/Pular para não travar a UI
-              if (error.message.includes('Foreign Key')) continue;
-            }
+            if (error) console.error(`Falha na tabela ${config.name}:`, error.message);
           }
         }
         setSyncStatus('synced');
       } catch (err: any) {
         console.error("Erro Crítico de Sincronização:", err);
+        setSyncStatus('offline');
+      }
+    }
+  };
+
+  // FUNÇÃO DEFINITIVA PARA EXCLUSÃO (Resolve o erro de "dobrar" ou reaparecer)
+  const deleteData = async (tableName: string, id: string) => {
+    if (!data) return;
+
+    // 1. Atualiza Localmente (Optimistic UI)
+    const newData = { ...data };
+    if (tableName === 'service_orders') newData.serviceOrders = data.serviceOrders.filter(o => o.id !== id);
+    if (tableName === 'condos') newData.condos = data.condos.filter(c => c.id !== id);
+    if (tableName === 'equipments') newData.equipments = data.equipments.filter(e => e.id !== id);
+    if (tableName === 'systems') newData.systems = data.systems.filter(s => s.id !== id);
+    if (tableName === 'users') newData.users = data.users.filter(u => u.id !== id);
+    if (tableName === 'appointments') newData.appointments = data.appointments.filter(a => a.id !== id);
+    
+    setData(newData);
+    saveStore(newData);
+
+    // 2. Remove do Cloud
+    if (navigator.onLine && isSupabaseActive) {
+      setSyncStatus('syncing');
+      try {
+        const { error } = await supabase.from(tableName).delete().eq('id', id);
+        if (error) throw error;
+        setSyncStatus('synced');
+      } catch (err) {
+        console.error(`Erro ao deletar ${tableName} do cloud:`, err);
         setSyncStatus('offline');
       }
     }
@@ -339,17 +363,17 @@ const AppContent: React.FC = () => {
               setData(fresh);
               saveStore(fresh);
             }} />} />
-            <Route path="/condos" element={<Condos data={data} updateData={updateData} />} />
+            <Route path="/condos" element={<Condos data={data} updateData={updateData} deleteData={deleteData} />} />
             <Route path="/reservatorios" element={<WaterLevel data={data} updateData={updateData} onRefresh={async () => {
               const updated = await fetchAllData(data);
               setData(updated);
               saveStore(updated);
             }} />} />
-            <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} />} />
-            <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} />} />
-            <Route path="/os" element={<ServiceOrders data={data} updateData={updateData} />} />
+            <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} deleteData={deleteData} />} />
+            <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} deleteData={deleteData} />} />
+            <Route path="/os" element={<ServiceOrders data={data} updateData={updateData} deleteData={deleteData} />} />
             <Route path="/reports" element={<Reports data={data} />} />
-            <Route path="/admin" element={<AdminSettings data={data} updateData={updateData} />} />
+            <Route path="/admin" element={<AdminSettings data={data} updateData={updateData} deleteData={deleteData} />} />
             <Route path="/database" element={<DatabaseSetup />} />
             <Route path="/login" element={<Navigate to="/" />} />
           </Routes>

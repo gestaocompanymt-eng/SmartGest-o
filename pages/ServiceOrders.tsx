@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { OSType, OSStatus, ServiceOrder, Condo, System, UserRole, AppData, Equipment } from '../types';
 
-const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void }> = ({ data, updateData }) => {
+const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void; deleteData?: (table: string, id: string) => void }> = ({ data, updateData, deleteData }) => {
   const user = data.currentUser;
   const isSindicoAdmin = user?.role === UserRole.SINDICO_ADMIN;
   const isAdmin = user?.role === UserRole.ADMIN;
@@ -98,7 +98,6 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
     };
 
     try {
-      // Atualiza apenas o estado global. O App.tsx cuidará da sincronização cloud de forma segura e limpa.
       const newOrders = editingOS 
         ? data.serviceOrders.map((o: ServiceOrder) => o.id === editingOS.id ? osData : o) 
         : [osData, ...data.serviceOrders];
@@ -128,8 +127,12 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
   const handleDeleteOS = async (id: string) => {
     if (!canDelete) return;
     if (window.confirm('Deseja realmente excluir esta Ordem de Serviço?')) {
-      const newOrders = data.serviceOrders.filter(o => o.id !== id);
-      updateData({ ...data, serviceOrders: newOrders });
+      if (deleteData) {
+        await deleteData('service_orders', id);
+      } else {
+        const newOrders = data.serviceOrders.filter(o => o.id !== id);
+        updateData({ ...data, serviceOrders: newOrders });
+      }
       setExpandedOS(null);
     }
   };
