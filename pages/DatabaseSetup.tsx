@@ -1,14 +1,23 @@
 
 import React from 'react';
-import { Database, Copy, CheckCircle2, AlertTriangle, Terminal } from 'lucide-react';
+import { Database, Copy, CheckCircle2, AlertTriangle, Terminal, ShieldCheck } from 'lucide-react';
 
 const DatabaseSetup: React.FC = () => {
   const [copied, setCopied] = React.useState(false);
 
-  const sqlScript = `-- SCRIPT DE CONFIGURAÇÃO SMARTGESTÃO (VERSÃO V5.7)
--- Cole este código no SQL Editor do seu projeto Supabase e clique em "RUN"
+  const sqlScript = `-- SCRIPT DE INFRAESTRUTURA SMARTGESTÃO (VERSÃO V5.8 - SYNC TOTAL)
+-- Execute este script no SQL Editor do Supabase para garantir sincronismo e segurança.
 
--- 1. Tabela de Condomínios
+-- 0. FUNÇÃO AUXILIAR PARA ATUALIZAÇÃO AUTOMÁTICA DE TIMESTAMP
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- 1. TABELA DE CONDOMÍNIOS
 CREATE TABLE IF NOT EXISTS condos (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -19,7 +28,7 @@ CREATE TABLE IF NOT EXISTS condos (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 2. Tabela de Usuários
+-- 2. TABELA DE USUÁRIOS (SINCRONIZADA)
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -30,7 +39,7 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 3. Tabela de Equipamentos
+-- 3. TABELA DE EQUIPAMENTOS
 CREATE TABLE IF NOT EXISTS equipments (
   id TEXT PRIMARY KEY,
   condo_id TEXT REFERENCES condos(id),
@@ -55,7 +64,7 @@ CREATE TABLE IF NOT EXISTS equipments (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 4. Tabela de Sistemas
+-- 4. TABELA DE SISTEMAS
 CREATE TABLE IF NOT EXISTS systems (
   id TEXT PRIMARY KEY,
   condo_id TEXT REFERENCES condos(id),
@@ -71,7 +80,7 @@ CREATE TABLE IF NOT EXISTS systems (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 5. Tabela de Ordens de Serviço
+-- 5. TABELA DE ORDENS DE SERVIÇO (COM SUPORTE A EXCLUSÃO)
 CREATE TABLE IF NOT EXISTS service_orders (
   id TEXT PRIMARY KEY,
   type TEXT NOT NULL,
@@ -93,7 +102,7 @@ CREATE TABLE IF NOT EXISTS service_orders (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 6. Tabela de Agendamentos
+-- 6. TABELA DE AGENDAMENTOS
 CREATE TABLE IF NOT EXISTS appointments (
   id TEXT PRIMARY KEY,
   condo_id TEXT REFERENCES condos(id),
@@ -109,7 +118,7 @@ CREATE TABLE IF NOT EXISTS appointments (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 7. Tabela de Nível de Reservatório (Telemetria)
+-- 7. TELEMETRIA (NÍVEL DE RESERVATÓRIO)
 CREATE TABLE IF NOT EXISTS nivel_caixa (
   id BIGSERIAL PRIMARY KEY,
   condominio_id TEXT,
@@ -119,7 +128,7 @@ CREATE TABLE IF NOT EXISTS nivel_caixa (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 8. Tabela de Alertas de Monitoramento (Anomalias IOT)
+-- 8. ALERTAS DE MONITORAMENTO IOT
 CREATE TABLE IF NOT EXISTS monitoring_alerts (
   id TEXT PRIMARY KEY,
   equipment_id TEXT REFERENCES equipments(id),
@@ -130,7 +139,31 @@ CREATE TABLE IF NOT EXISTS monitoring_alerts (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Habilitar RLS (Row Level Security)
+-- 9. APLICAÇÃO DE GATILHOS (AUTO-TIMESTAMP)
+-- Isso garante que a data de atualização seja sempre precisa no servidor
+DO $$
+BEGIN
+    -- Remover gatilhos antigos se existirem para evitar duplicidade
+    DROP TRIGGER IF EXISTS tr_condos_updated ON condos;
+    DROP TRIGGER IF EXISTS tr_users_updated ON users;
+    DROP TRIGGER IF EXISTS tr_equipments_updated ON equipments;
+    DROP TRIGGER IF EXISTS tr_systems_updated ON systems;
+    DROP TRIGGER IF EXISTS tr_os_updated ON service_orders;
+    DROP TRIGGER IF EXISTS tr_appts_updated ON appointments;
+    DROP TRIGGER IF EXISTS tr_alerts_updated ON monitoring_alerts;
+
+    -- Criar novos gatilhos
+    CREATE TRIGGER tr_condos_updated BEFORE UPDATE ON condos FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    CREATE TRIGGER tr_users_updated BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    CREATE TRIGGER tr_equipments_updated BEFORE UPDATE ON equipments FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    CREATE TRIGGER tr_systems_updated BEFORE UPDATE ON systems FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    CREATE TRIGGER tr_os_updated BEFORE UPDATE ON service_orders FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    CREATE TRIGGER tr_appts_updated BEFORE UPDATE ON appointments FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    CREATE TRIGGER tr_alerts_updated BEFORE UPDATE ON monitoring_alerts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+END $$;
+
+-- 10. POLÍTICAS RLS (ROW LEVEL SECURITY)
+-- Habilita segurança em todas as tabelas
 ALTER TABLE condos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE equipments ENABLE ROW LEVEL SECURITY;
@@ -140,26 +173,17 @@ ALTER TABLE appointments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE nivel_caixa ENABLE ROW LEVEL SECURITY;
 ALTER TABLE monitoring_alerts ENABLE ROW LEVEL SECURITY;
 
--- Criar políticas de acesso total (Simplificado para o app)
+-- 11. CRIAÇÃO DE POLÍTICAS DE ACESSO TOTAL (CRUD)
+-- Garante que Notebook e Celular possam Ler, Inserir, Atualizar e Excluir registros.
 DO $$
+DECLARE
+    t text;
 BEGIN
-    DROP POLICY IF EXISTS "Acesso Total" ON condos;
-    DROP POLICY IF EXISTS "Acesso Total" ON users;
-    DROP POLICY IF EXISTS "Acesso Total" ON equipments;
-    DROP POLICY IF EXISTS "Acesso Total" ON systems;
-    DROP POLICY IF EXISTS "Acesso Total" ON service_orders;
-    DROP POLICY IF EXISTS "Acesso Total" ON appointments;
-    DROP POLICY IF EXISTS "Acesso Total" ON nivel_caixa;
-    DROP POLICY IF EXISTS "Acesso Total" ON monitoring_alerts;
-    
-    CREATE POLICY "Acesso Total" ON condos FOR ALL USING (true);
-    CREATE POLICY "Acesso Total" ON users FOR ALL USING (true);
-    CREATE POLICY "Acesso Total" ON equipments FOR ALL USING (true);
-    CREATE POLICY "Acesso Total" ON systems FOR ALL USING (true);
-    CREATE POLICY "Acesso Total" ON service_orders FOR ALL USING (true);
-    CREATE POLICY "Acesso Total" ON appointments FOR ALL USING (true);
-    CREATE POLICY "Acesso Total" ON nivel_caixa FOR ALL USING (true);
-    CREATE POLICY "Acesso Total" ON monitoring_alerts FOR ALL USING (true);
+    FOR t IN SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+    LOOP
+        EXECUTE format('DROP POLICY IF EXISTS "Full Access" ON %I', t);
+        EXECUTE format('CREATE POLICY "Full Access" ON %I FOR ALL USING (true) WITH CHECK (true)', t);
+    END LOOP;
 END $$;
 `;
 
@@ -177,18 +201,29 @@ END $$;
             <Database size={24} />
           </div>
           <div>
-            <h1 className="text-xl font-black text-slate-900">Configuração de Infraestrutura</h1>
-            <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Sincronização Supabase Cloud</p>
+            <h1 className="text-xl font-black text-slate-900 leading-none">Configuração Supabase</h1>
+            <p className="text-[10px] text-blue-600 font-black uppercase tracking-widest mt-1">Sincronização Mestre-Mestre V5.8</p>
           </div>
         </div>
 
-        <div className="p-6 bg-amber-50 border border-amber-100 rounded-3xl flex items-start space-x-4 mb-8">
-          <AlertTriangle className="text-amber-600 shrink-0 mt-1" size={20} />
-          <div className="space-y-1">
-            <p className="text-sm font-black text-amber-900 uppercase">Atenção Necessária</p>
-            <p className="text-xs text-amber-700 font-medium leading-relaxed">
-              Para garantir que o Celular e o Notebook tenham os mesmos dados, o script agora inclui a tabela de <strong>Alertas/Anomalias</strong>. Execute este script no Supabase para ativar a sincronização total.
-            </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+          <div className="p-5 bg-blue-50 border border-blue-100 rounded-3xl flex items-start space-x-4">
+            <ShieldCheck className="text-blue-600 shrink-0 mt-1" size={20} />
+            <div className="space-y-1">
+              <p className="text-[10px] font-black text-blue-900 uppercase">Segurança RLS</p>
+              <p className="text-[10px] text-blue-700 font-bold leading-relaxed">
+                As políticas foram simplificadas para permitir acesso total entre seus dispositivos conectados.
+              </p>
+            </div>
+          </div>
+          <div className="p-5 bg-amber-50 border border-amber-100 rounded-3xl flex items-start space-x-4">
+            <AlertTriangle className="text-amber-600 shrink-0 mt-1" size={20} />
+            <div className="space-y-1">
+              <p className="text-[10px] font-black text-amber-900 uppercase">Sincronismo Total</p>
+              <p className="text-[10px] text-amber-700 font-bold leading-relaxed">
+                Este script adiciona "Triggers" que forçam a atualização de datas no servidor, evitando conflitos entre notebook e celular.
+              </p>
+            </div>
           </div>
         </div>
 
@@ -196,24 +231,30 @@ END $$;
           <div className="absolute top-4 right-4 z-10">
             <button 
               onClick={handleCopy}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all shadow-lg ${
+              className={`flex items-center space-x-2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase transition-all shadow-xl active:scale-95 ${
                 copied ? 'bg-emerald-500 text-white' : 'bg-white text-slate-900 hover:bg-slate-50 border'
               }`}
             >
-              {copied ? <CheckCircle2 size={14} /> : <Copy size={14} />}
+              {copied ? <CheckCircle2 size={16} /> : <Copy size={16} />}
               <span>{copied ? 'Copiado!' : 'Copiar Script SQL'}</span>
             </button>
           </div>
           
-          <div className="bg-slate-900 rounded-3xl p-6 pt-16 overflow-hidden">
-            <div className="flex items-center space-x-2 mb-4 text-slate-500">
-               <Terminal size={14} />
-               <span className="text-[9px] font-black uppercase tracking-widest">Supabase SQL Editor</span>
+          <div className="bg-slate-900 rounded-[2rem] p-8 pt-20 overflow-hidden shadow-2xl">
+            <div className="flex items-center space-x-2 mb-6 text-slate-500">
+               <Terminal size={16} />
+               <span className="text-[10px] font-black uppercase tracking-[0.2em]">Console Supabase SQL Editor</span>
             </div>
             <pre className="text-[11px] font-mono text-blue-300 overflow-x-auto custom-scrollbar leading-relaxed">
               {sqlScript}
             </pre>
           </div>
+        </div>
+
+        <div className="mt-8 p-6 bg-slate-50 rounded-3xl border border-dashed border-slate-200 text-center">
+           <p className="text-xs font-bold text-slate-500">
+             Após clicar em "Run" no Supabase, todos os seus dados (Equipamentos, OS, Usuários e Sistemas) estarão disponíveis em tempo real em qualquer dispositivo logado.
+           </p>
         </div>
       </div>
     </div>

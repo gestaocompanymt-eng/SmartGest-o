@@ -16,6 +16,9 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
   const userCondoId = user?.condo_id;
   const location = useLocation();
 
+  // Permissão para exclusão: Admin ou Síndico/Gestor
+  const canDelete = isAdmin || isSindicoAdmin;
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingOS, setEditingOS] = useState<ServiceOrder | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -116,6 +119,25 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
     setAssignmentType('general');
     setSelectedEquipmentId('');
     setSelectedSystemId('');
+  };
+
+  const handleDeleteOS = async (id: string) => {
+    if (!canDelete) return;
+    if (window.confirm('ATENÇÃO: Deseja realmente excluir esta Ordem de Serviço permanentemente? Esta ação não pode ser desfeita.')) {
+      try {
+        if (navigator.onLine && isSupabaseActive) {
+          const { error } = await supabase.from('service_orders').delete().eq('id', id);
+          if (error) throw error;
+        }
+        
+        const newOrders = data.serviceOrders.filter(o => o.id !== id);
+        updateData({ ...data, serviceOrders: newOrders });
+        setExpandedOS(null);
+      } catch (err) {
+        console.error("Erro ao excluir OS:", err);
+        alert("Falha ao excluir Ordem de Serviço.");
+      }
+    }
   };
 
   // Filtragem avançada de OS
@@ -239,6 +261,15 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                         <button onClick={() => handleShare(os, condo?.name)} className="px-4 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-colors">
                           <Share2 size={18} />
                         </button>
+                        {canDelete && (
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleDeleteOS(os.id); }} 
+                            className="px-4 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-colors"
+                            title="Excluir Ordem de Serviço"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        )}
                       </div>
                     </div>
                     
