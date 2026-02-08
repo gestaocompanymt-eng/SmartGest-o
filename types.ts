@@ -57,7 +57,6 @@ export interface MonitoringAlert {
   value: string | number;
   is_resolved: boolean;
   created_at: string;
-  // Fix: Added missing updated_at property to MonitoringAlert interface to match database schema and fix TS error in App.tsx
   updated_at?: string;
 }
 
@@ -180,6 +179,7 @@ export interface User {
   email: string;
   password?: string;
   condo_id?: string;
+  updated_at?: string;
 }
 
 export interface GithubConfig {

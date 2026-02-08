@@ -54,7 +54,9 @@ const AppContent: React.FC = () => {
   const smartUnion = (local: any[], cloud: any[] | null) => {
     if (!cloud || cloud.length === 0) return local || [];
     const map = new Map();
+    // Primeiro carrega o local
     (local || []).forEach(item => map.set(item.id, item));
+    // Depois mescla com a nuvem usando timestamp
     (cloud || []).forEach(cloudItem => {
       if (!map.has(cloudItem.id)) {
         map.set(cloudItem.id, cloudItem);
@@ -62,8 +64,8 @@ const AppContent: React.FC = () => {
         const localItem = map.get(cloudItem.id);
         const localDate = new Date(localItem.updated_at || 0).getTime();
         const cloudDate = new Date(cloudItem.updated_at || 0).getTime();
-        // Conflito: O dado mais recente (maior timestamp) sempre vence
-        if (cloudDate >= localDate) {
+        // A nuvem só vence se for estritamente mais recente ou se o local não tiver timestamp
+        if (cloudDate >= localDate || !localItem.updated_at) {
           map.set(cloudItem.id, cloudItem);
         }
       }
@@ -129,10 +131,11 @@ const AppContent: React.FC = () => {
         setData(updated);
         saveStore(updated);
         
-        // Canal de sincronização em tempo real para mudanças no banco
+        // Canal de sincronização em tempo real ultra-reativo
         const channel = supabase.channel('global-sync')
           .on('postgres_changes', { event: '*', schema: 'public' }, async () => {
-             if (dataRef.current) {
+             // Quando algo mudar na nuvem, força um refresh se o usuário estiver logado
+             if (dataRef.current?.currentUser) {
                const fresh = await fetchAllData(dataRef.current);
                setData(fresh);
                saveStore(fresh);
@@ -151,14 +154,16 @@ const AppContent: React.FC = () => {
   const updateData = async (newData: AppData) => {
     const timestamp = new Date().toISOString();
     
-    // Atualiza estado local imediatamente (UI reativa)
+    // Atualiza estado local e persistência imediatamente para UI fluida
     setData(newData);
     saveStore(newData);
 
     if (navigator.onLine && isSupabaseActive) {
       setSyncStatus('syncing');
       try {
+        // Agora sincronizamos também a tabela de usuários (essencial para novos cadastros sincronizarem)
         const syncPromises = [
+          supabase.from('users').upsert(newData.users.map(u => ({ ...u, updated_at: u.updated_at || timestamp }))),
           supabase.from('condos').upsert(newData.condos.map(item => ({ ...item, updated_at: item.updated_at || timestamp }))),
           supabase.from('equipments').upsert(newData.equipments.map(item => ({ ...item, updated_at: item.updated_at || timestamp }))),
           supabase.from('systems').upsert(newData.systems.map(item => ({ ...item, updated_at: item.updated_at || timestamp }))),
@@ -167,7 +172,7 @@ const AppContent: React.FC = () => {
           supabase.from('monitoring_alerts').upsert(newData.monitoringAlerts.map(item => ({ ...item, updated_at: item.updated_at || timestamp })))
         ];
         
-        const results = await Promise.all(syncPromises);
+        await Promise.all(syncPromises);
         setSyncStatus('synced');
       } catch (err) {
         console.error("Falha crítica no upload de dados:", err);
@@ -182,7 +187,7 @@ const AppContent: React.FC = () => {
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-center">
         <Wrench size={48} className="text-blue-500 animate-bounce mb-6" />
         <h2 className="text-white font-black uppercase tracking-widest text-lg mb-2">SmartGestão</h2>
-        <p className="text-slate-400 text-sm font-bold animate-pulse">Sincronizando Banco de Dados...</p>
+        <p className="text-slate-400 text-sm font-bold animate-pulse">Sincronizando Banco de Dados Cloud...</p>
       </div>
     );
   }
