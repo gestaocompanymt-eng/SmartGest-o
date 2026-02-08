@@ -1,15 +1,17 @@
 
 import React, { useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { 
   User, Trash2, Edit2, X, Save, Building2, RefreshCw, Database, CheckCircle, AlertTriangle, 
-  Github, Cloud, ShieldCheck, Activity, Key, Globe, ExternalLink, ArrowRight, Code
+  Github, Cloud, ShieldCheck, Activity, Key, Globe, ExternalLink, ArrowRight, Code, Eye, EyeOff,
+  Server
 } from 'lucide-react';
 import { UserRole, User as UserType, Condo, GithubConfig } from '../types';
 import { syncDataToGithub } from '../githubService';
 
 const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void; deleteData?: (type: any, id: string) => void }> = ({ data, updateData, deleteData }) => {
   const user = data.currentUser;
+  const navigate = useNavigate();
   
   if (!user || user.role !== UserRole.ADMIN) {
     return <Navigate to="/" />;
@@ -18,8 +20,9 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void; deleteD
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserType | null>(null);
   const [selectedRole, setSelectedRole] = useState<UserRole>(UserRole.TECHNICIAN);
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // Estados do GitHub
   const [syncLoading, setSyncLoading] = useState(false);
   const [syncStatus, setSyncStatus] = useState<{ type: 'success' | 'error' | null, msg: string }>({ type: null, msg: '' });
 
@@ -36,25 +39,36 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void; deleteD
 
   const handleUserSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    const role = formData.get('role') as UserRole;
-    
-    const userData: UserType = {
-      id: editingUser?.id || Math.random().toString(36).substr(2, 9),
-      name: formData.get('name') as string,
-      email: formData.get('email') as string,
-      password: (formData.get('password') as string) || editingUser?.password || '',
-      role: role,
-      condo_id: (role === UserRole.SINDICO_ADMIN || role === UserRole.RONDA || (role === UserRole.TECHNICIAN && formData.get('condo_id'))) ? (formData.get('condoId') as string) : undefined
-    };
+    if (isSubmitting) return;
 
-    const newUsers = editingUser
-      ? data.users.map((u: UserType) => u.id === editingUser.id ? userData : u)
-      : [userData, ...data.users];
+    setIsSubmitting(true);
+    try {
+      const formData = new FormData(e.currentTarget);
+      const role = formData.get('role') as UserRole;
+      
+      const userData: UserType = {
+        id: editingUser?.id || Math.random().toString(36).substr(2, 9),
+        name: formData.get('name') as string,
+        email: formData.get('email') as string,
+        password: (formData.get('password') as string) || editingUser?.password || '',
+        role: role,
+        condo_id: (role === UserRole.SINDICO_ADMIN || role === UserRole.RONDA || (role === UserRole.TECHNICIAN && formData.get('condo_id'))) ? (formData.get('condoId') as string) : undefined
+      };
 
-    await updateData({ ...data, users: newUsers });
-    setIsUserModalOpen(false);
-    setEditingUser(null);
+      const newUsers = editingUser
+        ? data.users.map((u: UserType) => u.id === editingUser.id ? userData : u)
+        : [userData, ...data.users];
+
+      await updateData({ ...data, users: newUsers });
+      
+      setIsUserModalOpen(false);
+      setEditingUser(null);
+      setShowPassword(false);
+    } catch (err) {
+      console.error("Erro ao salvar usuário:", err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleGithubConfigSave = (e: React.FormEvent<HTMLFormElement>) => {
@@ -63,36 +77,21 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void; deleteD
     const repo = (formData.get('gh_repo') as string).trim();
     const token = (formData.get('gh_token') as string).trim();
     
-    if (repo && !repo.includes('/')) {
-      alert("O repositório deve estar no formato 'usuario/nome-do-projeto'");
-      return;
-    }
-
     const config: GithubConfig = {
       token: token,
       repo: repo,
       lastSync: data.githubConfig?.lastSync
     };
     updateData({ ...data, githubConfig: config });
-    alert('Configurações de nuvem gravadas com sucesso!');
+    alert('Configurações de nuvem gravadas!');
   };
 
   const handleSyncNow = async () => {
     if (syncLoading) return;
     setSyncLoading(true);
-    setSyncStatus({ type: null, msg: '' });
-    
     const result = await syncDataToGithub(data);
-    
     if (result.success) {
       setSyncStatus({ type: 'success', msg: result.message });
-      updateData({
-        ...data,
-        githubConfig: {
-          ...data.githubConfig,
-          lastSync: new Date().toISOString()
-        }
-      });
     } else {
       setSyncStatus({ type: 'error', msg: result.message });
     }
@@ -106,6 +105,13 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void; deleteD
           <h1 className="text-2xl font-black text-slate-900 leading-tight">Administração</h1>
           <p className="text-sm text-slate-500 font-medium italic">Infraestrutura e segurança global.</p>
         </div>
+        <button 
+          onClick={() => navigate('/database')}
+          className="flex items-center space-x-2 px-6 py-3 bg-white border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:border-blue-400 transition-all shadow-sm"
+        >
+          <Server size={14} className="text-blue-600" />
+          <span>Configurar Banco</span>
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -212,27 +218,7 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void; deleteD
                   {syncLoading ? <RefreshCw size={16} className="animate-spin" /> : <Activity size={16} />}
                   <span>{syncLoading ? 'Conectando...' : 'Sincronizar Manualmente'}</span>
                 </button>
-
-                {data.githubConfig?.lastSync && (
-                  <div className="mt-4 p-3 bg-white/5 rounded-xl border border-white/5 flex items-center justify-between">
-                    <p className="text-[9px] text-white/40 font-black uppercase tracking-widest">Último Backup</p>
-                    <p className="text-[10px] text-emerald-400 font-bold">
-                      {new Date(data.githubConfig.lastSync).toLocaleString()}
-                    </p>
-                  </div>
-                )}
               </div>
-
-              {syncStatus.type && (
-                <div className={`p-4 rounded-2xl border flex items-start space-x-3 animate-in slide-in-from-bottom-2 ${
-                  syncStatus.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-red-500/10 border-red-500/20'
-                }`}>
-                  {syncStatus.type === 'success' ? <CheckCircle size={16} className="text-emerald-400 shrink-0" /> : <AlertTriangle size={16} className="text-red-400 shrink-0" />}
-                  <p className={`text-[10px] font-bold ${syncStatus.type === 'success' ? 'text-emerald-200' : 'text-red-200'}`}>
-                    {syncStatus.msg}
-                  </p>
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -243,7 +229,7 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void; deleteD
           <div className="bg-white rounded-[2.5rem] w-full max-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b flex justify-between items-center bg-slate-50">
               <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">Perfil de Acesso</h2>
-              <button onClick={() => setIsUserModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm"><X size={24} /></button>
+              <button onClick={() => { setIsUserModalOpen(false); setEditingUser(null); setIsSubmitting(false); }} className="p-2 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm"><X size={24} /></button>
             </div>
             <form onSubmit={handleUserSubmit} className="p-8 space-y-5">
               <div className="space-y-1">
@@ -254,6 +240,22 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void; deleteD
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Login (E-mail)</label>
                 <input required name="email" defaultValue={editingUser?.email} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl text-xs font-bold outline-none" />
               </div>
+              
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Senha</label>
+                <div className="relative">
+                  <input 
+                    name="password" 
+                    type={showPassword ? "text" : "password"} 
+                    required={!editingUser} 
+                    className="w-full px-5 py-4 bg-slate-50 border rounded-2xl text-xs font-bold outline-none pr-12" 
+                  />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400">
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Perfil</label>
                 <select 
@@ -269,30 +271,9 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void; deleteD
                 </select>
               </div>
 
-              {(selectedRole === UserRole.SINDICO_ADMIN || selectedRole === UserRole.RONDA || selectedRole === UserRole.TECHNICIAN) && (
-                <div className="space-y-1 bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
-                  <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest ml-1 flex items-center">
-                    <Building2 size={12} className="mr-1" /> Vínculo Predial
-                  </label>
-                  <select 
-                    required={selectedRole !== UserRole.TECHNICIAN}
-                    name="condoId" 
-                    defaultValue={editingUser?.condo_id} 
-                    className="w-full px-5 py-4 bg-white border border-blue-200 rounded-2xl text-xs font-bold text-blue-700 outline-none"
-                  >
-                    <option value="">{selectedRole === UserRole.TECHNICIAN ? 'Global (Todos os Condomínios)' : 'Selecionar Condomínio...'}</option>
-                    {data.condos.map((c: Condo) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
               <div className="pt-6 flex gap-4">
-                <button type="button" onClick={() => setIsUserModalOpen(false)} className="flex-1 py-4 border rounded-2xl font-black text-[10px] uppercase text-slate-400">Cancelar</button>
-                <button type="submit" className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase shadow-xl">
-                  <Save size={16} className="inline mr-2" /> Gravar Acesso
-                </button>
+                <button type="button" onClick={() => { setIsUserModalOpen(false); setEditingUser(null); }} className="flex-1 py-4 border rounded-2xl font-black text-[10px] uppercase text-slate-400">Cancelar</button>
+                <button type="submit" disabled={isSubmitting} className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase shadow-xl">Gravar Acesso</button>
               </div>
             </form>
           </div>

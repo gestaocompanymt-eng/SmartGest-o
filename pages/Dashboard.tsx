@@ -1,5 +1,5 @@
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { 
   AlertTriangle, 
   Clock, 
@@ -14,53 +14,72 @@ import {
   ClipboardCheck,
   Building2,
   X,
+  User as UserIcon,
   Save,
   Layers,
   Settings,
   PlayCircle,
   Activity,
   DollarSign,
-  ChevronDown
+  ChevronDown,
+  Trash2,
+  RefreshCw
 } from 'lucide-react';
 import { AppData, OSStatus, OSType, UserRole, Appointment, ServiceOrder, Condo, Equipment, System } from '../types';
 import { useNavigate } from 'react-router-dom';
 
 const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> = ({ data, updateData }) => {
   const navigate = useNavigate();
+  const agendaRef = useRef<HTMLDivElement>(null);
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [selectedCondoId, setSelectedCondoId] = useState('');
-  const [assignmentType, setAssignmentType] = useState<'general' | 'equipment' | 'system'>('general');
-  const [showAlertsList, setShowAlertsList] = useState(false);
+  const [isRecurring, setIsRecurring] = useState(false);
   
   const user = data.currentUser;
   const isSindicoAdmin = user?.role === UserRole.SINDICO_ADMIN;
+  const isAdmin = user?.role === UserRole.ADMIN;
   const isAdminOrTech = user?.role === UserRole.ADMIN || user?.role === UserRole.TECHNICIAN;
+  const isRonda = user?.role === UserRole.RONDA;
   const condoId = user?.condo_id;
 
-  // Permissão estendida para agendamento: Admin, Tech ou Síndico
   const canSchedule = isAdminOrTech || isSindicoAdmin;
 
-  // Filtro centralizado por condomínio (Isolamento de dados)
-  const filteredOSList = useMemo(() => (condoId)
-    ? data.serviceOrders.filter(os => os.condo_id === condoId)
-    : data.serviceOrders, [data.serviceOrders, condoId]);
+  const filteredOSList = useMemo(() => {
+    let list = condoId 
+      ? data.serviceOrders.filter(os => os.condo_id === condoId)
+      : data.serviceOrders;
+    
+    if (isRonda) {
+      list = list.filter(os => os.type === OSType.VISTORIA);
+    }
+    
+    return list;
+  }, [data.serviceOrders, condoId, isRonda]);
 
-  const totalCost = useMemo(() => {
-    return filteredOSList
-      .filter(os => os.status === OSStatus.COMPLETED)
-      .reduce((acc, curr) => acc + (curr.service_value || 0) + (curr.material_value || 0), 0);
-  }, [filteredOSList]);
+  const scrollToAgenda = () => {
+    agendaRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
 
   useEffect(() => {
     if (!canSchedule) return;
 
     const todayStr = new Date().toISOString().split('T')[0];
-    const pendingToOpen = data.appointments.filter(a => 
-      a.date <= todayStr && 
-      a.status === 'Pendente' && 
-      !a.service_order_id &&
-      (!condoId || a.condo_id === condoId)
-    );
+    
+    const pendingToOpen = data.appointments.filter(a => {
+      const isOneTimePending = !a.is_recurring && a.date <= todayStr && a.status === 'Pendente' && !a.service_order_id;
+      
+      let isRecurringDue = false;
+      if (a.is_recurring && a.date <= todayStr) {
+        const alreadyCreatedToday = data.serviceOrders.some(os => 
+          os.condo_id === a.condo_id && 
+          os.problem_description.includes(`[ID:${a.id}]`) && 
+          os.created_at.startsWith(todayStr)
+        );
+        isRecurringDue = !alreadyCreatedToday;
+      }
+
+      return (isOneTimePending || isRecurringDue) && (!condoId || a.condo_id === condoId);
+    });
 
     if (pendingToOpen.length > 0) {
       const newOSs: ServiceOrder[] = [];
@@ -68,14 +87,16 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
 
       pendingToOpen.forEach(appt => {
         const osId = `OS-AUTO-${Date.now()}-${appt.id}`;
+        const isRondaRoutine = appt.description.toLowerCase().includes('ronda') || appt.description.toLowerCase().includes('vistoria');
+        
         const newOS: ServiceOrder = {
           id: osId,
-          type: OSType.PREVENTIVE,
+          type: isRondaRoutine ? OSType.VISTORIA : OSType.PREVENTIVE,
           status: OSStatus.OPEN,
           condo_id: appt.condo_id,
           equipment_id: appt.equipment_id,
           system_id: appt.system_id,
-          problem_description: `[PREVENTIVA PROGRAMADA] ${appt.description}`,
+          problem_description: `[ROTINA ${appt.is_recurring ? 'RECORRENTE' : 'PROGRAMADA'}][ID:${appt.id}] ${appt.description}`,
           actions_performed: '',
           parts_replaced: [],
           photos_before: [],
@@ -86,9 +107,11 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
         };
         newOSs.push(newOS);
         
-        const idx = updatedAppts.findIndex(a => a.id === appt.id);
-        if (idx !== -1) {
-          updatedAppts[idx] = { ...updatedAppts[idx], service_order_id: osId, status: 'Confirmada' };
+        if (!appt.is_recurring) {
+          const idx = updatedAppts.findIndex(a => a.id === appt.id);
+          if (idx !== -1) {
+            updatedAppts[idx] = { ...updatedAppts[idx], service_order_id: osId, status: 'Confirmada' };
+          }
         }
       });
 
@@ -98,43 +121,37 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
         appointments: updatedAppts
       });
     }
-  }, [data.appointments, canSchedule, condoId]);
+  }, [data.appointments, data.serviceOrders, canSchedule, condoId]);
 
-  const periodicAlerts = useMemo(() => {
-    const alerts: any[] = [];
-    const today = new Date();
-
-    const relevantEquips = (condoId)
-      ? data.equipments.filter(e => e.condo_id === condoId)
-      : data.equipments;
-
-    relevantEquips.forEach(eq => {
-      if (eq.maintenance_period && eq.last_maintenance) {
-        const last = new Date(eq.last_maintenance);
-        const next = new Date(last);
-        next.setDate(last.getDate() + eq.maintenance_period);
-        
-        const diffDays = Math.ceil((next.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-        if (diffDays <= 7) {
-          alerts.push({ 
-            id: eq.id, 
-            name: `${eq.manufacturer} ${eq.model}`, 
-            days: diffDays, 
-            type: 'Equipamento', 
-            condo: data.condos.find(c => c.id === eq.condo_id)?.name,
-            location: eq.location
-          });
-        }
-      }
+  const activeDashboardAppointments = useMemo(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const base = condoId ? data.appointments.filter(a => a.condo_id === condoId) : data.appointments;
+    
+    return base.filter(a => {
+      const hasCompletedOS = data.serviceOrders.some(os => 
+        os.status === OSStatus.COMPLETED && 
+        (
+          os.id === a.service_order_id || 
+          (a.is_recurring && os.problem_description.includes(`[ID:${a.id}]`) && os.created_at.startsWith(todayStr))
+        )
+      );
+      if (hasCompletedOS) return false;
+      return a.status === 'Pendente' || a.is_recurring;
     });
+  }, [data.appointments, data.serviceOrders, condoId]);
 
-    return alerts.sort((a, b) => a.days - b.days);
-  }, [data.equipments, data.condos, condoId]);
-
-  const filteredAppointments = useMemo(() => (condoId)
-    ? data.appointments.filter(a => a.condo_id === condoId)
-    : data.appointments,
-  [data.appointments, condoId]);
+  const handleAppointmentClick = (appt: Appointment) => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const linkedOS = data.serviceOrders.find(os => 
+      os.id === appt.service_order_id || 
+      (appt.is_recurring && os.problem_description.includes(`[ID:${appt.id}]`) && os.created_at.startsWith(todayStr))
+    );
+    if (linkedOS) {
+      navigate(`/os?id=${linkedOS.id}`);
+    } else {
+      navigate(`/os?condoId=${appt.condo_id}`);
+    }
+  };
 
   const handleScheduleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -151,19 +168,23 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
       time: formData.get('time') as string,
       description: formData.get('description') as string,
       status: 'Pendente',
+      is_recurring: isRecurring,
       updated_at: new Date().toISOString()
     };
-
-    updateData({
-      ...data,
-      appointments: [newAppt, ...data.appointments]
-    });
+    updateData({...data, appointments: [newAppt, ...data.appointments]});
     setIsScheduleModalOpen(false);
+    setIsRecurring(false);
+  };
+
+  const handleDeleteAppointment = (id: string) => {
+    if (window.confirm('Excluir esta programação definitiva?')) {
+      updateData({...data, appointments: data.appointments.filter(a => a.id !== id)});
+    }
   };
 
   const StatCard = ({ title, value, icon: Icon, color, subValue, onClick }: any) => (
     <button 
-      onClick={onClick}
+      onClick={(e) => { e.preventDefault(); onClick(); }}
       className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm hover:border-blue-300 hover:shadow-md transition-all group relative overflow-hidden text-left w-full"
     >
       <div className={`absolute top-0 right-0 w-24 h-24 -mr-8 -mt-8 rounded-full opacity-5 ${color}`}></div>
@@ -196,12 +217,13 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
           <button 
             onClick={() => {
               setSelectedCondoId(condoId || '');
+              setIsRecurring(false);
               setIsScheduleModalOpen(true);
             }}
             className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-slate-900/20 flex items-center space-x-2 active:scale-95 transition-all"
           >
             <Plus size={16} />
-            <span>Programar Preventiva</span>
+            <span>Programar Rotina / Vistoria</span>
           </button>
         )}
       </div>
@@ -209,69 +231,29 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <StatCard 
           title="Urgências" 
-          value={periodicAlerts.length} 
+          value={data.equipments.filter(e => (!condoId || e.condo_id === condoId) && e.maintenance_period).length} 
           icon={AlertTriangle} 
           color="bg-red-500" 
-          subValue="Vencendo agora" 
-          onClick={() => setShowAlertsList(!showAlertsList)}
+          subValue="Equipamentos" 
+          onClick={() => navigate('/equipment')}
         />
         <StatCard 
           title="Agenda Ativa" 
-          value={filteredAppointments.filter(a => a.status === 'Pendente').length} 
+          value={activeDashboardAppointments.length} 
           icon={Calendar} 
           color="bg-blue-600" 
-          subValue="A executar" 
-          onClick={() => { /* Navegação ou Scroll */ }}
+          subValue="Ações do Plantão" 
+          onClick={scrollToAgenda}
         />
-        {isSindicoAdmin ? (
-          <StatCard 
-            title="Investimento" 
-            value={new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalCost)} 
-            icon={DollarSign} 
-            color="bg-emerald-500" 
-            subValue="Custo Acumulado" 
-          />
-        ) : (
-          <StatCard 
-            title="OS Abertas" 
-            value={filteredOSList.filter(o => o.status === OSStatus.OPEN).length} 
-            icon={PlayCircle} 
-            color="bg-emerald-500" 
-            subValue="Pendentes" 
-            onClick={() => navigate('/os?status=Aberta')}
-          />
-        )}
+        <StatCard 
+          title="OS Abertas" 
+          value={filteredOSList.filter(o => o.status === OSStatus.OPEN).length} 
+          icon={PlayCircle} 
+          color="bg-emerald-500" 
+          subValue="Em aberto" 
+          onClick={() => navigate('/os?status=Aberta')}
+        />
       </div>
-
-      {showAlertsList && periodicAlerts.length > 0 && (
-        <div className="bg-red-50 border-2 border-red-200 rounded-[2rem] p-6 animate-in slide-in-from-top-4 duration-300">
-          <div className="flex justify-between items-center mb-4">
-            <h4 className="text-[10px] font-black text-red-600 uppercase tracking-widest flex items-center">
-              <AlertTriangle size={16} className="mr-2" /> Ativos com manutenção vencida ou próxima
-            </h4>
-            <button onClick={() => setShowAlertsList(false)} className="text-red-400 hover:text-red-600"><X size={18}/></button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {periodicAlerts.map(alert => (
-              <div key={alert.id} className="bg-white p-4 rounded-xl shadow-sm border border-red-100 flex justify-between items-center">
-                <div>
-                  <p className="text-[9px] font-black text-slate-400 uppercase">{alert.condo}</p>
-                  <p className="text-xs font-bold text-slate-900">{alert.name}</p>
-                  <p className={`text-[10px] font-black uppercase mt-1 ${alert.days < 0 ? 'text-red-600' : 'text-amber-600'}`}>
-                    {alert.days < 0 ? `Atrasado há ${Math.abs(alert.days)} dias` : `Vence em ${alert.days} dias`}
-                  </p>
-                </div>
-                <button 
-                  onClick={() => navigate(`/os?equipmentId=${alert.id}&description=Preventiva vencida conforme periodicidade.`)}
-                  className="bg-red-600 text-white text-[9px] font-black uppercase px-4 py-2 rounded-lg"
-                >
-                  Abrir OS
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         <div className="xl:col-span-2 space-y-6">
@@ -280,46 +262,86 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
                 <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest flex items-center">
                   <Activity size={16} className="mr-2 text-blue-600" /> Atividade Recente
                 </h3>
-                <button onClick={() => navigate('/os')} className="text-[9px] font-black text-blue-600 uppercase hover:underline">Ver todas</button>
+                <button 
+                  onClick={(e) => { e.preventDefault(); navigate('/os'); }} 
+                  className="text-[9px] font-black text-blue-600 uppercase hover:underline p-2"
+                >
+                  Ver todas
+                </button>
               </div>
               <div className="space-y-4">
-                 {filteredOSList.slice(0, 5).map(os => (
-                   <div key={os.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:bg-white transition-colors cursor-pointer" onClick={() => navigate(`/os?id=${os.id}`)}>
-                      <div className="flex items-center space-x-4">
-                        <div className={`p-2 rounded-lg ${os.status === OSStatus.COMPLETED ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}>
-                          <ClipboardCheck size={18} />
+                 {filteredOSList.slice(0, 5).map(os => {
+                   const techUser = data.users.find(u => u.id === os.technician_id);
+                   return (
+                     <button 
+                       key={os.id} 
+                       className="w-full flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:bg-white transition-all cursor-pointer group active:scale-[0.98] text-left" 
+                       onClick={(e) => { e.preventDefault(); navigate(`/os?id=${os.id}`); }}
+                     >
+                        <div className="flex items-center space-x-4">
+                          <div className={`p-2 rounded-lg ${os.status === OSStatus.COMPLETED ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}>
+                            <ClipboardCheck size={18} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-black text-slate-800 truncate">{os.type}: {os.problem_description.substring(0, 40)}...</p>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase">
+                              {new Date(os.created_at).toLocaleDateString()} • {data.condos.find(c => c.id === os.condo_id)?.name}
+                            </p>
+                            {(isAdmin || isSindicoAdmin) && techUser && (
+                              <p className="text-[8px] font-black text-blue-600 uppercase mt-0.5 flex items-center">
+                                <UserIcon size={10} className="mr-1" /> Executor: {techUser.name}
+                              </p>
+                            )}
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-xs font-black text-slate-800">{os.type}: {os.problem_description.substring(0, 40)}...</p>
-                          <p className="text-[9px] font-bold text-slate-400 uppercase">{new Date(os.created_at).toLocaleDateString()} • {data.condos.find(c => c.id === os.condo_id)?.name}</p>
-                        </div>
-                      </div>
-                      <ChevronRight size={16} className="text-slate-300" />
-                   </div>
-                 ))}
+                        <ChevronRight size={16} className="text-slate-300 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" />
+                     </button>
+                   );
+                 })}
                  {filteredOSList.length === 0 && (
-                   <p className="text-center py-10 text-slate-400 text-xs font-medium">Nenhuma atividade registrada.</p>
+                   <p className="text-xs text-slate-400 italic text-center py-4">Nenhuma atividade recente encontrada.</p>
                  )}
               </div>
            </div>
         </div>
 
-        <div className="space-y-6">
-          <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-xl relative overflow-hidden">
+        <div className="space-y-6" ref={agendaRef}>
+          <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-xl relative overflow-hidden h-full flex flex-col min-h-[400px]">
             <div className="absolute top-0 right-0 p-8 opacity-10"><Wrench size={80} /></div>
-            <h3 className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-4">Agenda de Hoje</h3>
-            <div className="space-y-4 relative z-10">
-              {filteredAppointments.filter(a => a.date === new Date().toISOString().split('T')[0]).map(appt => (
-                <div key={appt.id} className="bg-white/10 backdrop-blur p-4 rounded-2xl border border-white/10">
-                   <p className="text-[8px] font-black text-blue-300 uppercase">{appt.time}</p>
-                   <p className="text-xs font-bold mt-1">{appt.description}</p>
-                   <p className="text-[9px] text-white/50 font-medium mt-1 uppercase tracking-tighter">
-                     {data.condos.find(c => c.id === appt.condo_id)?.name}
+            <h3 className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-4">Agenda / Rotinas Ativas</h3>
+            <div className="space-y-4 relative z-10 flex-1 overflow-y-auto custom-scrollbar pr-2">
+              {activeDashboardAppointments.map(appt => (
+                <button 
+                  key={appt.id} 
+                  onClick={() => handleAppointmentClick(appt)}
+                  className="w-full text-left bg-white/10 backdrop-blur p-4 rounded-2xl border border-white/10 group hover:bg-white/20 hover:border-blue-400/50 transition-all active:scale-[0.98]"
+                >
+                   <div className="flex justify-between items-start">
+                      <div className="flex items-center space-x-2">
+                        <p className="text-[8px] font-black text-blue-300 uppercase">{appt.date.split('-').reverse().join('/')} - {appt.time}</p>
+                        {appt.is_recurring && <RefreshCw size={10} className="text-emerald-400 animate-spin-slow" />}
+                      </div>
+                      {canSchedule && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleDeleteAppointment(appt.id); }} 
+                          className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-500 transition-all p-1"
+                        >
+                           <Trash2 size={12} />
+                        </button>
+                      )}
+                   </div>
+                   <p className="text-xs font-bold mt-1 leading-tight">{appt.description}</p>
+                   <p className="text-[9px] text-white/50 font-medium mt-1 uppercase tracking-tighter flex items-center justify-between">
+                     <span>{data.condos.find(c => c.id === appt.condo_id)?.name}</span>
+                     <ChevronRight size={12} className="text-blue-400" />
                    </p>
-                </div>
+                </button>
               ))}
-              {filteredAppointments.filter(a => a.date === new Date().toISOString().split('T')[0]).length === 0 && (
-                <p className="text-xs text-white/40 italic">Sem compromissos para hoje.</p>
+              {activeDashboardAppointments.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-10 opacity-40">
+                  <CheckCircle2 size={32} className="mb-2 text-emerald-400" />
+                  <p className="text-[10px] font-black uppercase text-center">Plantão em Dia!</p>
+                </div>
               )}
             </div>
           </div>
@@ -330,7 +352,7 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-[2.5rem] w-full max-xl overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">Programar Preventiva</h2>
+              <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">Programar Rotina / Plantão</h2>
               <button onClick={() => setIsScheduleModalOpen(false)} className="p-2.5 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm"><X size={20} /></button>
             </div>
             
@@ -352,53 +374,43 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
 
               <div className="grid grid-cols-2 gap-4">
                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Data</label>
+                    <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Início da Rotina</label>
                     <input required type="date" name="date" className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none" />
                  </div>
                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Hora</label>
+                    <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Horário Previsto</label>
                     <input required type="time" name="time" className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none" />
                  </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Vincular a:</label>
-                <select value={assignmentType} onChange={(e) => setAssignmentType(e.target.value as any)} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs">
-                   <option value="general">Geral / Descritivo</option>
-                   <option value="equipment">Equipamento</option>
-                   <option value="system">Sistema Predial</option>
-                </select>
+                <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Descrição da Rotina / Ronda</label>
+                <textarea required name="description" rows={3} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none resize-none" placeholder="Ex: Ronda perimetral no bloco A e verificação de dreno." />
               </div>
 
-              {assignmentType === 'equipment' && (
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Equipamento</label>
-                  <select name="equipment_id" className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs">
-                    <option value="">Selecionar...</option>
-                    {data.equipments.filter(e => e.condo_id === (condoId || selectedCondoId)).map(e => <option key={e.id} value={e.id}>{e.manufacturer} {e.model}</option>)}
-                  </select>
-                </div>
-              )}
-
-              {assignmentType === 'system' && (
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Sistema</label>
-                  <select name="system_id" className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs">
-                    <option value="">Selecionar...</option>
-                    {data.systems.filter(s => s.condo_id === (condoId || selectedCondoId)).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
-                </div>
-              )}
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Descrição da Tarefa</label>
-                <textarea required name="description" rows={3} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none resize-none" placeholder="O que deve ser feito?" />
+              <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 flex items-center justify-between">
+                 <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg">
+                       <RefreshCw size={18} className={isRecurring ? 'animate-spin-slow' : ''} />
+                    </div>
+                    <div>
+                       <p className="text-[10px] font-black text-emerald-800 uppercase leading-none">Rotina Fixa de Plantão</p>
+                       <p className="text-[9px] text-emerald-600 font-bold mt-1">Repetir esta ação diariamente em todo plantão.</p>
+                    </div>
+                 </div>
+                 <button 
+                  type="button" 
+                  onClick={() => setIsRecurring(!isRecurring)}
+                  className={`w-12 h-6 rounded-full transition-all relative ${isRecurring ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                 >
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${isRecurring ? 'left-7' : 'left-1'}`} />
+                 </button>
               </div>
 
               <div className="pt-4 flex gap-3">
                 <button type="button" onClick={() => setIsScheduleModalOpen(false)} className="flex-1 py-4 border rounded-2xl font-black uppercase text-[10px] text-slate-400">Cancelar</button>
                 <button type="submit" className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl flex items-center justify-center">
-                  <Save size={16} className="mr-2" /> Agendar Tarefa
+                  <Save size={16} className="mr-2" /> Confirmar Programação
                 </button>
               </div>
             </form>

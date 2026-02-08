@@ -31,6 +31,21 @@ export const getStore = (): AppData => {
     // Garantir integridade de arrays
     const ensureArray = (arr: any) => Array.isArray(arr) ? arr : [];
     
+    // Mesclar tipos iniciais (novos tipos adicionados no código) com tipos salvos
+    const mergeTypes = (initial: any[], saved: any[]) => {
+      const merged = [...ensureArray(saved)];
+      initial.forEach(initItem => {
+        if (!merged.find(m => m.id === initItem.id)) {
+          merged.push(initItem);
+        } else {
+          // Atualiza o nome se o ID já existir (ex: Refrigeração -> Ar Condicionado)
+          const idx = merged.findIndex(m => m.id === initItem.id);
+          merged[idx] = initItem;
+        }
+      });
+      return merged;
+    };
+    
     const data: AppData = {
       ...initialData,
       ...parsedData,
@@ -42,6 +57,8 @@ export const getStore = (): AppData => {
       users: ensureArray(parsedData.users),
       waterLevels: ensureArray(parsedData.waterLevels),
       monitoringAlerts: ensureArray(parsedData.monitoringAlerts),
+      equipmentTypes: mergeTypes(INITIAL_EQUIPMENT_TYPES, parsedData.equipmentTypes),
+      systemTypes: mergeTypes(INITIAL_SYSTEM_TYPES, parsedData.systemTypes)
     };
     
     return data;

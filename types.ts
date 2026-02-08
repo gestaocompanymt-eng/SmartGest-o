@@ -166,6 +166,7 @@ export interface Appointment {
   time: string;
   description: string;
   status: 'Pendente' | 'Confirmada' | 'Realizada' | 'Cancelada';
+  is_recurring?: boolean;
   service_order_id?: string;
   updated_at?: string;
 }

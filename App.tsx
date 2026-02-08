@@ -17,13 +17,13 @@ import {
   Code,
   RefreshCcw,
   CheckCircle2,
-  FileBarChart
+  FileBarChart,
+  Database
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
-import { UserRole, AppData, WaterLevel as WaterLevelType } from './types';
+import { UserRole, AppData, WaterLevel as WaterLevelType, ServiceOrder } from './types';
 import { supabase, isSupabaseActive } from './supabase';
-import { syncDataToGithub } from './githubService';
 
 import Dashboard from './pages/Dashboard';
 import Condos from './pages/Condos';
@@ -34,6 +34,7 @@ import AdminSettings from './pages/AdminSettings';
 import Login from './pages/Login';
 import WaterLevel from './pages/WaterLevel';
 import Reports from './pages/Reports';
+import DatabaseSetup from './pages/DatabaseSetup';
 
 const AppContent: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
@@ -61,6 +62,7 @@ const AppContent: React.FC = () => {
         const localItem = map.get(cloudItem.id);
         const localDate = new Date(localItem.updated_at || 0).getTime();
         const cloudDate = new Date(cloudItem.updated_at || 0).getTime();
+        // O dado da nuvem só vence se for estritamente mais recente
         if (cloudDate >= localDate) {
           map.set(cloudItem.id, cloudItem);
         }
@@ -141,78 +143,34 @@ const AppContent: React.FC = () => {
   }, [fetchAllData]);
 
   const updateData = async (newData: AppData) => {
-    const now = new Date().toISOString();
-    const markUpdated = (arr: any[], oldArr: any[]) => {
-      return arr.map(item => {
-        const old = oldArr.find(o => o.id === item.id);
-        if (!old || JSON.stringify(item) !== JSON.stringify(old)) {
-          return { ...item, updated_at: now };
-        }
-        return item;
-      });
-    };
-
-    const finalData = {
-      ...newData,
-      condos: markUpdated(newData.condos, data?.condos || []),
-      equipments: markUpdated(newData.equipments, data?.equipments || []),
-      systems: markUpdated(newData.systems, data?.systems || []),
-      serviceOrders: markUpdated(newData.serviceOrders, data?.serviceOrders || []),
-      appointments: markUpdated(newData.appointments, data?.appointments || []),
-    };
-
-    setData(finalData);
-    saveStore(finalData);
-
-    if (navigator.onLine && isSupabaseActive) {
-      isSyncingRef.current = true;
-      setSyncStatus('syncing');
-      try {
-        const syncPromises = [];
-        syncPromises.push(supabase.from('systems').upsert(finalData.systems));
-        syncPromises.push(supabase.from('equipments').upsert(finalData.equipments));
-        syncPromises.push(supabase.from('condos').upsert(finalData.condos));
-        syncPromises.push(supabase.from('service_orders').upsert(finalData.serviceOrders));
-        syncPromises.push(supabase.from('appointments').upsert(finalData.appointments));
-        syncPromises.push(supabase.from('users').upsert(finalData.users.map(u => ({...u, password: u.password || ''}))));
-        await Promise.all(syncPromises);
-        setSyncStatus('synced');
-      } catch (err) {
-        console.error("Erro ao subir dados:", err);
-        setSyncStatus('offline');
-      } finally {
-        isSyncingRef.current = false;
-      }
-    }
-  };
-
-  const deleteData = async (type: 'users' | 'condos' | 'equipments' | 'systems' | 'serviceOrders' | 'appointments', id: string) => {
-    if (!data) return;
-
-    // 1. Atualizar estado local imediatamente para feedback instantâneo
-    const newData = { ...data };
-    newData[type] = (newData[type] as any[]).filter(item => item.id !== id);
+    // Adiciona timestamp de atualização em todos os registros que mudaram
+    const timestamp = new Date().toISOString();
+    
     setData(newData);
     saveStore(newData);
 
-    // 2. Deletar do Supabase de forma explícita
     if (navigator.onLine && isSupabaseActive) {
-      const tableMap: Record<string, string> = {
-        users: 'users',
-        condos: 'condos',
-        equipments: 'equipments',
-        systems: 'systems',
-        serviceOrders: 'service_orders',
-        appointments: 'appointments'
-      };
-      
-      const table = tableMap[type];
       setSyncStatus('syncing');
       try {
-        await supabase.from(table).delete().eq('id', id);
+        const syncPromises = [
+          supabase.from('condos').upsert(newData.condos.map(item => ({ ...item, updated_at: item.updated_at || timestamp }))),
+          supabase.from('equipments').upsert(newData.equipments.map(item => ({ ...item, updated_at: item.updated_at || timestamp }))),
+          supabase.from('systems').upsert(newData.systems.map(item => ({ ...item, updated_at: item.updated_at || timestamp }))),
+          supabase.from('service_orders').upsert(newData.serviceOrders.map(item => ({ ...item, updated_at: item.updated_at || timestamp }))),
+          supabase.from('appointments').upsert(newData.appointments.map(item => ({ ...item, updated_at: item.updated_at || timestamp })))
+        ];
+        
+        const results = await Promise.all(syncPromises);
+        
+        results.forEach((res, index) => {
+          if (res.error) {
+            console.error(`Erro ao sincronizar tabela index ${index}:`, res.error.message);
+          }
+        });
+
         setSyncStatus('synced');
       } catch (err) {
-        console.error(`Erro ao deletar em ${table}:`, err);
+        console.error("Falha crítica no upload:", err);
         setSyncStatus('offline');
       }
     }
@@ -284,7 +242,6 @@ const AppContent: React.FC = () => {
           <nav className="flex-1 space-y-2 overflow-y-auto pr-2 custom-scrollbar">
             <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
             
-            {/* RONDA: Vê apenas OS (Vistorias) e Reservatórios vinculados */}
             {user?.role === UserRole.RONDA ? (
                <>
                  <NavItem to="/reservatorios" icon={Droplets} label="Reservatórios" />
@@ -304,7 +261,11 @@ const AppContent: React.FC = () => {
             )}
 
             {user?.role === UserRole.ADMIN && (
-              <NavItem to="/admin" icon={Settings} label="Administração" />
+              <>
+                <div className="pt-4 pb-2 px-4 text-[9px] font-black text-slate-500 uppercase tracking-widest">SISTEMA</div>
+                <NavItem to="/admin" icon={Settings} label="Administração" />
+                <NavItem to="/database" icon={Database} label="Banco de Dados" />
+              </>
             )}
           </nav>
           
@@ -341,9 +302,9 @@ const AppContent: React.FC = () => {
               <span>Encerrar Sessão</span>
             </button>
 
-            <div className="pt-2 text-center">
-              <p className="text-[8px] font-bold text-slate-600 uppercase tracking-widest opacity-30 hover:opacity-100 transition-opacity">
-                v5.6 | by Adriano Pantaroto
+            <div className="pt-4 text-center border-t border-slate-800/50">
+              <p className="text-[9px] font-black text-slate-200 uppercase tracking-[0.2em] opacity-100 transition-opacity">
+                V5.6 | POR ENG. ADRIANO PANTAROTO
               </p>
             </div>
           </div>
@@ -354,17 +315,18 @@ const AppContent: React.FC = () => {
         <div className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth custom-scrollbar print:p-0">
           <Routes>
             <Route path="/" element={<Dashboard data={data} updateData={updateData} />} />
-            <Route path="/condos" element={<Condos data={data} updateData={updateData} deleteData={deleteData} />} />
+            <Route path="/condos" element={<Condos data={data} updateData={updateData} />} />
             <Route path="/reservatorios" element={<WaterLevel data={data} updateData={updateData} onRefresh={async () => {
               const updated = await fetchAllData(data);
               setData(updated);
               saveStore(updated);
             }} />} />
-            <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} deleteData={deleteData} />} />
-            <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} deleteData={deleteData} />} />
+            <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} />} />
+            <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} />} />
             <Route path="/os" element={<ServiceOrders data={data} updateData={updateData} />} />
             <Route path="/reports" element={<Reports data={data} />} />
-            <Route path="/admin" element={<AdminSettings data={data} updateData={updateData} deleteData={deleteData} />} />
+            <Route path="/admin" element={<AdminSettings data={data} updateData={updateData} />} />
+            <Route path="/database" element={<DatabaseSetup />} />
             <Route path="/login" element={<Navigate to="/" />} />
           </Routes>
         </div>

@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Layers, ShieldCheck, Thermometer, Zap, AlertCircle, Trash2, Edit2, X, MapPin, Camera, ImageIcon, ChevronLeft, ChevronRight, Building2, Clock, Calendar, Eye, Droplet } from 'lucide-react';
+import { Plus, Layers, ShieldCheck, Thermometer, Zap, AlertCircle, Trash2, Edit2, X, MapPin, Camera, ImageIcon, ChevronLeft, ChevronRight, Building2, Clock, Calendar, Eye, Droplet, Wind } from 'lucide-react';
 import { Equipment, EquipmentType, Condo, UserRole } from '../types';
 
 const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void; deleteData?: (type: any, id: string) => void }> = ({ data, updateData, deleteData }) => {
@@ -169,7 +169,7 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void; deleteD
                 {eq.type_id === '8' && eq.refrigeration_specs && (
                    <div className="mb-4 grid grid-cols-2 gap-2">
                       <div className="px-3 py-2 bg-blue-50 rounded-xl border border-blue-100 flex items-center">
-                         <Droplet size={14} className="text-blue-500 mr-2" />
+                         <Wind size={14} className="text-blue-500 mr-2" />
                          <span className="text-[9px] font-black text-blue-700 uppercase">{eq.refrigeration_specs.refrigerant_type || 'Gás'}</span>
                       </div>
                       <div className="px-3 py-2 bg-blue-50 rounded-xl border border-blue-100 flex items-center">
@@ -237,7 +237,7 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void; deleteD
               {selectedTypeId === '8' && (
                 <div className="bg-blue-50 p-6 rounded-[2rem] border border-blue-100 space-y-4 animate-in slide-in-from-top-2">
                    <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest flex items-center">
-                     <Droplet size={16} className="mr-2" /> Dados Técnicos de Refrigeração
+                     <Wind size={16} className="mr-2" /> Dados de Ar Condicionado / Refrigeração
                    </h4>
                    <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1">

@@ -96,13 +96,13 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
           </button>
         </form>
 
-        <div className="mt-10 pt-6 border-t border-slate-100 flex flex-col items-center justify-center text-slate-300">
-          <div className="flex items-center space-x-2 mb-1">
-            <Shield size={10} />
+        <div className="mt-10 pt-6 border-t border-slate-100 flex flex-col items-center justify-center text-slate-400">
+          <div className="flex items-center space-x-2 mb-1.5 opacity-80">
+            <Shield size={10} className="text-blue-500" />
             <span className="text-[8px] font-black uppercase tracking-widest">Protocolo Seguro SSL-256</span>
           </div>
-          <p className="text-[9px] font-bold uppercase tracking-tighter opacity-50">
-            by Adriano Pantaroto
+          <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-800">
+            DESENVOLVIDO POR ENG. ADRIANO PANTAROTO
           </p>
         </div>
       </div>

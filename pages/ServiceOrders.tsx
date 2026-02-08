@@ -2,13 +2,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { 
-  Plus, FileText, ChevronDown, ChevronUp, X, DollarSign, Edit2, Share2, Wrench, MapPin, Camera, Trash2, Image as ImageIcon, CheckCircle2, Save, Layers, Settings, Building2, RefreshCcw, Play, Eye, Thermometer, Droplet, Wind
+  Plus, FileText, ChevronDown, ChevronUp, X, DollarSign, Edit2, Share2, Wrench, MapPin, Camera, Trash2, Image as ImageIcon, CheckCircle2, Save, Layers, Settings, Building2, RefreshCcw, Play, Eye, Thermometer, Droplet, Wind, User as UserIcon
 } from 'lucide-react';
 import { OSType, OSStatus, ServiceOrder, Condo, System, UserRole, AppData, Equipment } from '../types';
+import { supabase, isSupabaseActive } from '../supabase';
 
 const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void }> = ({ data, updateData }) => {
   const user = data.currentUser;
-  const isCondoUser = user?.role === UserRole.SINDICO_ADMIN;
+  const isSindicoAdmin = user?.role === UserRole.SINDICO_ADMIN;
+  const isAdmin = user?.role === UserRole.ADMIN;
   const isRonda = user?.role === UserRole.RONDA;
   const isAdminOrTech = user?.role === UserRole.ADMIN || user?.role === UserRole.TECHNICIAN;
   const userCondoId = user?.condo_id;
@@ -25,24 +27,12 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
   const [assignmentType, setAssignmentType] = useState<'general' | 'equipment' | 'system'>('general');
   const [selectedEquipmentId, setSelectedEquipmentId] = useState('');
   const [selectedSystemId, setSelectedSystemId] = useState('');
-  const [initialDescription, setInitialDescription] = useState('');
   const [osType, setOsType] = useState<OSType>(isRonda ? OSType.VISTORIA : OSType.SERVICE);
-
-  const [photosBefore, setPhotosBefore] = useState<string[]>([]);
-  const [photosAfter, setPhotosAfter] = useState<string[]>([]);
-
-  const currentEquipment = useMemo(() => {
-    return data.equipments.find(e => e.id === selectedEquipmentId);
-  }, [selectedEquipmentId, data.equipments]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const osId = params.get('id');
-    const systemId = params.get('systemId');
-    const equipmentId = params.get('equipmentId');
-    const description = params.get('description');
     const statusParam = params.get('status');
-    const isVistoria = params.get('vistoria') === 'true';
 
     if (statusParam) setFilterStatus(statusParam);
 
@@ -55,59 +45,83 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
         setAssignmentType(os.equipment_id ? 'equipment' : os.system_id ? 'system' : 'general');
         setSelectedEquipmentId(os.equipment_id || '');
         setSelectedSystemId(os.system_id || '');
-        setPhotosBefore(os.photos_before || []);
-        setPhotosAfter(os.photos_after || []);
         setOsType(os.type);
         setIsModalOpen(true);
       }
-    } else if (systemId) {
-      const sys = data.systems.find((s: System) => s.id === systemId);
-      if (sys && (!userCondoId || sys.condo_id === userCondoId)) openNewOSWithSystem(sys, isVistoria);
-    } else if (equipmentId) {
-      const eq = data.equipments.find((e: Equipment) => e.id === equipmentId);
-      if (eq && (!userCondoId || eq.condo_id === userCondoId)) openNewOSWithEquipment(eq, description || '', isVistoria);
     }
-  }, [location.search, data.systems, data.equipments, userCondoId]);
+  }, [location.search, data.serviceOrders]);
 
-  const openNewOSWithSystem = (sys: System, isVistoria: boolean) => {
-    setSelectedCondoId(sys.condo_id);
-    setAssignmentType('system');
-    setSelectedSystemId(sys.id);
-    setSelectedEquipmentId('');
-    setInitialDescription('');
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setSaveStatus('saving');
+    
+    const formData = new FormData(e.currentTarget);
+    const statusFromForm = formData.get('status') as OSStatus;
+    const condoId = (isRonda || isSindicoAdmin) ? (userCondoId || '') : (formData.get('condo_id') as string);
+    const currentTechnicianId = user?.id || 'unknown';
+
+    const osData: ServiceOrder = {
+      id: editingOS?.id || `OS-${Date.now()}`,
+      type: isRonda ? OSType.VISTORIA : ((formData.get('type') as OSType) || osType),
+      status: statusFromForm || editingOS?.status || OSStatus.OPEN,
+      condo_id: condoId,
+      location: formData.get('location') as string || '',
+      equipment_id: assignmentType === 'equipment' ? selectedEquipmentId : undefined,
+      system_id: assignmentType === 'system' ? selectedSystemId : undefined,
+      problem_description: formData.get('description') as string,
+      actions_performed: (formData.get('actions') as string) || editingOS?.actions_performed || '',
+      parts_replaced: editingOS?.parts_replaced || [],
+      photos_before: editingOS?.photos_before || [],
+      photos_after: editingOS?.photos_after || [],
+      technician_id: currentTechnicianId,
+      created_at: editingOS?.created_at || new Date().toISOString(),
+      service_value: Number(formData.get('service_value')) || 0,
+      material_value: Number(formData.get('material_value')) || 0,
+      completed_at: statusFromForm === OSStatus.COMPLETED ? new Date().toISOString() : editingOS?.completed_at,
+      updated_at: new Date().toISOString() // Vital para o smartUnion
+    };
+
+    try {
+      // 1. Atualizar Supabase (Envio Individual para mais estabilidade)
+      if (navigator.onLine && isSupabaseActive) {
+        console.log("Iniciando persistência no Supabase para OS:", osData.id);
+        const { error } = await supabase.from('service_orders').upsert(osData);
+        if (error) {
+           console.error("Erro retornado pelo Supabase:", error.message);
+           throw error;
+        }
+        console.log("Persistência no Supabase concluída com sucesso!");
+      }
+
+      // 2. Atualizar Estado Local
+      const newOrders = editingOS 
+        ? data.serviceOrders.map((o: ServiceOrder) => o.id === editingOS.id ? osData : o) 
+        : [osData, ...data.serviceOrders];
+      
+      updateData({ ...data, serviceOrders: newOrders });
+      setSaveStatus('success');
+      setTimeout(closeModal, 800);
+      
+    } catch (err) {
+      console.error("Erro fatal ao salvar OS:", err);
+      setSaveStatus('error');
+      alert("Erro ao gravar no banco de dados. Verifique sua conexão ou permissões.");
+    }
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
     setEditingOS(null);
-    setOsType(isVistoria ? OSType.VISTORIA : OSType.SERVICE);
-    setPhotosBefore([]);
-    setPhotosAfter([]);
-    setIsModalOpen(true);
+    setSaveStatus('idle');
   };
 
-  const openNewOSWithEquipment = (eq: Equipment, desc: string, isVistoria: boolean) => {
-    setSelectedCondoId(eq.condo_id);
-    setAssignmentType('equipment');
-    setSelectedEquipmentId(eq.id);
-    setSelectedSystemId('');
-    setInitialDescription(desc);
-    setEditingOS(null);
-    setOsType(isVistoria ? OSType.VISTORIA : OSType.SERVICE);
-    setPhotosBefore([]);
-    setPhotosAfter([]);
-    setIsModalOpen(true);
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'before' | 'after') => {
-    const files = e.target.files;
-    if (!files) return;
-    (Array.from(files) as File[]).forEach(file => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64String = reader.result as string;
-        if (type === 'before') setPhotosBefore(prev => [...prev, base64String]);
-        else setPhotosAfter(prev => [...prev, base64String]);
-      };
-      reader.readAsDataURL(file);
-    });
-  };
+  const filteredOS = data.serviceOrders.filter((os: ServiceOrder) => {
+    const matchStatus = filterStatus === 'all' || os.status === filterStatus;
+    const matchType = filterType === 'all' || os.type === filterType;
+    if (isRonda) return os.type === OSType.VISTORIA && os.condo_id === userCondoId && matchStatus;
+    if (isSindicoAdmin) return os.condo_id === userCondoId && matchStatus && matchType;
+    return matchStatus && matchType;
+  });
 
   const handleShare = async (os: ServiceOrder, condoName?: string) => {
     const text = `🛠️ *SmartGestão - ${os.type}*\n\n*ID:* ${os.id}\n*Condomínio:* ${condoName || 'Não informado'}\n*Status:* ${os.status}\n\n*Relato:* ${os.problem_description}`;
@@ -120,85 +134,6 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
       alert('Copiado!');
     }
   };
-
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setSaveStatus('saving');
-    const formData = new FormData(e.currentTarget);
-    const statusFromForm = formData.get('status') as OSStatus;
-    const condoId = (user?.role === UserRole.RONDA || isCondoUser) ? (userCondoId || '') : (formData.get('condo_id') as string);
-
-    const osData: ServiceOrder = {
-      id: editingOS?.id || `${isRonda ? 'VST' : 'OS'}-${Date.now()}`,
-      type: (formData.get('type') as OSType) || osType,
-      status: statusFromForm || editingOS?.status || OSStatus.OPEN,
-      condo_id: condoId,
-      location: formData.get('location') as string,
-      equipment_id: assignmentType === 'equipment' ? selectedEquipmentId : undefined,
-      system_id: assignmentType === 'system' ? selectedSystemId : undefined,
-      problem_description: formData.get('description') as string,
-      actions_performed: (formData.get('actions') as string) || editingOS?.actions_performed || '',
-      parts_replaced: editingOS?.parts_replaced || [],
-      photos_before: photosBefore,
-      photos_after: photosAfter,
-      technician_id: editingOS?.technician_id || user?.id || 'unknown',
-      created_at: editingOS?.created_at || new Date().toISOString(),
-      service_value: Number(formData.get('service_value')) || 0,
-      material_value: Number(formData.get('material_value')) || 0,
-      completed_at: statusFromForm === OSStatus.COMPLETED ? new Date().toISOString() : editingOS?.completed_at,
-      updated_at: new Date().toISOString(),
-      refrigeration_readings: currentEquipment?.type_id === '8' ? {
-         high_pressure: Number(formData.get('high_pressure')),
-         low_pressure: Number(formData.get('low_pressure')),
-         superheat: Number(formData.get('superheat')),
-         subcooling: Number(formData.get('subcooling')),
-         filter_clean: formData.get('filter_clean') === 'on',
-         drain_clean: formData.get('drain_clean') === 'on',
-         evaporator_temp: Number(formData.get('evaporator_temp')),
-         condenser_temp: Number(formData.get('condenser_temp')),
-      } : undefined
-    };
-
-    await updateData({ 
-      ...data, 
-      serviceOrders: editingOS 
-        ? data.serviceOrders.map((o: ServiceOrder) => o.id === editingOS.id ? osData : o) 
-        : [osData, ...data.serviceOrders] 
-    });
-
-    setSaveStatus('success');
-    setTimeout(closeModal, 800);
-  };
-
-  const closeModal = () => {
-    setIsModalOpen(false);
-    setEditingOS(null);
-    setAssignmentType('general');
-    setSelectedCondoId(userCondoId || '');
-    setSelectedEquipmentId('');
-    setSelectedSystemId('');
-    setInitialDescription('');
-    setPhotosBefore([]);
-    setPhotosAfter([]);
-    setSaveStatus('idle');
-  };
-
-  const filteredOS = data.serviceOrders.filter((os: ServiceOrder) => {
-    const matchStatus = filterStatus === 'all' || os.status === filterStatus;
-    const matchType = filterType === 'all' || os.type === filterType;
-    if (isRonda) return os.type === OSType.VISTORIA && os.condo_id === userCondoId && matchStatus;
-    if (user?.role === UserRole.TECHNICIAN && user.condo_id) return os.condo_id === user.condo_id && matchStatus && matchType;
-    if (isCondoUser) return os.condo_id === userCondoId && matchStatus && matchType;
-    return matchStatus && matchType;
-  });
-
-  const filteredEquipments = useMemo(() => {
-    return data.equipments.filter(e => e.condo_id === selectedCondoId);
-  }, [data.equipments, selectedCondoId]);
-
-  const filteredSystems = useMemo(() => {
-    return data.systems.filter(s => s.condo_id === selectedCondoId);
-  }, [data.systems, selectedCondoId]);
 
   return (
     <div className="space-y-6 pb-12">
@@ -216,12 +151,6 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
               {Object.values(OSStatus).map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           )}
-          {!isRonda && (
-            <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="bg-white border rounded-xl px-4 py-2 text-xs font-bold outline-none flex-1 md:flex-none">
-              <option value="all">Tipos: Todos</option>
-              {Object.values(OSType).map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-          )}
           <button onClick={() => { setEditingOS(null); setOsType(isRonda ? OSType.VISTORIA : OSType.SERVICE); setIsModalOpen(true); }} className="bg-blue-600 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-500/20 active:scale-95 flex-1 md:flex-none">
             <Plus size={16} className="inline mr-1" /> {isRonda ? 'Nova Vistoria' : 'Novo Chamado'}
           </button>
@@ -231,7 +160,9 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
       <div className="space-y-3">
         {filteredOS.map((os: ServiceOrder) => {
           const condo = data.condos.find((c: Condo) => c.id === os.condo_id);
+          const techUser = data.users.find(u => u.id === os.technician_id);
           const isExpanded = expandedOS === os.id;
+          
           return (
             <div key={os.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden transition-all">
               <div className="p-4 flex items-center justify-between cursor-pointer" onClick={() => setExpandedOS(isExpanded ? null : os.id)}>
@@ -242,6 +173,11 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                   <div className="min-w-0">
                     <p className="text-sm font-black text-slate-900 truncate">{condo?.name || 'Condomínio'}</p>
                     <p className="text-[10px] text-slate-400 font-bold uppercase">{os.id} • {os.type}</p>
+                    {techUser && (
+                      <p className="text-[9px] font-bold text-blue-500 uppercase mt-0.5 flex items-center">
+                        <UserIcon size={10} className="mr-1" /> Executor: {techUser.name}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center space-x-3">
@@ -252,7 +188,7 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                   }`}>
                     {os.status}
                   </span>
-                  {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  {isExpanded ? <ChevronDown size={16} className={expandedOS === os.id ? 'rotate-180 transition-transform' : 'transition-transform'} /> : <ChevronDown size={16} />}
                 </div>
               </div>
               {isExpanded && (
@@ -268,22 +204,8 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                     </div>
                   </div>
 
-                  {os.refrigeration_readings && (
-                    <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
-                       <h5 className="text-[9px] font-black text-blue-600 uppercase tracking-widest mb-3 flex items-center">
-                         <Wind size={12} className="mr-2" /> Laudo de Refrigeração
-                       </h5>
-                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                          <div><span className="text-[8px] text-slate-400 uppercase">Pressão Alta</span><p className="text-xs font-black">{os.refrigeration_readings.high_pressure} PSI</p></div>
-                          <div><span className="text-[8px] text-slate-400 uppercase">Pressão Baixa</span><p className="text-xs font-black">{os.refrigeration_readings.low_pressure} PSI</p></div>
-                          <div><span className="text-[8px] text-slate-400 uppercase">Superaquecimento</span><p className="text-xs font-black">{os.refrigeration_readings.superheat} K</p></div>
-                          <div><span className="text-[8px] text-slate-400 uppercase">Filtros</span><p className="text-xs font-black">{os.refrigeration_readings.filter_clean ? 'Limpos' : 'Sujeira'}</p></div>
-                       </div>
-                    </div>
-                  )}
-
                   <div className="flex flex-wrap gap-3 pt-2">
-                    <button onClick={() => { setEditingOS(os); setSelectedCondoId(os.condo_id); setAssignmentType(os.equipment_id ? 'equipment' : os.system_id ? 'system' : 'general'); setSelectedEquipmentId(os.equipment_id || ''); setSelectedSystemId(os.system_id || ''); setPhotosBefore(os.photos_before || []); setPhotosAfter(os.photos_after || []); setOsType(os.type); setIsModalOpen(true); }} className="bg-slate-900 text-white text-[9px] font-black uppercase px-6 py-3 rounded-xl flex items-center shadow-lg active:scale-95"><Edit2 size={14} className="mr-2" /> {os.status === OSStatus.COMPLETED ? 'Ver Detalhes' : 'Editar / Finalizar'}</button>
+                    <button onClick={() => { setEditingOS(os); setSelectedCondoId(os.condo_id); setAssignmentType(os.equipment_id ? 'equipment' : os.system_id ? 'system' : 'general'); setSelectedEquipmentId(os.equipment_id || ''); setSelectedSystemId(os.system_id || ''); setOsType(os.type); setIsModalOpen(true); }} className="bg-slate-900 text-white text-[9px] font-black uppercase px-6 py-3 rounded-xl flex items-center shadow-lg active:scale-95"><Edit2 size={14} className="mr-2" /> Editar / Finalizar</button>
                     <button onClick={() => handleShare(os, condo?.name)} className="bg-slate-100 hover:bg-slate-200 text-slate-500 text-[9px] font-black uppercase px-6 py-3 rounded-xl flex items-center"><Share2 size={14} className="mr-2" /> Compartilhar</button>
                   </div>
                 </div>
@@ -311,85 +233,16 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Tipo</label>
-                  <select required name="type" value={osType} onChange={(e) => setOsType(e.target.value as OSType)} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none">
-                    {Object.values(OSType).map(t => <option key={t} value={t}>{t}</option>)}
+                  <select required name="type" value={osType} onChange={(e) => setOsType(e.target.value as OSType)} disabled={isRonda} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none disabled:opacity-50">
+                    {isRonda ? <option value={OSType.VISTORIA}>{OSType.VISTORIA}</option> : Object.values(OSType).map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Vincular a:</label>
-                  <select value={assignmentType} onChange={(e) => setAssignmentType(e.target.value as any)} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none">
-                    <option value="general">Geral / Localização</option>
-                    <option value="equipment">Equipamento Específico</option>
-                    <option value="system">Sistema Predial</option>
-                  </select>
-                </div>
-                {assignmentType === 'general' ? (
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Localização</label>
-                    <input name="location" defaultValue={editingOS?.location} placeholder="Ex: Área Comum" className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs" />
-                  </div>
-                ) : assignmentType === 'equipment' ? (
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Equipamento</label>
-                    <select name="equipment_id" value={selectedEquipmentId} onChange={(e) => setSelectedEquipmentId(e.target.value)} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none">
-                      <option value="">Selecione...</option>
-                      {filteredEquipments.map(e => <option key={e.id} value={e.id}>{e.manufacturer} - {e.model}</option>)}
-                    </select>
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Sistema</label>
-                    <select name="system_id" value={selectedSystemId} onChange={(e) => setSelectedSystemId(e.target.value)} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none">
-                      <option value="">Selecione...</option>
-                      {filteredSystems.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                  </div>
-                )}
               </div>
 
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Descrição / Ocorrência</label>
-                <textarea required name="description" defaultValue={editingOS?.problem_description || initialDescription} rows={3} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none resize-none" />
+                <textarea required name="description" defaultValue={editingOS?.problem_description} rows={3} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none resize-none" />
               </div>
-
-              {currentEquipment?.type_id === '8' && (
-                <div className="bg-blue-50 p-6 rounded-[2rem] border border-blue-100 space-y-4 animate-in zoom-in-95">
-                   <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest flex items-center">
-                     <Wind size={16} className="mr-2" /> Parâmetros de Refrigeração
-                   </h4>
-                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div className="space-y-1 col-span-1">
-                        <label className="text-[8px] font-black text-blue-500 uppercase ml-1">Alta (PSI)</label>
-                        <input name="high_pressure" type="number" step="0.1" defaultValue={editingOS?.refrigeration_readings?.high_pressure} className="w-full px-3 py-3 bg-white border border-blue-100 rounded-xl text-xs font-bold" />
-                      </div>
-                      <div className="space-y-1 col-span-1">
-                        <label className="text-[8px] font-black text-blue-500 uppercase ml-1">Baixa (PSI)</label>
-                        <input name="low_pressure" type="number" step="0.1" defaultValue={editingOS?.refrigeration_readings?.low_pressure} className="w-full px-3 py-3 bg-white border border-blue-100 rounded-xl text-xs font-bold" />
-                      </div>
-                      <div className="space-y-1 col-span-1">
-                        <label className="text-[8px] font-black text-blue-500 uppercase ml-1">Superaq. (K)</label>
-                        <input name="superheat" type="number" step="0.1" defaultValue={editingOS?.refrigeration_readings?.superheat} className="w-full px-3 py-3 bg-white border border-blue-100 rounded-xl text-xs font-bold" />
-                      </div>
-                      <div className="space-y-1 col-span-1">
-                        <label className="text-[8px] font-black text-blue-500 uppercase ml-1">Sub-resf. (K)</label>
-                        <input name="subcooling" type="number" step="0.1" defaultValue={editingOS?.refrigeration_readings?.subcooling} className="w-full px-3 py-3 bg-white border border-blue-100 rounded-xl text-xs font-bold" />
-                      </div>
-                   </div>
-                   <div className="flex gap-4">
-                      <label className="flex items-center space-x-2 cursor-pointer">
-                         <input type="checkbox" name="filter_clean" defaultChecked={editingOS?.refrigeration_readings?.filter_clean} className="w-4 h-4 text-blue-600 rounded" />
-                         <span className="text-[9px] font-black text-slate-600 uppercase">Filtros Limpos</span>
-                      </label>
-                      <label className="flex items-center space-x-2 cursor-pointer">
-                         <input type="checkbox" name="drain_clean" defaultChecked={editingOS?.refrigeration_readings?.drain_clean} className="w-4 h-4 text-blue-600 rounded" />
-                         <span className="text-[9px] font-black text-slate-600 uppercase">Dreno Desobstruído</span>
-                      </label>
-                   </div>
-                </div>
-              )}
 
               <div className="space-y-4 pt-4 border-t border-slate-100">
                 <h4 className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Relatório Técnico</h4>
@@ -397,44 +250,11 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Ações Realizadas</label>
                   <textarea name="actions" defaultValue={editingOS?.actions_performed} rows={3} className="w-full px-5 py-4 bg-slate-900 text-white font-mono text-[10px] rounded-2xl outline-none resize-none" placeholder="Relatório de execução..." />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Valor Serviço (R$)</label>
-                    <input type="number" step="0.01" name="service_value" defaultValue={editingOS?.service_value} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Materiais (R$)</label>
-                    <input type="number" step="0.01" name="material_value" defaultValue={editingOS?.material_value} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs" />
-                  </div>
-                </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Status do Registro</label>
                   <select name="status" defaultValue={editingOS?.status || OSStatus.OPEN} className="w-full px-5 py-4 bg-blue-50 border border-blue-100 rounded-2xl font-black text-blue-600 text-xs outline-none">
                     {Object.values(OSStatus).map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Fotos (Antes)</label>
-                  <div className="flex gap-2 flex-wrap">
-                    {photosBefore.map((p, i) => <div key={i} className="relative group"><img src={p} className="w-16 h-16 object-cover rounded-lg border" /><button type="button" onClick={() => setPhotosBefore(prev => prev.filter((_, idx) => idx !== i))} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100"><X size={10} /></button></div>)}
-                    <label className="w-16 h-16 border-2 border-dashed border-slate-200 rounded-lg flex items-center justify-center text-slate-400 cursor-pointer hover:border-blue-400 transition-all">
-                      <Camera size={18} />
-                      <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFileChange(e, 'before')} />
-                    </label>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Fotos (Depois)</label>
-                  <div className="flex gap-2 flex-wrap">
-                    {photosAfter.map((p, i) => <div key={i} className="relative group"><img src={p} className="w-16 h-16 object-cover rounded-lg border" /><button type="button" onClick={() => setPhotosAfter(prev => prev.filter((_, idx) => idx !== i))} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100"><X size={10} /></button></div>)}
-                    <label className="w-16 h-16 border-2 border-dashed border-slate-200 rounded-lg flex items-center justify-center text-slate-400 cursor-pointer hover:border-blue-400 transition-all">
-                      <Camera size={18} />
-                      <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFileChange(e, 'after')} />
-                    </label>
-                  </div>
                 </div>
               </div>
 

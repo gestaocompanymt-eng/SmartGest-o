@@ -9,7 +9,7 @@ export const INITIAL_EQUIPMENT_TYPES: EquipmentType[] = [
   { id: '5', name: 'Sauna' },
   { id: '6', name: 'Aquecimento de Água' },
   { id: '7', name: 'Elétrica e Automação' },
-  { id: '8', name: 'Refrigeração' }
+  { id: '8', name: 'Ar Condicionado / Refrigeração' }
 ];
 
 export const INITIAL_SYSTEM_TYPES: SystemType[] = [
@@ -19,7 +19,7 @@ export const INITIAL_SYSTEM_TYPES: SystemType[] = [
   { id: '4', name: 'Sistema de Sauna' },
   { id: '5', name: 'Sistema de Pressurização' },
   { id: '6', name: 'Sistema de Exaustão' },
-  { id: '7', name: 'Sistema de Climatização / Refrigeração' }
+  { id: '7', name: 'Sistema de Ar Condicionado / Climatização' }
 ];
 
 export const APP_CONFIG = {
