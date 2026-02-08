@@ -21,6 +21,23 @@ import WaterLevel from './pages/WaterLevel';
 import Reports from './pages/Reports';
 import DatabaseSetup from './pages/DatabaseSetup';
 
+// Fix: Adicionando o componente NavItem que estava faltando
+const NavItem: React.FC<{ to: string; icon: any; label: string }> = ({ to, icon: Icon, label }) => {
+  const location = useLocation();
+  const isActive = location.pathname === to;
+  return (
+    <Link 
+      to={to} 
+      className={`flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-bold text-sm ${
+        isActive ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+      }`}
+    >
+      <Icon size={20} />
+      <span>{label}</span>
+    </Link>
+  );
+};
+
 const AppContent: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [data, setData] = useState<AppData | null>(null);
@@ -197,7 +214,7 @@ const AppContent: React.FC = () => {
     setData(prev => {
       if (!prev) return prev;
       const newData = { ...prev };
-      if (tableName === 'service_orders' || tableName === 'service_orders') newData.serviceOrders = prev.serviceOrders.filter(o => o.id !== id);
+      if (tableName === 'service_orders') newData.serviceOrders = prev.serviceOrders.filter(o => o.id !== id);
       if (tableName === 'condos') newData.condos = prev.condos.filter(c => c.id !== id);
       if (tableName === 'equipments') newData.equipments = prev.equipments.filter(e => e.id !== id);
       if (tableName === 'systems') newData.systems = prev.systems.filter(s => s.id !== id);
@@ -223,41 +240,13 @@ const AppContent: React.FC = () => {
   };
 
   if (!data) return null;
-  if (isInitialSyncing) {
-    return (
-      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-center">
-        <Wrench size={48} className="text-blue-500 animate-bounce mb-6" />
-        <h2 className="text-white font-black uppercase tracking-widest text-lg mb-2">SmartGestão</h2>
-        <p className="text-slate-400 text-sm font-bold animate-pulse">Estabelecendo Conexão Cloud V8.0...</p>
-      </div>
-    );
-  }
 
+  // Fix: Adicionando verificação de login e definição da variável 'user'
   if (!data.currentUser && location.pathname !== '/login') {
-    return <Login onLogin={async (user) => {
-      const baseData = { ...data, currentUser: user };
-      const updatedData = await fetchAllData(baseData);
-      setData(updatedData);
-      saveStore(updatedData);
-      navigate('/');
-    }} />;
+    return <Login onLogin={(u) => updateData({ ...data, currentUser: u })} />;
   }
-
+  
   const user = data.currentUser;
-  const NavItem = ({ to, icon: Icon, label }: { to: string; icon: any; label: string }) => (
-    <Link
-      to={to}
-      onClick={() => setSidebarOpen(false)}
-      className={`flex items-center space-x-3 px-4 py-3.5 rounded-xl transition-all ${
-        location.pathname === to 
-          ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' 
-          : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-      }`}
-    >
-      <Icon size={20} />
-      <span className="font-bold text-sm">{label}</span>
-    </Link>
-  );
 
   return (
     <div className="h-screen w-full flex flex-col md:flex-row bg-slate-50 overflow-hidden">
@@ -375,7 +364,7 @@ const AppContent: React.FC = () => {
             <Route path="/reports" element={<Reports data={data} />} />
             <Route path="/admin" element={<AdminSettings data={data} updateData={updateData} deleteData={deleteData} />} />
             <Route path="/database" element={<DatabaseSetup />} />
-            <Route path="/login" element={<Navigate to="/" />} />
+            <Route path="/login" element={<Login onLogin={(u) => updateData({ ...data, currentUser: u })} />} />
           </Routes>
         </div>
       </main>
@@ -386,6 +375,7 @@ const AppContent: React.FC = () => {
   );
 };
 
+// Fix: Adicionando o componente wrapper App e exportando como default
 const App: React.FC = () => {
   return (
     <HashRouter>

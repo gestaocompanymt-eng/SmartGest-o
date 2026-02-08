@@ -133,13 +133,15 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
     const osToDelete = data.serviceOrders.find(o => o.id === id);
     if (!osToDelete) return;
 
-    if (window.confirm('Excluir esta Ordem de Serviço permanentemente?')) {
+    if (window.confirm('Excluir esta Ordem de Serviço permanentemente? Ao excluir uma OS de rotina, o agendamento também será cancelado para evitar re-criação automática.')) {
       try {
         setSaveStatus('saving');
+        
         // 1. Clonar o estado inteiro para modificação atômica
         const nextData = { ...data };
 
-        // 2. Cancelar agendamento se houver vínculo na descrição
+        // 2. IMPORTANTÍSSIMO: Cancelar agendamento se houver vínculo na descrição
+        // Isso impede que o motor do Dashboard recrie a OS no próximo segundo.
         const apptMatch = osToDelete.problem_description.match(/\[ID:(APT-[0-9]+)\]/);
         if (apptMatch && apptMatch[1]) {
           const apptId = apptMatch[1];
@@ -155,24 +157,24 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
           );
         }
 
-        // 4. Remover a OS da lista local (Crucial antes de chamar deleteData)
+        // 4. Remover a OS da lista local
         nextData.serviceOrders = nextData.serviceOrders.filter(o => o.id !== id);
 
-        // 5. Primeiro chamamos a exclusão física do Cloud
+        // 5. Chamar primeiro a exclusão física do Cloud para garantir o banco de dados
         if (deleteData) {
           await deleteData('service_orders', id);
         }
 
-        // 6. Depois atualizamos o estado global para persistir os cancelamentos e a remoção
+        // 6. Finalmente atualizar o estado global com os agendamentos já cancelados
         await updateData(nextData);
         
         setExpandedOS(null);
         setSaveStatus('idle');
-        console.log(`SmartGestão: OS ${id} e vínculos processados.`);
+        console.log(`SmartGestão: OS ${id} excluída e vínculos de rotina limpos.`);
       } catch (error) {
         console.error("Erro ao excluir OS:", error);
         setSaveStatus('error');
-        alert("Falha na exclusão. Verifique sua conexão e permissões.");
+        alert("Falha na exclusão. Verifique sua conexão.");
       }
     }
   };
