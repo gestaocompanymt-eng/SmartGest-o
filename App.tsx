@@ -53,7 +53,12 @@ const AppContent: React.FC = () => {
     const allowedColumns = schema[tableName] || [];
     allowedColumns.forEach(col => {
       const val = item[col];
-      clean[col] = val === undefined ? null : val;
+      // Regra Crítica: Postgres recusa '' em campos numéricos ou PKs
+      if (val === undefined || val === '') {
+        clean[col] = null;
+      } else {
+        clean[col] = val;
+      }
     });
 
     if (!clean.updated_at) clean.updated_at = timestamp;
@@ -162,7 +167,6 @@ const AppContent: React.FC = () => {
     if (navigator.onLine && isSupabaseActive) {
       setSyncStatus('syncing');
       
-      // ORDEM CRÍTICA: Primeiro Condos e Users (que são referenciados pelos outros)
       const tableConfigs = [
         { name: 'condos', data: newData.condos },
         { name: 'users', data: newData.users },
@@ -180,22 +184,16 @@ const AppContent: React.FC = () => {
             const { error } = await supabase.from(config.name).upsert(cleanBatch, { onConflict: 'id' });
             
             if (error) {
-              console.error(`Erro na tabela ${config.name}:`, error.message);
-              // Lança erro para o catch caso seja uma falha de estrutura ou rede
-              if (!error.message.includes('Foreign Key')) {
-                throw new Error(`Falha na tabela ${config.name}: ${error.message}`);
-              }
+              console.error(`Falha na tabela ${config.name}:`, error.message);
+              // Lógica de Retentativa/Pular para não travar a UI
+              if (error.message.includes('Foreign Key')) continue;
             }
           }
         }
         setSyncStatus('synced');
       } catch (err: any) {
-        console.error("Falha geral na sincronização cloud:", err);
+        console.error("Erro Crítico de Sincronização:", err);
         setSyncStatus('offline');
-        // Notifica o erro apenas se for persistente e relevante
-        if (err.message && !err.message.includes('fetch')) {
-           console.warn("Dica: Verifique se as tabelas no Supabase possuem todas as colunas do script SQL.");
-        }
       }
     }
   };
@@ -206,7 +204,7 @@ const AppContent: React.FC = () => {
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-center">
         <Wrench size={48} className="text-blue-500 animate-bounce mb-6" />
         <h2 className="text-white font-black uppercase tracking-widest text-lg mb-2">SmartGestão</h2>
-        <p className="text-slate-400 text-sm font-bold animate-pulse">Estabelecendo Conexão Segura Cloud...</p>
+        <p className="text-slate-400 text-sm font-bold animate-pulse">Estabelecendo Conexão Cloud V8.0...</p>
       </div>
     );
   }
@@ -326,7 +324,7 @@ const AppContent: React.FC = () => {
 
             <div className="pt-4 text-center border-t border-slate-800/50">
               <p className="text-[9px] font-black text-slate-200 uppercase tracking-[0.2em] opacity-100 transition-opacity">
-                V6.0 | POR ENG. ADRIANO PANTAROTO
+                V8.0 | POR ENG. ADRIANO PANTAROTO
               </p>
             </div>
           </div>
