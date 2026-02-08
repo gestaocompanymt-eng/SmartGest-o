@@ -60,11 +60,19 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
     agendaRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // EFEITO ÚNICO PARA PROCESSAR AUTOMAÇÕES (EQUIPAMENTOS E AGENDAMENTOS)
   useEffect(() => {
     if (!canSchedule) return;
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStr = today.toISOString().split('T')[0];
     
+    const newOSs: ServiceOrder[] = [];
+    const updatedAppts = [...data.appointments];
+    let hasChanges = false;
+
+    // 1. PROCESSAR AGENDAMENTOS MANUAIS (Appointments)
     const pendingToOpen = data.appointments.filter(a => {
       const isOneTimePending = !a.is_recurring && a.date <= todayStr && a.status === 'Pendente' && !a.service_order_id;
       
@@ -81,47 +89,89 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
       return (isOneTimePending || isRecurringDue) && (!condoId || a.condo_id === condoId);
     });
 
-    if (pendingToOpen.length > 0) {
-      const newOSs: ServiceOrder[] = [];
-      const updatedAppts = [...data.appointments];
-
-      pendingToOpen.forEach(appt => {
-        const osId = `OS-AUTO-${Date.now()}-${appt.id}`;
-        const isRondaRoutine = appt.description.toLowerCase().includes('ronda') || appt.description.toLowerCase().includes('vistoria');
-        
-        const newOS: ServiceOrder = {
-          id: osId,
-          type: isRondaRoutine ? OSType.VISTORIA : OSType.PREVENTIVE,
-          status: OSStatus.OPEN,
-          condo_id: appt.condo_id,
-          equipment_id: appt.equipment_id,
-          system_id: appt.system_id,
-          problem_description: `[ROTINA ${appt.is_recurring ? 'RECORRENTE' : 'PROGRAMADA'}][ID:${appt.id}] ${appt.description}`,
-          actions_performed: '',
-          parts_replaced: [],
-          photos_before: [],
-          photos_after: [],
-          technician_id: 'aguardando-tecnico',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-        newOSs.push(newOS);
-        
-        if (!appt.is_recurring) {
-          const idx = updatedAppts.findIndex(a => a.id === appt.id);
-          if (idx !== -1) {
-            updatedAppts[idx] = { ...updatedAppts[idx], service_order_id: osId, status: 'Confirmada' };
-          }
-        }
+    pendingToOpen.forEach(appt => {
+      const osId = `OS-AUTO-${Date.now()}-${appt.id}`;
+      const isRondaRoutine = appt.description.toLowerCase().includes('ronda') || appt.description.toLowerCase().includes('vistoria');
+      
+      newOSs.push({
+        id: osId,
+        type: isRondaRoutine ? OSType.VISTORIA : OSType.PREVENTIVE,
+        status: OSStatus.OPEN,
+        condo_id: appt.condo_id,
+        equipment_id: appt.equipment_id,
+        system_id: appt.system_id,
+        problem_description: `[ROTINA ${appt.is_recurring ? 'RECORRENTE' : 'PROGRAMADA'}][ID:${appt.id}] ${appt.description}`,
+        actions_performed: '',
+        parts_replaced: [],
+        photos_before: [],
+        photos_after: [],
+        technician_id: 'aguardando-tecnico',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       });
+      
+      if (!appt.is_recurring) {
+        const idx = updatedAppts.findIndex(a => a.id === appt.id);
+        if (idx !== -1) {
+          updatedAppts[idx] = { ...updatedAppts[idx], service_order_id: osId, status: 'Confirmada' };
+        }
+      }
+      hasChanges = true;
+    });
 
+    // 2. PROCESSAR CRONOGRAMA DE EQUIPAMENTOS (Preventivas Automáticas)
+    data.equipments.forEach(eq => {
+      // Ignorar se o usuário estiver restrito a um condomínio diferente do equipamento
+      if (condoId && eq.condo_id !== condoId) return;
+      if (!eq.last_maintenance || !eq.maintenance_period) return;
+
+      const nextDate = new Date(eq.last_maintenance);
+      nextDate.setDate(nextDate.getDate() + eq.maintenance_period);
+      nextDate.setHours(0, 0, 0, 0);
+
+      // Se a data da próxima manutenção já chegou ou passou
+      if (nextDate <= today) {
+        // Verificar se já existe uma OS preventiva aberta para este equipamento neste ciclo
+        // Consideramos um ciclo "resolvido" se houver OS criada APÓS ou NA data da última manutenção
+        const alreadyHasOS = data.serviceOrders.some(os => 
+          os.equipment_id === eq.id && 
+          os.type === OSType.PREVENTIVE &&
+          os.status !== OSStatus.CANCELLED &&
+          new Date(os.created_at).getTime() >= new Date(eq.last_maintenance).getTime()
+        );
+
+        if (!alreadyHasOS) {
+          const osId = `OS-PREV-${Date.now()}-${eq.id.slice(-4)}`;
+          const typeName = data.equipmentTypes.find(t => t.id === eq.type_id)?.name || 'Equipamento';
+
+          newOSs.push({
+            id: osId,
+            type: OSType.PREVENTIVE,
+            status: OSStatus.OPEN,
+            condo_id: eq.condo_id,
+            equipment_id: eq.id,
+            problem_description: `[GERAÇÃO AUTOMÁTICA - CRONOGRAMA] Manutenção Preventiva Periódica: ${typeName} ${eq.manufacturer} ${eq.model}. (Periodicidade: ${eq.maintenance_period} dias)`,
+            actions_performed: '',
+            parts_replaced: [],
+            photos_before: [],
+            photos_after: [],
+            technician_id: 'aguardando-tecnico',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          });
+          hasChanges = true;
+        }
+      }
+    });
+
+    if (hasChanges) {
       updateData({
         ...data,
         serviceOrders: [...newOSs, ...data.serviceOrders],
         appointments: updatedAppts
       });
     }
-  }, [data.appointments, data.serviceOrders, canSchedule, condoId]);
+  }, [data.appointments, data.serviceOrders, data.equipments, canSchedule, condoId]);
 
   const activeDashboardAppointments = useMemo(() => {
     const todayStr = new Date().toISOString().split('T')[0];
