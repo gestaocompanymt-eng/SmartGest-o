@@ -90,11 +90,15 @@ const Dashboard: React.FC<{
     const updatedAppts = [...data.appointments];
     let hasChanges = false;
 
+    // Filtramos apenas o que não está cancelado para evitar loops
     const pendingToOpen = data.appointments.filter(a => {
       if (a.status === 'Cancelada' as any) return false;
+      
       const isOneTimePending = !a.is_recurring && a.date <= todayStr && a.status === 'Pendente' && !a.service_order_id;
+      
       let isRecurringDue = false;
       if (a.is_recurring && a.date <= todayStr) {
+        // Verifica se já existe uma OS aberta ou concluída hoje para esta rotina
         const alreadyCreatedToday = data.serviceOrders.some(os => 
           os.condo_id === a.condo_id && 
           os.problem_description.includes(`[ID:${a.id}]`) && 
@@ -154,7 +158,9 @@ const Dashboard: React.FC<{
   const activeAppointments = useMemo(() => {
     const todayStr = new Date().toISOString().split('T')[0];
     return allAppointments.filter(a => {
+      // Ignorar explicitamente canceladas na visualização de rotinas ativas
       if (a.status === 'Cancelada' as any) return false;
+      
       const hasCompletedOS = data.serviceOrders.some(os => 
         os.status === OSStatus.COMPLETED && 
         (os.id === a.service_order_id || (a.is_recurring && os.problem_description.includes(`[ID:${a.id}]`) && os.created_at.startsWith(todayStr)))
@@ -222,6 +228,26 @@ const Dashboard: React.FC<{
     setIsScheduleModalOpen(true);
   };
 
+  const StatCard = ({ title, value, icon: Icon, color, subValue, onClick }: any) => (
+    <button 
+      onClick={(e) => { e.preventDefault(); onClick(); }}
+      className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm hover:border-blue-300 hover:shadow-md transition-all group relative overflow-hidden text-left w-full"
+    >
+      <div className={`absolute top-0 right-0 w-24 h-24 -mr-8 -mt-8 rounded-full opacity-5 ${color}`}></div>
+      <div className="flex justify-between items-start mb-4 relative z-10">
+        <div className={`p-3 rounded-2xl ${color} text-white shadow-lg shadow-current/10`}><Icon size={24} /></div>
+        <ArrowUpRight size={16} className="text-slate-300 group-hover:text-blue-500 transition-colors" />
+      </div>
+      <div className="relative z-10">
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{title}</p>
+        <div className="flex items-baseline space-x-2">
+          <h3 className="text-3xl font-black text-slate-900 leading-none">{value}</h3>
+          {subValue && <span className="text-[10px] font-bold text-slate-400">{subValue}</span>}
+        </div>
+      </div>
+    </button>
+  );
+
   return (
     <div className="space-y-8 pb-12">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -261,27 +287,30 @@ const Dashboard: React.FC<{
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm flex items-center space-x-4">
-           <div className="p-3 bg-red-500 text-white rounded-2xl"><AlertTriangle size={24} /></div>
-           <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase">Urgências</p>
-              <h3 className="text-2xl font-black text-slate-900">{data.equipments.filter(e => (!condoId || e.condo_id === condoId) && e.maintenance_period).length}</h3>
-           </div>
-        </div>
-        <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm flex items-center space-x-4">
-           <div className="p-3 bg-blue-600 text-white rounded-2xl"><Calendar size={24} /></div>
-           <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase">Agenda Ativa</p>
-              <h3 className="text-2xl font-black text-slate-900">{activeAppointments.length}</h3>
-           </div>
-        </div>
-        <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm flex items-center space-x-4">
-           <div className="p-3 bg-emerald-500 text-white rounded-2xl"><PlayCircle size={24} /></div>
-           <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase">OS Abertas</p>
-              <h3 className="text-2xl font-black text-slate-900">{filteredOSList.filter(o => o.status === OSStatus.OPEN).length}</h3>
-           </div>
-        </div>
+        <StatCard 
+          title="Urgências" 
+          value={data.equipments.filter(e => (!condoId || e.condo_id === condoId) && e.maintenance_period).length} 
+          icon={AlertTriangle} 
+          color="bg-red-500" 
+          subValue="Equipamentos" 
+          onClick={() => navigate('/equipment')}
+        />
+        <StatCard 
+          title="Agenda Ativa" 
+          value={activeAppointments.length} 
+          icon={Calendar} 
+          color="bg-blue-600" 
+          subValue="Ações do Plantão" 
+          onClick={scrollToAgenda}
+        />
+        <StatCard 
+          title="OS Abertas" 
+          value={filteredOSList.filter(o => o.status === OSStatus.OPEN).length} 
+          icon={PlayCircle} 
+          color="bg-emerald-500" 
+          subValue="Em aberto" 
+          onClick={() => navigate('/os?status=Aberta')}
+        />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
@@ -292,6 +321,12 @@ const Dashboard: React.FC<{
                 <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest flex items-center">
                   <Activity size={16} className="mr-2 text-blue-600" /> Atividade Recente
                 </h3>
+                <button 
+                  onClick={(e) => { e.preventDefault(); navigate('/os'); }} 
+                  className="text-[9px] font-black text-blue-600 uppercase hover:underline p-2"
+                >
+                  Ver todas
+                </button>
               </div>
               <div className="space-y-4">
                  {filteredOSList.slice(0, 5).map(os => (
@@ -318,7 +353,7 @@ const Dashboard: React.FC<{
            </div>
         </div>
 
-        {/* GESTÃO DE ROTINAS - ÁREA CRÍTICA */}
+        {/* GESTÃO DE ROTINAS */}
         <div className="space-y-6" ref={agendaRef}>
           <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-xl relative overflow-hidden h-full flex flex-col min-h-[500px]">
             <div className="absolute top-0 right-0 p-8 opacity-10"><Settings size={80} /></div>

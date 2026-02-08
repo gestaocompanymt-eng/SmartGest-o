@@ -124,44 +124,54 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
     setOsType(isRonda ? OSType.VISTORIA : OSType.SERVICE);
   };
 
+  // FUNÇÃO CORRIGIDA PARA EVITAR O RETORNO DA OS
   const handleDeleteOS = async (id: string) => {
     if (!canDelete) return;
     
     const osToDelete = data.serviceOrders.find(o => o.id === id);
     if (!osToDelete) return;
 
-    if (window.confirm('Deseja realmente excluir esta Ordem de Serviço? Se for uma preventiva agendada, a rotina também será cancelada para evitar recriação.')) {
+    if (window.confirm('Deseja realmente excluir esta Ordem de Serviço? Se for uma rotina programada, o agendamento também será cancelado para evitar que o sistema a recrie automaticamente.')) {
       
-      let updatedData = { ...data };
+      // 1. Criamos um clone do estado para modificação atômica
+      let nextData = { ...data };
 
-      // 1. Verificar se veio de um Agendamento (ID no texto)
+      // 2. IMPORTANTÍSSIMO: Removemos a OS da lista LOCAL antes de qualquer outra coisa
+      // Isso impede que a função updateData reinira a OS no banco por acidente (upsert)
+      nextData.serviceOrders = data.serviceOrders.filter(o => o.id !== id);
+
+      // 3. Verificamos se veio de um Agendamento para cancelar a rotina e quebrar o loop
       const apptMatch = osToDelete.problem_description.match(/\[ID:(APT-[0-9]+)\]/);
       if (apptMatch && apptMatch[1]) {
         const apptId = apptMatch[1];
-        updatedData.appointments = data.appointments.map(a => 
+        nextData.appointments = data.appointments.map(a => 
           a.id === apptId ? { ...a, status: 'Cancelada' as any, updated_at: new Date().toISOString() } : a
         );
       }
 
-      // 2. Verificar se é Preventiva Automática de Equipamento
+      // 4. Se for Preventiva de Equipamento, "empurramos" a data da última manutenção para hoje
+      // Isso impede que o motor de preventivas crie outra OS imediatamente
       if (osToDelete.type === OSType.PREVENTIVE && osToDelete.equipment_id) {
-        updatedData.equipments = data.equipments.map(e => 
+        nextData.equipments = data.equipments.map(e => 
           e.id === osToDelete.equipment_id ? { ...e, last_maintenance: new Date().toISOString(), updated_at: new Date().toISOString() } : e
         );
       }
 
-      // 3. Executar Exclusão
-      if (deleteData) {
-        // Se houver exclusão cloud, removemos o registro do cloud
-        await deleteData('service_orders', id);
-        // Atualizamos as tabelas vinculadas (Equipamento/Agenda) para parar o loop
-        await updateData(updatedData);
-      } else {
-        updatedData.serviceOrders = data.serviceOrders.filter(o => o.id !== id);
-        updateData(updatedData);
+      try {
+        // 5. Chamamos a exclusão física no banco de dados
+        if (deleteData) {
+          await deleteData('service_orders', id);
+        }
+        
+        // 6. Atualizamos o restante do estado (Equipamentos e Agendamentos)
+        // Como removemos a OS de nextData.serviceOrders no passo 2, o updateData não vai ressuscitá-la.
+        await updateData(nextData);
+        
+        setExpandedOS(null);
+      } catch (error) {
+        console.error("Erro na exclusão definitiva:", error);
+        alert("Erro ao excluir. Verifique sua conexão.");
       }
-      
-      setExpandedOS(null);
     }
   };
 
