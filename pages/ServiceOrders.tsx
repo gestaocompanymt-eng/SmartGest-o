@@ -33,6 +33,7 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
     const params = new URLSearchParams(location.search);
     const osId = params.get('id');
     const statusParam = params.get('status');
+    const equipmentParam = params.get('equipmentId');
 
     if (statusParam) setFilterStatus(statusParam);
 
@@ -48,8 +49,16 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
         setOsType(os.type);
         setIsModalOpen(true);
       }
+    } else if (equipmentParam) {
+      const eq = data.equipments.find(e => e.id === equipmentParam);
+      if (eq) {
+        setSelectedCondoId(eq.condo_id);
+        setAssignmentType('equipment');
+        setSelectedEquipmentId(eq.id);
+        setIsModalOpen(true);
+      }
     }
-  }, [location.search, data.serviceOrders]);
+  }, [location.search, data.serviceOrders, data.equipments]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -78,22 +87,15 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
       service_value: Number(formData.get('service_value')) || 0,
       material_value: Number(formData.get('material_value')) || 0,
       completed_at: statusFromForm === OSStatus.COMPLETED ? new Date().toISOString() : editingOS?.completed_at,
-      updated_at: new Date().toISOString() // Vital para o smartUnion
+      updated_at: new Date().toISOString()
     };
 
     try {
-      // 1. Atualizar Supabase (Envio Individual para mais estabilidade)
       if (navigator.onLine && isSupabaseActive) {
-        console.log("Iniciando persistência no Supabase para OS:", osData.id);
         const { error } = await supabase.from('service_orders').upsert(osData);
-        if (error) {
-           console.error("Erro retornado pelo Supabase:", error.message);
-           throw error;
-        }
-        console.log("Persistência no Supabase concluída com sucesso!");
+        if (error) throw error;
       }
 
-      // 2. Atualizar Estado Local
       const newOrders = editingOS 
         ? data.serviceOrders.map((o: ServiceOrder) => o.id === editingOS.id ? osData : o) 
         : [osData, ...data.serviceOrders];
@@ -101,11 +103,9 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
       updateData({ ...data, serviceOrders: newOrders });
       setSaveStatus('success');
       setTimeout(closeModal, 800);
-      
     } catch (err) {
-      console.error("Erro fatal ao salvar OS:", err);
+      console.error("Erro ao salvar OS:", err);
       setSaveStatus('error');
-      alert("Erro ao gravar no banco de dados. Verifique sua conexão ou permissões.");
     }
   };
 
@@ -113,6 +113,9 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
     setIsModalOpen(false);
     setEditingOS(null);
     setSaveStatus('idle');
+    setAssignmentType('general');
+    setSelectedEquipmentId('');
+    setSelectedSystemId('');
   };
 
   const filteredOS = data.serviceOrders.filter((os: ServiceOrder) => {
@@ -122,6 +125,16 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
     if (isSindicoAdmin) return os.condo_id === userCondoId && matchStatus && matchType;
     return matchStatus && matchType;
   });
+
+  const availableEquipments = useMemo(() => 
+    data.equipments.filter((e: Equipment) => e.condo_id === selectedCondoId),
+    [data.equipments, selectedCondoId]
+  );
+
+  const availableSystems = useMemo(() => 
+    data.systems.filter((s: System) => s.condo_id === selectedCondoId),
+    [data.systems, selectedCondoId]
+  );
 
   const handleShare = async (os: ServiceOrder, condoName?: string) => {
     const text = `🛠️ *SmartGestão - ${os.type}*\n\n*ID:* ${os.id}\n*Condomínio:* ${condoName || 'Não informado'}\n*Status:* ${os.status}\n\n*Relato:* ${os.problem_description}`;
@@ -232,23 +245,55 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Tipo</label>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Tipo de Registro</label>
                   <select required name="type" value={osType} onChange={(e) => setOsType(e.target.value as OSType)} disabled={isRonda} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none disabled:opacity-50">
                     {isRonda ? <option value={OSType.VISTORIA}>{OSType.VISTORIA}</option> : Object.values(OSType).map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
               </div>
 
+              {/* SELETOR DE ASSOCIAÇÃO - RESTAURADO */}
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Vincular Registro a:</label>
+                <div className="flex bg-slate-100 p-1.5 rounded-2xl">
+                  <button type="button" onClick={() => setAssignmentType('general')} className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all ${assignmentType === 'general' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>Geral</button>
+                  <button type="button" onClick={() => setAssignmentType('equipment')} className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all ${assignmentType === 'equipment' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>Equipamento</button>
+                  <button type="button" onClick={() => setAssignmentType('system')} className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-tight transition-all ${assignmentType === 'system' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>Sistema</button>
+                </div>
+
+                {assignmentType === 'equipment' && (
+                  <div className="animate-in slide-in-from-top-2 duration-200">
+                    <select value={selectedEquipmentId} onChange={(e) => setSelectedEquipmentId(e.target.value)} required className="w-full px-5 py-4 bg-slate-50 border border-blue-200 rounded-2xl font-bold text-xs outline-none">
+                      <option value="">Selecione o Equipamento...</option>
+                      {availableEquipments.map((e: Equipment) => (
+                        <option key={e.id} value={e.id}>{e.manufacturer} {e.model} ({e.location})</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {assignmentType === 'system' && (
+                  <div className="animate-in slide-in-from-top-2 duration-200">
+                    <select value={selectedSystemId} onChange={(e) => setSelectedSystemId(e.target.value)} required className="w-full px-5 py-4 bg-slate-50 border border-blue-200 rounded-2xl font-bold text-xs outline-none">
+                      <option value="">Selecione o Sistema...</option>
+                      {availableSystems.map((s: System) => (
+                        <option key={s.id} value={s.id}>{s.name} ({s.location})</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Descrição / Ocorrência</label>
-                <textarea required name="description" defaultValue={editingOS?.problem_description} rows={3} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none resize-none" />
+                <textarea required name="description" defaultValue={editingOS?.problem_description} rows={3} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none resize-none" placeholder="Relate o problema ou detalhes da visita..." />
               </div>
 
               <div className="space-y-4 pt-4 border-t border-slate-100">
                 <h4 className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Relatório Técnico</h4>
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Ações Realizadas</label>
-                  <textarea name="actions" defaultValue={editingOS?.actions_performed} rows={3} className="w-full px-5 py-4 bg-slate-900 text-white font-mono text-[10px] rounded-2xl outline-none resize-none" placeholder="Relatório de execução..." />
+                  <textarea name="actions" defaultValue={editingOS?.actions_performed} rows={3} className="w-full px-5 py-4 bg-slate-900 text-white font-mono text-[10px] rounded-2xl outline-none resize-none" placeholder="Relate o que foi executado..." />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Status do Registro</label>
