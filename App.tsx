@@ -358,7 +358,7 @@ const AppContent: React.FC = () => {
       <main className="flex-1 flex flex-col overflow-hidden relative">
         <div className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth custom-scrollbar print:p-0">
           <Routes>
-            <Route path="/" element={<Dashboard data={data} updateData={updateData} onSync={async () => {
+            <Route path="/" element={<Dashboard data={data} updateData={updateData} deleteData={deleteData} onSync={async () => {
               const fresh = await fetchAllData(data);
               setData(fresh);
               saveStore(fresh);

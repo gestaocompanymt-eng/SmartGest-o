@@ -23,15 +23,22 @@ import {
   DollarSign,
   ChevronDown,
   Trash2,
-  RefreshCw
+  RefreshCw,
+  Edit2
 } from 'lucide-react';
 import { AppData, OSStatus, OSType, UserRole, Appointment, ServiceOrder, Condo, Equipment, System } from '../types';
 import { useNavigate } from 'react-router-dom';
 
-const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void; onSync?: () => Promise<void> }> = ({ data, updateData, onSync }) => {
+const Dashboard: React.FC<{ 
+  data: AppData; 
+  updateData: (d: AppData) => void; 
+  deleteData?: (table: string, id: string) => void;
+  onSync?: () => Promise<void> 
+}> = ({ data, updateData, deleteData, onSync }) => {
   const navigate = useNavigate();
   const agendaRef = useRef<HTMLDivElement>(null);
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [editingAppt, setEditingAppt] = useState<Appointment | null>(null);
   const [selectedCondoId, setSelectedCondoId] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -43,7 +50,8 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void; onS
   const isRonda = user?.role === UserRole.RONDA;
   const condoId = user?.condo_id;
 
-  const canSchedule = isAdminOrTech || isSindicoAdmin;
+  // REGRAS DE NEGÓCIO: Somente Admin e Síndico/Gestão gerenciam a agenda mestre
+  const canManageSchedule = isAdmin || isSindicoAdmin;
 
   const filteredOSList = useMemo(() => {
     let list = condoId 
@@ -69,10 +77,7 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void; onS
     }
   };
 
-  // EFEITO PARA PROCESSAR AUTOMAÇÕES (EQUIPAMENTOS E AGENDAMENTOS)
   useEffect(() => {
-    if (!canSchedule) return;
-
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayStr = today.toISOString().split('T')[0];
@@ -81,7 +86,6 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void; onS
     const updatedAppts = [...data.appointments];
     let hasChanges = false;
 
-    // 1. PROCESSAR AGENDAMENTOS MANUAIS
     const pendingToOpen = data.appointments.filter(a => {
       const isOneTimePending = !a.is_recurring && a.date <= todayStr && a.status === 'Pendente' && !a.service_order_id;
       let isRecurringDue = false;
@@ -126,7 +130,6 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void; onS
       hasChanges = true;
     });
 
-    // 2. PROCESSAR CRONOGRAMA DE EQUIPAMENTOS (Preventivas Automáticas)
     data.equipments.forEach(eq => {
       if (condoId && eq.condo_id !== condoId) return;
       if (!eq.last_maintenance || !eq.maintenance_period) return;
@@ -174,7 +177,7 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void; onS
         appointments: updatedAppts
       });
     }
-  }, [data.appointments, data.serviceOrders, data.equipments, canSchedule, condoId]);
+  }, [data.appointments, data.serviceOrders, data.equipments, isAdminOrTech, isSindicoAdmin, condoId]);
 
   const activeDashboardAppointments = useMemo(() => {
     const todayStr = new Date().toISOString().split('T')[0];
@@ -187,7 +190,7 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void; onS
       );
       if (hasCompletedOS) return false;
       return a.status === 'Pendente' || a.is_recurring;
-    });
+    }).sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
   }, [data.appointments, data.serviceOrders, condoId]);
 
   const handleAppointmentClick = (appt: Appointment) => {
@@ -204,31 +207,52 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void; onS
 
   const handleScheduleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!canManageSchedule) return;
+
     const formData = new FormData(e.currentTarget);
     const condoIdToSave = condoId || (formData.get('condo_id') as string);
     
-    const newAppt: Appointment = {
-      id: `APT-${Date.now()}`,
+    const apptData: Appointment = {
+      id: editingAppt?.id || `APT-${Date.now()}`,
       condo_id: condoIdToSave,
-      technician_id: user?.id || 'admin',
+      technician_id: editingAppt?.technician_id || user?.id || 'admin',
       equipment_id: formData.get('equipment_id') as string || undefined,
       system_id: formData.get('system_id') as string || undefined,
       date: formData.get('date') as string,
       time: formData.get('time') as string,
       description: formData.get('description') as string,
-      status: 'Pendente',
+      status: editingAppt?.status || 'Pendente',
       is_recurring: isRecurring,
       updated_at: new Date().toISOString()
     };
-    updateData({...data, appointments: [newAppt, ...data.appointments]});
+
+    const newAppts = editingAppt 
+      ? data.appointments.map(a => a.id === editingAppt.id ? apptData : a)
+      : [apptData, ...data.appointments];
+
+    updateData({...data, appointments: newAppts});
     setIsScheduleModalOpen(false);
+    setEditingAppt(null);
     setIsRecurring(false);
   };
 
-  const handleDeleteAppointment = (id: string) => {
+  const handleDeleteAppointment = async (id: string) => {
+    if (!canManageSchedule) return;
     if (window.confirm('Excluir esta programação definitiva?')) {
-      updateData({...data, appointments: data.appointments.filter(a => a.id !== id)});
+      if (deleteData) {
+        await deleteData('appointments', id);
+      } else {
+        updateData({...data, appointments: data.appointments.filter(a => a.id !== id)});
+      }
     }
+  };
+
+  const handleEditAppt = (appt: Appointment) => {
+    if (!canManageSchedule) return;
+    setEditingAppt(appt);
+    setSelectedCondoId(appt.condo_id);
+    setIsRecurring(!!appt.is_recurring);
+    setIsScheduleModalOpen(true);
   };
 
   const StatCard = ({ title, value, icon: Icon, color, subValue, onClick }: any) => (
@@ -272,9 +296,11 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void; onS
             <RefreshCw size={18} className={isSyncing ? 'animate-spin text-blue-600' : ''} />
             <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">{isSyncing ? 'Sincronizando...' : 'Sincronizar'}</span>
           </button>
-          {canSchedule && (
+          
+          {canManageSchedule && (
             <button 
               onClick={() => {
+                setEditingAppt(null);
                 setSelectedCondoId(condoId || '');
                 setIsRecurring(false);
                 setIsScheduleModalOpen(true);
@@ -371,31 +397,44 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void; onS
             <h3 className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-4">Agenda / Rotinas Ativas</h3>
             <div className="space-y-4 relative z-10 flex-1 overflow-y-auto custom-scrollbar pr-2">
               {activeDashboardAppointments.map(appt => (
-                <button 
+                <div 
                   key={appt.id} 
-                  onClick={() => handleAppointmentClick(appt)}
-                  className="w-full text-left bg-white/10 backdrop-blur p-4 rounded-2xl border border-white/10 group hover:bg-white/20 hover:border-blue-400/50 transition-all active:scale-[0.98]"
+                  className="w-full text-left bg-white/10 backdrop-blur p-4 rounded-2xl border border-white/10 group hover:bg-white/20 hover:border-blue-400/50 transition-all"
                 >
                    <div className="flex justify-between items-start">
                       <div className="flex items-center space-x-2">
                         <p className="text-[8px] font-black text-blue-300 uppercase">{appt.date.split('-').reverse().join('/')} - {appt.time}</p>
                         {appt.is_recurring && <RefreshCw size={10} className="text-emerald-400 animate-spin-slow" />}
                       </div>
-                      {canSchedule && (
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); handleDeleteAppointment(appt.id); }} 
-                          className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-500 transition-all p-1"
-                        >
-                           <Trash2 size={12} />
-                        </button>
+                      
+                      {canManageSchedule && (
+                        <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-all">
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleEditAppt(appt); }} 
+                            className="text-blue-400 hover:text-blue-300 p-1"
+                            title="Editar Rotina"
+                          >
+                             <Edit2 size={12} />
+                          </button>
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleDeleteAppointment(appt.id); }} 
+                            className="text-red-400 hover:text-red-500 p-1"
+                            title="Excluir Rotina"
+                          >
+                             <Trash2 size={12} />
+                          </button>
+                        </div>
                       )}
                    </div>
-                   <p className="text-xs font-bold mt-1 leading-tight">{appt.description}</p>
-                   <p className="text-[9px] text-white/50 font-medium mt-1 uppercase tracking-tighter flex items-center justify-between">
-                     <span>{data.condos.find(c => c.id === appt.condo_id)?.name}</span>
-                     <ChevronRight size={12} className="text-blue-400" />
-                   </p>
-                </button>
+                   
+                   <div className="cursor-pointer" onClick={() => handleAppointmentClick(appt)}>
+                     <p className="text-xs font-bold mt-1 leading-tight">{appt.description}</p>
+                     <p className="text-[9px] text-white/50 font-medium mt-1 uppercase tracking-tighter flex items-center justify-between">
+                       <span>{data.condos.find(c => c.id === appt.condo_id)?.name}</span>
+                       <ChevronRight size={12} className="text-blue-400" />
+                     </p>
+                   </div>
+                </div>
               ))}
               {activeDashboardAppointments.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-10 opacity-40">
@@ -412,8 +451,10 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void; onS
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-[2.5rem] w-full max-xl overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">Programar Rotina / Plantão</h2>
-              <button onClick={() => setIsScheduleModalOpen(false)} className="p-2.5 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm"><X size={20} /></button>
+              <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">
+                {editingAppt ? 'Editar Rotina Programada' : 'Programar Rotina / Plantão'}
+              </h2>
+              <button onClick={() => { setIsScheduleModalOpen(false); setEditingAppt(null); }} className="p-2.5 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm"><X size={20} /></button>
             </div>
             
             <form onSubmit={handleScheduleSubmit} className="p-8 space-y-6">
@@ -422,7 +463,7 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void; onS
                 <select 
                   required 
                   name="condo_id" 
-                  value={condoId || selectedCondoId} 
+                  value={selectedCondoId} 
                   onChange={(e) => setSelectedCondoId(e.target.value)} 
                   disabled={!!condoId}
                   className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none disabled:opacity-60"
@@ -435,17 +476,17 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void; onS
               <div className="grid grid-cols-2 gap-4">
                  <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Início da Rotina</label>
-                    <input required type="date" name="date" className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none" />
+                    <input required type="date" name="date" defaultValue={editingAppt?.date} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none" />
                  </div>
                  <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Horário Previsto</label>
-                    <input required type="time" name="time" className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none" />
+                    <input required type="time" name="time" defaultValue={editingAppt?.time} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none" />
                  </div>
               </div>
 
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Descrição da Rotina / Ronda</label>
-                <textarea required name="description" rows={3} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none resize-none" placeholder="Ex: Ronda perimetral no bloco A e verificação de dreno." />
+                <textarea required name="description" defaultValue={editingAppt?.description} rows={3} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none resize-none" placeholder="Ex: Ronda perimetral no bloco A e verificação de dreno." />
               </div>
 
               <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 flex items-center justify-between">
@@ -468,9 +509,9 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void; onS
               </div>
 
               <div className="pt-4 flex gap-3">
-                <button type="button" onClick={() => setIsScheduleModalOpen(false)} className="flex-1 py-4 border rounded-2xl font-black uppercase text-[10px] text-slate-400">Cancelar</button>
+                <button type="button" onClick={() => { setIsScheduleModalOpen(false); setEditingAppt(null); }} className="flex-1 py-4 border rounded-2xl font-black uppercase text-[10px] text-slate-400">Cancelar</button>
                 <button type="submit" className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl flex items-center justify-center">
-                  <Save size={16} className="mr-2" /> Confirmar Programação
+                  <Save size={16} className="mr-2" /> {editingAppt ? 'Salvar Alterações' : 'Confirmar Programação'}
                 </button>
               </div>
             </form>
