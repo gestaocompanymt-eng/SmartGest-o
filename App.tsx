@@ -36,12 +36,10 @@ const AppContent: React.FC = () => {
     dataRef.current = data;
   }, [data]);
 
-  // Função para limpar dados para o Supabase (Postgres não aceita undefined ou colunas extras)
   const sanitizeForSupabase = (item: any, tableName: string) => {
     const clean: any = {};
     const timestamp = new Date().toISOString();
     
-    // Lista de colunas permitidas por tabela para evitar erro de "coluna inexistente"
     const schema: Record<string, string[]> = {
       users: ['id', 'name', 'email', 'password', 'role', 'condo_id', 'updated_at'],
       condos: ['id', 'name', 'address', 'manager', 'contract_type', 'start_date', 'updated_at'],
@@ -53,10 +51,8 @@ const AppContent: React.FC = () => {
     };
 
     const allowedColumns = schema[tableName] || [];
-    
     allowedColumns.forEach(col => {
       const val = item[col];
-      // Converte undefined para null (essencial para o Postgres)
       clean[col] = val === undefined ? null : val;
     });
 
@@ -166,11 +162,12 @@ const AppContent: React.FC = () => {
     if (navigator.onLine && isSupabaseActive) {
       setSyncStatus('syncing');
       
+      // ORDEM CRÍTICA: Primeiro Condos e Users (que são referenciados pelos outros)
       const tableConfigs = [
-        { name: 'users', data: newData.users },
         { name: 'condos', data: newData.condos },
-        { name: 'equipments', data: newData.equipments },
+        { name: 'users', data: newData.users },
         { name: 'systems', data: newData.systems },
+        { name: 'equipments', data: newData.equipments },
         { name: 'service_orders', data: newData.serviceOrders },
         { name: 'appointments', data: newData.appointments },
         { name: 'monitoring_alerts', data: newData.monitoringAlerts }
@@ -179,19 +176,26 @@ const AppContent: React.FC = () => {
       try {
         for (const config of tableConfigs) {
           if (config.data && config.data.length > 0) {
-            // Limpa cada item individualmente antes de enviar
             const cleanBatch = config.data.map(item => sanitizeForSupabase(item, config.name));
-            
             const { error } = await supabase.from(config.name).upsert(cleanBatch, { onConflict: 'id' });
+            
             if (error) {
-              console.error(`Erro crítico na tabela ${config.name}:`, error.message, error.details);
+              console.error(`Erro na tabela ${config.name}:`, error.message);
+              // Lança erro para o catch caso seja uma falha de estrutura ou rede
+              if (!error.message.includes('Foreign Key')) {
+                throw new Error(`Falha na tabela ${config.name}: ${error.message}`);
+              }
             }
           }
         }
         setSyncStatus('synced');
-      } catch (err) {
+      } catch (err: any) {
         console.error("Falha geral na sincronização cloud:", err);
         setSyncStatus('offline');
+        // Notifica o erro apenas se for persistente e relevante
+        if (err.message && !err.message.includes('fetch')) {
+           console.warn("Dica: Verifique se as tabelas no Supabase possuem todas as colunas do script SQL.");
+        }
       }
     }
   };
