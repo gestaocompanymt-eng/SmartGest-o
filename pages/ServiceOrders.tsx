@@ -7,7 +7,6 @@ import {
 import { OSType, OSStatus, ServiceOrder, Condo, System, UserRole, AppData, Equipment } from '../types';
 import { supabase, isSupabaseActive } from '../supabase';
 
-// Componente para Gestão de Ordens de Serviço e Vistorias
 const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void }> = ({ data, updateData }) => {
   const user = data.currentUser;
   const isSindicoAdmin = user?.role === UserRole.SINDICO_ADMIN;
@@ -16,7 +15,6 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
   const userCondoId = user?.condo_id;
   const location = useLocation();
 
-  // Permissão para exclusão: Admin ou Síndico/Gestor
   const canDelete = isAdmin || isSindicoAdmin;
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -32,7 +30,6 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
   const [selectedSystemId, setSelectedSystemId] = useState('');
   const [osType, setOsType] = useState<OSType>(isRonda ? OSType.VISTORIA : OSType.SERVICE);
 
-  // Efeito para lidar com parâmetros de URL (Deep Linking para OS ou Equipamento)
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const osId = params.get('id');
@@ -62,53 +59,67 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
     }
   }, [location.search, data.serviceOrders, data.equipments]);
 
-  // Função para salvar ou atualizar a Ordem de Serviço
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (saveStatus === 'saving') return;
+
     setSaveStatus('saving');
     
     const formData = new FormData(e.currentTarget);
-    const statusFromForm = formData.get('status') as OSStatus;
-    const finalCondoId = userCondoId || selectedCondoId;
+    const finalCondoId = userCondoId || selectedCondoId || formData.get('condo_id') as string;
+    
+    if (!finalCondoId) {
+      alert("Por favor, selecione um condomínio.");
+      setSaveStatus('idle');
+      return;
+    }
+
     const currentTechnicianId = user?.id || 'unknown';
+    const timestamp = new Date().toISOString();
 
     const osData: ServiceOrder = {
-      id: editingOS?.id || `OS-${Date.now()}`,
-      type: isRonda ? OSType.VISTORIA : (formData.get('type') as OSType),
-      status: statusFromForm || editingOS?.status || OSStatus.OPEN,
+      id: editingOS?.id || `OS-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      type: isRonda ? OSType.VISTORIA : (formData.get('type') as OSType || osType),
+      status: (formData.get('status') as OSStatus) || editingOS?.status || OSStatus.OPEN,
       condo_id: finalCondoId,
-      location: formData.get('location') as string || '',
-      equipment_id: assignmentType === 'equipment' ? selectedEquipmentId : undefined,
-      system_id: assignmentType === 'system' ? selectedSystemId : undefined,
-      problem_description: formData.get('description') as string,
+      location: (formData.get('location') as string) || '',
+      equipment_id: assignmentType === 'equipment' ? selectedEquipmentId : (editingOS?.equipment_id || undefined),
+      system_id: assignmentType === 'system' ? selectedSystemId : (editingOS?.system_id || undefined),
+      problem_description: (formData.get('description') as string),
       actions_performed: (formData.get('actions') as string) || editingOS?.actions_performed || '',
       parts_replaced: editingOS?.parts_replaced || [],
       photos_before: editingOS?.photos_before || [],
       photos_after: editingOS?.photos_after || [],
       technician_id: currentTechnicianId,
-      created_at: editingOS?.created_at || new Date().toISOString(),
+      created_at: editingOS?.created_at || timestamp,
       service_value: Number(formData.get('service_value')) || 0,
       material_value: Number(formData.get('material_value')) || 0,
-      completed_at: statusFromForm === OSStatus.COMPLETED ? new Date().toISOString() : editingOS?.completed_at,
-      updated_at: new Date().toISOString()
+      completed_at: (formData.get('status') === OSStatus.COMPLETED) ? timestamp : editingOS?.completed_at,
+      updated_at: timestamp
     };
 
     try {
+      // 1. Tenta salvar no Supabase primeiro
       if (navigator.onLine && isSupabaseActive) {
         const { error } = await supabase.from('service_orders').upsert(osData);
         if (error) throw error;
       }
 
+      // 2. Atualiza o estado global (que salvará no LocalStorage)
       const newOrders = editingOS 
         ? data.serviceOrders.map((o: ServiceOrder) => o.id === editingOS.id ? osData : o) 
         : [osData, ...data.serviceOrders];
       
-      updateData({ ...data, serviceOrders: newOrders });
+      await updateData({ ...data, serviceOrders: newOrders });
+      
       setSaveStatus('success');
-      setTimeout(closeModal, 800);
+      setTimeout(() => {
+        closeModal();
+      }, 800);
     } catch (err) {
-      console.error("Erro ao salvar OS:", err);
+      console.error("Erro crítico ao salvar OS:", err);
       setSaveStatus('error');
+      alert("Erro ao gravar dados na nuvem. Verifique sua conexão.");
     }
   };
 
@@ -119,6 +130,7 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
     setAssignmentType('general');
     setSelectedEquipmentId('');
     setSelectedSystemId('');
+    setOsType(isRonda ? OSType.VISTORIA : OSType.SERVICE);
   };
 
   const handleDeleteOS = async (id: string) => {
@@ -135,12 +147,11 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
         setExpandedOS(null);
       } catch (err) {
         console.error("Erro ao excluir OS:", err);
-        alert("Falha ao excluir Ordem de Serviço.");
+        alert("Falha ao excluir Ordem de Serviço do servidor.");
       }
     }
   };
 
-  // Filtragem avançada de OS
   const filteredOS = data.serviceOrders.filter((os: ServiceOrder) => {
     const matchStatus = filterStatus === 'all' || os.status === filterStatus;
     const matchType = filterType === 'all' || os.type === filterType;
@@ -284,17 +295,6 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                           <p className="text-xs font-black text-blue-600">R$ {((os.service_value || 0) + (os.material_value || 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                         </div>
                       </div>
-                      
-                      {os.photos_after.length > 0 && (
-                        <div>
-                          <p className="text-[9px] font-black text-slate-400 uppercase mb-2">Registro Fotográfico</p>
-                          <div className="flex gap-2 overflow-x-auto pb-2">
-                             {os.photos_after.map((p, i) => (
-                               <img key={i} src={p} className="w-20 h-20 object-cover rounded-lg border border-slate-200 flex-shrink-0" />
-                             ))}
-                          </div>
-                        </div>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -302,13 +302,6 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
             </div>
           );
         })}
-        
-        {filteredOS.length === 0 && (
-          <div className="py-20 flex flex-col items-center justify-center text-center opacity-40">
-            <FileText size={48} className="text-slate-300 mb-4" />
-            <p className="text-sm font-bold uppercase tracking-widest text-slate-500">Nenhum registro encontrado.</p>
-          </div>
-        )}
       </div>
 
       {isModalOpen && (
@@ -349,7 +342,14 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                 {!editingOS && (
                    <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Condomínio</label>
-                    <select required value={selectedCondoId} onChange={(e) => setSelectedCondoId(e.target.value)} disabled={!!userCondoId} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none disabled:opacity-60">
+                    <select 
+                      required 
+                      name="condo_id"
+                      value={selectedCondoId} 
+                      onChange={(e) => setSelectedCondoId(e.target.value)} 
+                      disabled={!!userCondoId} 
+                      className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none disabled:opacity-60"
+                    >
                       <option value="">Selecione...</option>
                       {data.condos.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
@@ -359,7 +359,13 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
                 {!isRonda && (
                    <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Tipo de Serviço</label>
-                    <select required name="type" value={osType} onChange={(e) => setOsType(e.target.value as OSType)} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs">
+                    <select 
+                      required 
+                      name="type" 
+                      value={osType} 
+                      onChange={(e) => setOsType(e.target.value as OSType)} 
+                      className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs"
+                    >
                       {Object.values(OSType).map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                   </div>
@@ -369,7 +375,13 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
               {!editingOS && assignmentType === 'equipment' && (
                 <div className="space-y-1 animate-in fade-in duration-300">
                   <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Selecionar Equipamento</label>
-                  <select required value={selectedEquipmentId} onChange={(e) => setSelectedEquipmentId(e.target.value)} className="w-full px-5 py-4 bg-blue-50 border border-blue-100 rounded-2xl font-black text-blue-700 text-xs outline-none">
+                  <select 
+                    required 
+                    name="equipment_id"
+                    value={selectedEquipmentId} 
+                    onChange={(e) => setSelectedEquipmentId(e.target.value)} 
+                    className="w-full px-5 py-4 bg-blue-50 border border-blue-100 rounded-2xl font-black text-blue-700 text-xs outline-none"
+                  >
                     <option value="">Buscar no inventário...</option>
                     {availableEquipments.map(e => <option key={e.id} value={e.id}>{e.manufacturer} {e.model} ({e.location})</option>)}
                   </select>
@@ -379,7 +391,13 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
               {!editingOS && assignmentType === 'system' && (
                 <div className="space-y-1 animate-in fade-in duration-300">
                   <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Selecionar Sistema</label>
-                  <select required value={selectedSystemId} onChange={(e) => setSelectedSystemId(e.target.value)} className="w-full px-5 py-4 bg-indigo-50 border border-indigo-100 rounded-2xl font-black text-indigo-700 text-xs outline-none">
+                  <select 
+                    required 
+                    name="system_id"
+                    value={selectedSystemId} 
+                    onChange={(e) => setSelectedSystemId(e.target.value)} 
+                    className="w-full px-5 py-4 bg-indigo-50 border border-indigo-100 rounded-2xl font-black text-indigo-700 text-xs outline-none"
+                  >
                     <option value="">Buscar sistemas...</option>
                     {availableSystems.map(s => <option key={s.id} value={s.id}>{s.name} ({s.location})</option>)}
                   </select>
@@ -388,7 +406,14 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void 
 
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Descrição do Problema / Ocorrência</label>
-                <textarea required name="description" defaultValue={editingOS?.problem_description} rows={3} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none resize-none" placeholder="Descreva detalhadamente o que foi identificado..." />
+                <textarea 
+                  required 
+                  name="description" 
+                  defaultValue={editingOS?.problem_description} 
+                  rows={3} 
+                  className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none resize-none" 
+                  placeholder="Descreva detalhadamente o que foi identificado..." 
+                />
               </div>
 
               {editingOS && (
