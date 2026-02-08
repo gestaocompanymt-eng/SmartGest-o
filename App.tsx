@@ -62,7 +62,7 @@ const AppContent: React.FC = () => {
         const localItem = map.get(cloudItem.id);
         const localDate = new Date(localItem.updated_at || 0).getTime();
         const cloudDate = new Date(cloudItem.updated_at || 0).getTime();
-        // O dado da nuvem só vence se for estritamente mais recente
+        // Conflito: O dado mais recente (maior timestamp) sempre vence
         if (cloudDate >= localDate) {
           map.set(cloudItem.id, cloudItem);
         }
@@ -78,6 +78,7 @@ const AppContent: React.FC = () => {
     }
     
     setSyncStatus('syncing');
+    isSyncingRef.current = true;
     try {
       const queries = [
         supabase.from('users').select('*'),
@@ -86,7 +87,8 @@ const AppContent: React.FC = () => {
         supabase.from('systems').select('*'),
         supabase.from('service_orders').select('*'),
         supabase.from('appointments').select('*'),
-        supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(300)
+        supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(300),
+        supabase.from('monitoring_alerts').select('*')
       ];
 
       const responses = await Promise.all(queries);
@@ -101,15 +103,18 @@ const AppContent: React.FC = () => {
           new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
         ),
         appointments: smartUnion(currentLocalData.appointments, responses[5].data),
-        waterLevels: responses[6].data || []
+        waterLevels: responses[6].data || [],
+        monitoringAlerts: smartUnion(currentLocalData.monitoringAlerts, responses[7].data)
       };
       
       setSyncStatus('synced');
       return updated;
     } catch (error) {
-      console.error("Erro na sincronização:", error);
+      console.error("Erro na sincronização de download:", error);
       setSyncStatus('offline');
       return currentLocalData;
+    } finally {
+      isSyncingRef.current = false;
     }
   }, []);
 
@@ -124,6 +129,7 @@ const AppContent: React.FC = () => {
         setData(updated);
         saveStore(updated);
         
+        // Canal de sincronização em tempo real para mudanças no banco
         const channel = supabase.channel('global-sync')
           .on('postgres_changes', { event: '*', schema: 'public' }, async () => {
              if (dataRef.current) {
@@ -143,9 +149,9 @@ const AppContent: React.FC = () => {
   }, [fetchAllData]);
 
   const updateData = async (newData: AppData) => {
-    // Adiciona timestamp de atualização em todos os registros que mudaram
     const timestamp = new Date().toISOString();
     
+    // Atualiza estado local imediatamente (UI reativa)
     setData(newData);
     saveStore(newData);
 
@@ -157,20 +163,14 @@ const AppContent: React.FC = () => {
           supabase.from('equipments').upsert(newData.equipments.map(item => ({ ...item, updated_at: item.updated_at || timestamp }))),
           supabase.from('systems').upsert(newData.systems.map(item => ({ ...item, updated_at: item.updated_at || timestamp }))),
           supabase.from('service_orders').upsert(newData.serviceOrders.map(item => ({ ...item, updated_at: item.updated_at || timestamp }))),
-          supabase.from('appointments').upsert(newData.appointments.map(item => ({ ...item, updated_at: item.updated_at || timestamp })))
+          supabase.from('appointments').upsert(newData.appointments.map(item => ({ ...item, updated_at: item.updated_at || timestamp }))),
+          supabase.from('monitoring_alerts').upsert(newData.monitoringAlerts.map(item => ({ ...item, updated_at: item.updated_at || timestamp })))
         ];
         
         const results = await Promise.all(syncPromises);
-        
-        results.forEach((res, index) => {
-          if (res.error) {
-            console.error(`Erro ao sincronizar tabela index ${index}:`, res.error.message);
-          }
-        });
-
         setSyncStatus('synced');
       } catch (err) {
-        console.error("Falha crítica no upload:", err);
+        console.error("Falha crítica no upload de dados:", err);
         setSyncStatus('offline');
       }
     }
@@ -220,9 +220,12 @@ const AppContent: React.FC = () => {
           <Wrench size={18} className="text-blue-500" />
           <span className="font-black text-lg uppercase tracking-tight">SmartGestão</span>
         </div>
-        <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-800 rounded-lg transition-colors">
-          {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
+        <div className="flex items-center space-x-4">
+          {syncStatus === 'syncing' && <RefreshCcw size={18} className="text-blue-400 animate-spin" />}
+          <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-800 rounded-lg transition-colors">
+            {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
+        </div>
       </header>
 
       <aside className={`
@@ -304,7 +307,7 @@ const AppContent: React.FC = () => {
 
             <div className="pt-4 text-center border-t border-slate-800/50">
               <p className="text-[9px] font-black text-slate-200 uppercase tracking-[0.2em] opacity-100 transition-opacity">
-                V5.6 | POR ENG. ADRIANO PANTAROTO
+                V5.7 | POR ENG. ADRIANO PANTAROTO
               </p>
             </div>
           </div>
@@ -314,7 +317,11 @@ const AppContent: React.FC = () => {
       <main className="flex-1 flex flex-col overflow-hidden relative">
         <div className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth custom-scrollbar print:p-0">
           <Routes>
-            <Route path="/" element={<Dashboard data={data} updateData={updateData} />} />
+            <Route path="/" element={<Dashboard data={data} updateData={updateData} onSync={async () => {
+              const fresh = await fetchAllData(data);
+              setData(fresh);
+              saveStore(fresh);
+            }} />} />
             <Route path="/condos" element={<Condos data={data} updateData={updateData} />} />
             <Route path="/reservatorios" element={<WaterLevel data={data} updateData={updateData} onRefresh={async () => {
               const updated = await fetchAllData(data);

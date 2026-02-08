@@ -28,12 +28,13 @@ import {
 import { AppData, OSStatus, OSType, UserRole, Appointment, ServiceOrder, Condo, Equipment, System } from '../types';
 import { useNavigate } from 'react-router-dom';
 
-const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> = ({ data, updateData }) => {
+const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void; onSync?: () => Promise<void> }> = ({ data, updateData, onSync }) => {
   const navigate = useNavigate();
   const agendaRef = useRef<HTMLDivElement>(null);
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [selectedCondoId, setSelectedCondoId] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   
   const user = data.currentUser;
   const isSindicoAdmin = user?.role === UserRole.SINDICO_ADMIN;
@@ -60,7 +61,15 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
     agendaRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // EFEITO ÚNICO PARA PROCESSAR AUTOMAÇÕES (EQUIPAMENTOS E AGENDAMENTOS)
+  const handleManualSync = async () => {
+    if (onSync) {
+      setIsSyncing(true);
+      await onSync();
+      setIsSyncing(false);
+    }
+  };
+
+  // EFEITO PARA PROCESSAR AUTOMAÇÕES (EQUIPAMENTOS E AGENDAMENTOS)
   useEffect(() => {
     if (!canSchedule) return;
 
@@ -72,10 +81,9 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
     const updatedAppts = [...data.appointments];
     let hasChanges = false;
 
-    // 1. PROCESSAR AGENDAMENTOS MANUAIS (Appointments)
+    // 1. PROCESSAR AGENDAMENTOS MANUAIS
     const pendingToOpen = data.appointments.filter(a => {
       const isOneTimePending = !a.is_recurring && a.date <= todayStr && a.status === 'Pendente' && !a.service_order_id;
-      
       let isRecurringDue = false;
       if (a.is_recurring && a.date <= todayStr) {
         const alreadyCreatedToday = data.serviceOrders.some(os => 
@@ -85,7 +93,6 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
         );
         isRecurringDue = !alreadyCreatedToday;
       }
-
       return (isOneTimePending || isRecurringDue) && (!condoId || a.condo_id === condoId);
     });
 
@@ -113,7 +120,7 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
       if (!appt.is_recurring) {
         const idx = updatedAppts.findIndex(a => a.id === appt.id);
         if (idx !== -1) {
-          updatedAppts[idx] = { ...updatedAppts[idx], service_order_id: osId, status: 'Confirmada' };
+          updatedAppts[idx] = { ...updatedAppts[idx], service_order_id: osId, status: 'Confirmada', updated_at: new Date().toISOString() };
         }
       }
       hasChanges = true;
@@ -121,7 +128,6 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
 
     // 2. PROCESSAR CRONOGRAMA DE EQUIPAMENTOS (Preventivas Automáticas)
     data.equipments.forEach(eq => {
-      // Ignorar se o usuário estiver restrito a um condomínio diferente do equipamento
       if (condoId && eq.condo_id !== condoId) return;
       if (!eq.last_maintenance || !eq.maintenance_period) return;
 
@@ -129,10 +135,7 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
       nextDate.setDate(nextDate.getDate() + eq.maintenance_period);
       nextDate.setHours(0, 0, 0, 0);
 
-      // Se a data da próxima manutenção já chegou ou passou
       if (nextDate <= today) {
-        // Verificar se já existe uma OS preventiva aberta para este equipamento neste ciclo
-        // Consideramos um ciclo "resolvido" se houver OS criada APÓS ou NA data da última manutenção
         const alreadyHasOS = data.serviceOrders.some(os => 
           os.equipment_id === eq.id && 
           os.type === OSType.PREVENTIVE &&
@@ -180,10 +183,7 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
     return base.filter(a => {
       const hasCompletedOS = data.serviceOrders.some(os => 
         os.status === OSStatus.COMPLETED && 
-        (
-          os.id === a.service_order_id || 
-          (a.is_recurring && os.problem_description.includes(`[ID:${a.id}]`) && os.created_at.startsWith(todayStr))
-        )
+        (os.id === a.service_order_id || (a.is_recurring && os.problem_description.includes(`[ID:${a.id}]`) && os.created_at.startsWith(todayStr)))
       );
       if (hasCompletedOS) return false;
       return a.status === 'Pendente' || a.is_recurring;
@@ -193,8 +193,7 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
   const handleAppointmentClick = (appt: Appointment) => {
     const todayStr = new Date().toISOString().split('T')[0];
     const linkedOS = data.serviceOrders.find(os => 
-      os.id === appt.service_order_id || 
-      (appt.is_recurring && os.problem_description.includes(`[ID:${appt.id}]`) && os.created_at.startsWith(todayStr))
+      os.id === appt.service_order_id || (appt.is_recurring && os.problem_description.includes(`[ID:${appt.id}]`) && os.created_at.startsWith(todayStr))
     );
     if (linkedOS) {
       navigate(`/os?id=${linkedOS.id}`);
@@ -263,19 +262,30 @@ const Dashboard: React.FC<{ data: AppData; updateData: (d: AppData) => void }> =
               : "Visão consolidada da operação técnica."}
           </p>
         </div>
-        {canSchedule && (
+        <div className="flex items-center gap-2 w-full md:w-auto">
           <button 
-            onClick={() => {
-              setSelectedCondoId(condoId || '');
-              setIsRecurring(false);
-              setIsScheduleModalOpen(true);
-            }}
-            className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-slate-900/20 flex items-center space-x-2 active:scale-95 transition-all"
+            onClick={handleManualSync}
+            disabled={isSyncing}
+            className="p-3 bg-white border border-slate-200 rounded-2xl text-slate-600 shadow-sm hover:bg-slate-50 active:scale-95 transition-all flex items-center gap-2"
+            title="Forçar Sincronização com Nuvem"
           >
-            <Plus size={16} />
-            <span>Programar Rotina / Vistoria</span>
+            <RefreshCw size={18} className={isSyncing ? 'animate-spin text-blue-600' : ''} />
+            <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">{isSyncing ? 'Sincronizando...' : 'Sincronizar'}</span>
           </button>
-        )}
+          {canSchedule && (
+            <button 
+              onClick={() => {
+                setSelectedCondoId(condoId || '');
+                setIsRecurring(false);
+                setIsScheduleModalOpen(true);
+              }}
+              className="flex-1 md:flex-none bg-slate-900 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl shadow-slate-900/20 flex items-center justify-center space-x-2 active:scale-95 transition-all"
+            >
+              <Plus size={16} />
+              <span>Programar Rotina</span>
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

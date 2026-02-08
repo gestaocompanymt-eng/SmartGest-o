@@ -5,7 +5,7 @@ import { Database, Copy, CheckCircle2, AlertTriangle, Terminal } from 'lucide-re
 const DatabaseSetup: React.FC = () => {
   const [copied, setCopied] = React.useState(false);
 
-  const sqlScript = `-- SCRIPT DE CONFIGURAÇÃO SMARTGESTÃO (VERSÃO CORRIGIDA)
+  const sqlScript = `-- SCRIPT DE CONFIGURAÇÃO SMARTGESTÃO (VERSÃO V5.7)
 -- Cole este código no SQL Editor do seu projeto Supabase e clique em "RUN"
 
 -- 1. Tabela de Condomínios
@@ -50,6 +50,8 @@ CREATE TABLE IF NOT EXISTS equipments (
   last_maintenance TIMESTAMP WITH TIME ZONE,
   maintenance_period INTEGER,
   refrigeration_specs JSONB,
+  tuya_device_id TEXT,
+  monitoring_status TEXT,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -117,6 +119,17 @@ CREATE TABLE IF NOT EXISTS nivel_caixa (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- 8. Tabela de Alertas de Monitoramento (Anomalias IOT)
+CREATE TABLE IF NOT EXISTS monitoring_alerts (
+  id TEXT PRIMARY KEY,
+  equipment_id TEXT REFERENCES equipments(id),
+  message TEXT,
+  value TEXT,
+  is_resolved BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Habilitar RLS (Row Level Security)
 ALTER TABLE condos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
@@ -125,24 +138,29 @@ ALTER TABLE systems ENABLE ROW LEVEL SECURITY;
 ALTER TABLE service_orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE appointments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE nivel_caixa ENABLE ROW LEVEL SECURITY;
+ALTER TABLE monitoring_alerts ENABLE ROW LEVEL SECURITY;
 
--- Limpar políticas antigas para evitar erro de duplicação
-DROP POLICY IF EXISTS "Acesso Total" ON condos;
-DROP POLICY IF EXISTS "Acesso Total" ON users;
-DROP POLICY IF EXISTS "Acesso Total" ON equipments;
-DROP POLICY IF EXISTS "Acesso Total" ON systems;
-DROP POLICY IF EXISTS "Acesso Total" ON service_orders;
-DROP POLICY IF EXISTS "Acesso Total" ON appointments;
-DROP POLICY IF EXISTS "Acesso Total" ON nivel_caixa;
-
--- Criar novas políticas de acesso total (Simplificado para o app)
-CREATE POLICY "Acesso Total" ON condos FOR ALL USING (true);
-CREATE POLICY "Acesso Total" ON users FOR ALL USING (true);
-CREATE POLICY "Acesso Total" ON equipments FOR ALL USING (true);
-CREATE POLICY "Acesso Total" ON systems FOR ALL USING (true);
-CREATE POLICY "Acesso Total" ON service_orders FOR ALL USING (true);
-CREATE POLICY "Acesso Total" ON appointments FOR ALL USING (true);
-CREATE POLICY "Acesso Total" ON nivel_caixa FOR ALL USING (true);
+-- Criar políticas de acesso total (Simplificado para o app)
+DO $$
+BEGIN
+    DROP POLICY IF EXISTS "Acesso Total" ON condos;
+    DROP POLICY IF EXISTS "Acesso Total" ON users;
+    DROP POLICY IF EXISTS "Acesso Total" ON equipments;
+    DROP POLICY IF EXISTS "Acesso Total" ON systems;
+    DROP POLICY IF EXISTS "Acesso Total" ON service_orders;
+    DROP POLICY IF EXISTS "Acesso Total" ON appointments;
+    DROP POLICY IF EXISTS "Acesso Total" ON nivel_caixa;
+    DROP POLICY IF EXISTS "Acesso Total" ON monitoring_alerts;
+    
+    CREATE POLICY "Acesso Total" ON condos FOR ALL USING (true);
+    CREATE POLICY "Acesso Total" ON users FOR ALL USING (true);
+    CREATE POLICY "Acesso Total" ON equipments FOR ALL USING (true);
+    CREATE POLICY "Acesso Total" ON systems FOR ALL USING (true);
+    CREATE POLICY "Acesso Total" ON service_orders FOR ALL USING (true);
+    CREATE POLICY "Acesso Total" ON appointments FOR ALL USING (true);
+    CREATE POLICY "Acesso Total" ON nivel_caixa FOR ALL USING (true);
+    CREATE POLICY "Acesso Total" ON monitoring_alerts FOR ALL USING (true);
+END $$;
 `;
 
   const handleCopy = () => {
@@ -169,7 +187,7 @@ CREATE POLICY "Acesso Total" ON nivel_caixa FOR ALL USING (true);
           <div className="space-y-1">
             <p className="text-sm font-black text-amber-900 uppercase">Atenção Necessária</p>
             <p className="text-xs text-amber-700 font-medium leading-relaxed">
-              O script foi atualizado para evitar erros de duplicidade. Copie o código abaixo e execute-o novamente no seu <strong>SQL Editor</strong> do Supabase.
+              Para garantir que o Celular e o Notebook tenham os mesmos dados, o script agora inclui a tabela de <strong>Alertas/Anomalias</strong>. Execute este script no Supabase para ativar a sincronização total.
             </p>
           </div>
         </div>
@@ -196,17 +214,6 @@ CREATE POLICY "Acesso Total" ON nivel_caixa FOR ALL USING (true);
               {sqlScript}
             </pre>
           </div>
-        </div>
-
-        <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
-           <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
-              <p className="text-[9px] font-black text-slate-400 uppercase mb-2">Passo 1</p>
-              <p className="text-xs font-bold text-slate-800">No Supabase, exclua o conteúdo da query anterior (se houver).</p>
-           </div>
-           <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
-              <p className="text-[9px] font-black text-slate-400 uppercase mb-2">Passo 2</p>
-              <p className="text-xs font-bold text-slate-800">Cole este novo script e clique no botão verde "RUN".</p>
-           </div>
         </div>
       </div>
     </div>
