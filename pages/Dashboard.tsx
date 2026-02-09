@@ -80,7 +80,7 @@ const Dashboard: React.FC<{
     }
   };
 
-  // MOTOR DE AUTOMAÇÃO: Gera OS baseado nas rotinas (FIXED NO LOOP)
+  // MOTOR DE AUTOMAÇÃO REFORÇADO (Sincronismo Total)
   useEffect(() => {
     if (isProcessingAutomation.current) return;
 
@@ -89,24 +89,22 @@ const Dashboard: React.FC<{
     const updatedAppts = [...data.appointments];
     let hasChanges = false;
 
-    // Filtra agendamentos elegíveis para abertura de OS automática hoje
     const pendingToOpen = data.appointments.filter(a => {
       if (a.status === 'Cancelada' as any || a.status === 'Realizada') return false;
       if (userCondoId && a.condo_id && a.condo_id !== userCondoId) return false;
 
-      // Se for recorrente ou estiver na data
+      // Verificação de segurança: Já existe OS para este agendamento hoje no Supabase/Local?
+      const exists = data.serviceOrders.some(os => 
+        (os.problem_description.includes(`[ID:${a.id}]`) || os.id === a.service_order_id) && 
+        os.created_at.startsWith(todayStr) &&
+        os.status !== OSStatus.CANCELLED
+      );
+
+      if (exists) return false;
+
       if (a.date <= todayStr) {
-        // Verifica se JÁ EXISTE OS para este ID de agendamento hoje
-        const exists = data.serviceOrders.some(os => 
-          os.problem_description.includes(`[ID:${a.id}]`) && 
-          os.created_at.startsWith(todayStr) &&
-          os.status !== OSStatus.CANCELLED
-        );
-        
-        if (!exists) {
-          if (a.is_recurring) return true;
-          if (!a.is_recurring && a.status === 'Pendente' && !a.service_order_id) return true;
-        }
+        if (a.is_recurring) return true;
+        if (!a.is_recurring && a.status === 'Pendente' && !a.service_order_id) return true;
       }
       return false;
     });
@@ -115,7 +113,11 @@ const Dashboard: React.FC<{
       isProcessingAutomation.current = true;
       
       pendingToOpen.forEach(appt => {
-        const osId = `OS-AUTO-${Date.now()}-${appt.id}`;
+        const osId = `OS-AUTO-${todayStr}-${appt.id}`; // ID previsível para evitar duplicação em múltiplos dispositivos
+        
+        // Verifica se o ID já está na lista local antes de adicionar (prevenção extra)
+        if (data.serviceOrders.some(o => o.id === osId)) return;
+
         const isRondaRoutine = appt.description.toLowerCase().includes('ronda') || appt.description.toLowerCase().includes('vistoria');
         
         newOSs.push({
@@ -144,7 +146,7 @@ const Dashboard: React.FC<{
         hasChanges = true;
       });
 
-      if (hasChanges) {
+      if (hasChanges && newOSs.length > 0) {
         updateData({
           ...data,
           serviceOrders: [...newOSs, ...data.serviceOrders],
@@ -152,10 +154,9 @@ const Dashboard: React.FC<{
         });
       }
 
-      // Pequeno timeout para permitir o ciclo de renderização e evitar re-entrada imediata
       setTimeout(() => {
         isProcessingAutomation.current = false;
-      }, 1000);
+      }, 2000);
     }
   }, [data.appointments, data.serviceOrders.length, userCondoId]);
 
@@ -278,7 +279,7 @@ const Dashboard: React.FC<{
             className="p-3 bg-white border border-slate-200 rounded-2xl text-slate-600 shadow-sm hover:bg-slate-50 active:scale-95 transition-all flex items-center gap-2"
           >
             <RefreshCw size={18} className={isSyncing ? 'animate-spin text-blue-600' : ''} />
-            <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">{isSyncing ? 'Sincronizando...' : 'Sincronizar'}</span>
+            <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">{isSyncing ? 'Equalizando...' : 'Equalizar Dispositivos'}</span>
           </button>
           
           {canManageSchedule && (

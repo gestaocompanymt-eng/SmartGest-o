@@ -21,7 +21,6 @@ import WaterLevel from './pages/WaterLevel';
 import Reports from './pages/Reports';
 import DatabaseSetup from './pages/DatabaseSetup';
 
-// Fix: Adicionando o componente NavItem que estava faltando
 const NavItem: React.FC<{ to: string; icon: any; label: string }> = ({ to, icon: Icon, label }) => {
   const location = useLocation();
   const isActive = location.pathname === to;
@@ -81,26 +80,14 @@ const AppContent: React.FC = () => {
     return clean;
   };
 
-  const smartUnion = (local: any[], cloud: any[] | null) => {
+  // Sincronização autoritativa: Se o dado está na nuvem, ele é a verdade
+  const cloudFirstUnion = (local: any[], cloud: any[] | null) => {
     if (!cloud) return local || [];
-    const map = new Map();
-    (local || []).forEach(item => map.set(item.id, item));
-    (cloud || []).forEach(cloudItem => {
-      if (!map.has(cloudItem.id)) {
-        map.set(cloudItem.id, cloudItem);
-      } else {
-        const localItem = map.get(cloudItem.id);
-        const localDate = new Date(localItem.updated_at || 0).getTime();
-        const cloudDate = new Date(cloudItem.updated_at || 0).getTime();
-        if (cloudDate >= localDate || !localItem.updated_at) {
-          map.set(cloudItem.id, cloudItem);
-        }
-      }
-    });
-    return Array.from(map.values());
+    // Prioridade total para o Cloud para igualar dispositivos
+    return cloud;
   };
 
-  const fetchAllData = useCallback(async (currentLocalData: AppData) => {
+  const fetchAllData = useCallback(async (currentLocalData: AppData, forceCloud: boolean = false) => {
     if (!navigator.onLine || !isSupabaseActive || isSyncingRef.current || !currentLocalData.currentUser) {
       setSyncStatus(navigator.onLine ? 'synced' : 'offline');
       return currentLocalData;
@@ -114,7 +101,7 @@ const AppContent: React.FC = () => {
         supabase.from('condos').select('*'),
         supabase.from('equipments').select('*'),
         supabase.from('systems').select('*'),
-        supabase.from('service_orders').select('*'),
+        supabase.from('service_orders').select('*').order('created_at', { ascending: false }),
         supabase.from('appointments').select('*'),
         supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(300),
         supabase.from('monitoring_alerts').select('*')
@@ -124,16 +111,14 @@ const AppContent: React.FC = () => {
 
       const updated = {
         ...currentLocalData,
-        users: smartUnion(currentLocalData.users, responses[0].data),
-        condos: smartUnion(currentLocalData.condos, responses[1].data),
-        equipments: smartUnion(currentLocalData.equipments, responses[2].data),
-        systems: smartUnion(currentLocalData.systems, responses[3].data),
-        serviceOrders: smartUnion(currentLocalData.serviceOrders, responses[4].data).sort((a: any, b: any) => 
-          new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
-        ),
-        appointments: smartUnion(currentLocalData.appointments, responses[5].data),
+        users: cloudFirstUnion(currentLocalData.users, responses[0].data),
+        condos: cloudFirstUnion(currentLocalData.condos, responses[1].data),
+        equipments: cloudFirstUnion(currentLocalData.equipments, responses[2].data),
+        systems: cloudFirstUnion(currentLocalData.systems, responses[3].data),
+        serviceOrders: cloudFirstUnion(currentLocalData.serviceOrders, responses[4].data),
+        appointments: cloudFirstUnion(currentLocalData.appointments, responses[5].data),
         waterLevels: responses[6].data || [],
-        monitoringAlerts: smartUnion(currentLocalData.monitoringAlerts, responses[7].data)
+        monitoringAlerts: cloudFirstUnion(currentLocalData.monitoringAlerts, responses[7].data)
       };
       
       setSyncStatus('synced');
@@ -160,7 +145,8 @@ const AppContent: React.FC = () => {
         
         const channel = supabase.channel('global-sync')
           .on('postgres_changes', { event: '*', schema: 'public' }, async () => {
-             if (dataRef.current?.currentUser) {
+             // Quando algo muda no Supabase, força a igualdade em todos os dispositivos
+             if (dataRef.current?.currentUser && !isSyncingRef.current) {
                const fresh = await fetchAllData(dataRef.current);
                setData(fresh);
                saveStore(fresh);
@@ -210,7 +196,6 @@ const AppContent: React.FC = () => {
   };
 
   const deleteData = async (tableName: string, id: string) => {
-    // 1. Atualiza Localmente utilizando prev para evitar closures obsoletas
     setData(prev => {
       if (!prev) return prev;
       const newData = { ...prev };
@@ -225,7 +210,6 @@ const AppContent: React.FC = () => {
       return newData;
     });
 
-    // 2. Remove do Cloud
     if (navigator.onLine && isSupabaseActive) {
       setSyncStatus('syncing');
       try {
@@ -241,7 +225,6 @@ const AppContent: React.FC = () => {
 
   if (!data) return null;
 
-  // Fix: Adicionando verificação de login e definição da variável 'user'
   if (!data.currentUser && location.pathname !== '/login') {
     return <Login onLogin={(u) => updateData({ ...data, currentUser: u })} />;
   }
@@ -348,7 +331,7 @@ const AppContent: React.FC = () => {
         <div className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth custom-scrollbar print:p-0">
           <Routes>
             <Route path="/" element={<Dashboard data={data} updateData={updateData} deleteData={deleteData} onSync={async () => {
-              const fresh = await fetchAllData(data);
+              const fresh = await fetchAllData(data, true);
               setData(fresh);
               saveStore(fresh);
             }} />} />
@@ -375,7 +358,6 @@ const AppContent: React.FC = () => {
   );
 };
 
-// Fix: Adicionando o componente wrapper App e exportando como default
 const App: React.FC = () => {
   return (
     <HashRouter>
