@@ -49,11 +49,10 @@ const Dashboard: React.FC<{
   const user = data.currentUser;
   const isSindicoAdmin = user?.role === UserRole.SINDICO_ADMIN;
   const isAdmin = user?.role === UserRole.ADMIN;
-  const isAdminOrTech = user?.role === UserRole.ADMIN || user?.role === UserRole.TECHNICIAN;
   const isRonda = user?.role === UserRole.RONDA;
   const userCondoId = user?.condo_id;
 
-  // REGRAS DE NEGÓCIO: Somente Admin e Síndico/Gestão gerenciam a agenda mestre
+  // REGRAS DE ACESSO: Síndico e Admin gerenciam a agenda
   const canManageSchedule = isAdmin || isSindicoAdmin;
 
   const filteredOSList = useMemo(() => {
@@ -93,19 +92,22 @@ const Dashboard: React.FC<{
     const pendingToOpen = data.appointments.filter(a => {
       if (a.status === 'Cancelada' as any) return false;
       
+      // Filtro de segurança: se for síndico, só processa as dele ou as sem ID (legado)
+      if (userCondoId && a.condo_id && a.condo_id !== userCondoId) return false;
+
       const isOneTimePending = !a.is_recurring && a.date <= todayStr && a.status === 'Pendente' && !a.service_order_id;
       
       let isRecurringDue = false;
       if (a.is_recurring && a.date <= todayStr) {
         const alreadyCreatedToday = data.serviceOrders.some(os => 
-          os.condo_id === a.condo_id && 
+          os.condo_id === (a.condo_id || userCondoId) && 
           os.problem_description.includes(`[ID:${a.id}]`) && 
           os.created_at.startsWith(todayStr) &&
           os.status !== OSStatus.CANCELLED
         );
         isRecurringDue = !alreadyCreatedToday;
       }
-      return (isOneTimePending || isRecurringDue) && (!userCondoId || a.condo_id === userCondoId);
+      return isOneTimePending || isRecurringDue;
     });
 
     pendingToOpen.forEach(appt => {
@@ -116,7 +118,7 @@ const Dashboard: React.FC<{
         id: osId,
         type: isRondaRoutine ? OSType.VISTORIA : OSType.PREVENTIVE,
         status: OSStatus.OPEN,
-        condo_id: appt.condo_id,
+        condo_id: appt.condo_id || userCondoId || '',
         equipment_id: appt.equipment_id,
         system_id: appt.system_id,
         problem_description: `[ROTINA ${appt.is_recurring ? 'RECORRENTE' : 'PROGRAMADA'}][ID:${appt.id}] ${appt.description}`,
@@ -148,7 +150,10 @@ const Dashboard: React.FC<{
   }, [data.appointments, data.serviceOrders, userCondoId]);
 
   const allAppointments = useMemo(() => {
-    const base = userCondoId ? data.appointments.filter(a => a.condo_id === userCondoId) : data.appointments;
+    // CORREÇÃO: Síndico vê as rotinas dele OU rotinas sem condomínio (legado)
+    const base = userCondoId 
+      ? data.appointments.filter(a => !a.condo_id || a.condo_id === userCondoId) 
+      : data.appointments;
     return [...base].sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
   }, [data.appointments, userCondoId]);
 
@@ -173,7 +178,7 @@ const Dashboard: React.FC<{
     if (linkedOS) {
       navigate(`/os?id=${linkedOS.id}`);
     } else {
-      navigate(`/os?condoId=${appt.condo_id}`);
+      navigate(`/os?condoId=${appt.condo_id || userCondoId}`);
     }
   };
 
@@ -182,7 +187,6 @@ const Dashboard: React.FC<{
     if (!canManageSchedule) return;
 
     const formData = new FormData(e.currentTarget);
-    // CORREÇÃO: Síndico usa o ID vinculado ao perfil se o campo estiver bloqueado
     const condoIdToSave = userCondoId || (formData.get('condo_id') as string);
     
     if (!condoIdToSave) {
@@ -196,7 +200,7 @@ const Dashboard: React.FC<{
       technician_id: editingAppt?.technician_id || user?.id || 'admin',
       date: formData.get('date') as string,
       time: formData.get('time') as string,
-      description: formData.get('description') as string,
+      description: (formData.get('description') as string) || '',
       status: editingAppt?.status || 'Pendente',
       is_recurring: isRecurring,
       updated_at: new Date().toISOString()
@@ -213,7 +217,7 @@ const Dashboard: React.FC<{
 
   const handleDeleteAppointment = async (id: string) => {
     if (!canManageSchedule) return;
-    if (window.confirm('Excluir esta rotina definitivamente? Isso removerá a regra do banco de dados e as ordens automáticas não serão mais criadas.')) {
+    if (window.confirm('Excluir esta rotina definitivamente? As ordens automáticas não serão mais geradas.')) {
       if (deleteData) {
         await deleteData('appointments', id);
       } else {
@@ -225,7 +229,7 @@ const Dashboard: React.FC<{
   const handleEditAppt = (appt: Appointment) => {
     if (!canManageSchedule) return;
     setEditingAppt(appt);
-    setSelectedCondoId(appt.condo_id);
+    setSelectedCondoId(appt.condo_id || userCondoId || '');
     setIsRecurring(!!appt.is_recurring);
     setIsScheduleModalOpen(true);
   };
@@ -255,9 +259,9 @@ const Dashboard: React.FC<{
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-900 leading-tight">Painel de Gestão</h1>
-          <p className="text-sm text-slate-500 font-medium">
+          <p className="text-sm text-slate-500 font-medium italic">
             {userCondoId 
-              ? `Administração: ${data.condos.find(c => c.id === userCondoId)?.name}` 
+              ? `Administração: ${data.condos.find(c => c.id === userCondoId)?.name || 'Unidade Gestora'}` 
               : "Visão consolidada da operação técnica."}
           </p>
         </div>
@@ -343,7 +347,7 @@ const Dashboard: React.FC<{
                         <div className="min-w-0">
                           <p className="text-xs font-black text-slate-800 truncate">{os.type}: {os.problem_description.substring(0, 50)}...</p>
                           <p className="text-[9px] font-bold text-slate-400 uppercase">
-                            {new Date(os.created_at).toLocaleDateString()} • {data.condos.find(c => c.id === os.condo_id)?.name}
+                            {new Date(os.created_at).toLocaleDateString()} • {data.condos.find(c => c.id === os.condo_id)?.name || 'Geral'}
                           </p>
                         </div>
                       </div>
@@ -408,7 +412,7 @@ const Dashboard: React.FC<{
                    <div className="cursor-pointer" onClick={() => handleAppointmentClick(appt)}>
                      <p className="text-xs font-bold leading-tight">{appt.description}</p>
                      <div className="flex items-center justify-between mt-2">
-                       <span className="text-[9px] text-white/40 font-black uppercase">{data.condos.find(c => c.id === appt.condo_id)?.name}</span>
+                       <span className="text-[9px] text-white/40 font-black uppercase">{data.condos.find(c => c.id === appt.condo_id)?.name || 'Geral'}</span>
                        <span className={`text-[7px] font-black px-1.5 py-0.5 rounded uppercase ${
                          appt.status === 'Cancelada' as any ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'
                        }`}>
@@ -422,7 +426,7 @@ const Dashboard: React.FC<{
               {(viewAllRoutines ? allAppointments : activeAppointments).length === 0 && (
                 <div className="flex flex-col items-center justify-center py-20 opacity-20">
                   <Activity size={48} className="mb-2" />
-                  <p className="text-[10px] font-black uppercase">Nenhuma rotina configurada</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-white/40 text-center">Nenhuma rotina configurada</p>
                 </div>
               )}
             </div>
