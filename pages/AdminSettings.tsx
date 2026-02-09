@@ -52,7 +52,7 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void; deleteD
         email: formData.get('email') as string,
         password: (formData.get('password') as string) || editingUser?.password || '',
         role: role,
-        condo_id: (role === UserRole.SINDICO_ADMIN || role === UserRole.RONDA || (role === UserRole.TECHNICIAN && formData.get('condo_id'))) ? (formData.get('condoId') as string) : undefined
+        condo_id: (role !== UserRole.ADMIN) ? (formData.get('condo_id') as string) : undefined
       };
 
       const newUsers = editingUser
@@ -115,15 +115,13 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void; deleteD
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* Gestão de Acessos */}
         <div className="lg:col-span-2 space-y-8">
           <div className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm">
             <div className="p-6 border-b flex justify-between items-center bg-slate-50/50">
               <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-[10px]">
                 <User size={18} className="mr-2 text-blue-600" /> Usuários Cadastrados
               </h3>
-              <button onClick={() => { setEditingUser(null); setSelectedRole(UserRole.TECHNICIAN); setIsUserModalOpen(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg shadow-blue-600/20">+ Novo Acesso</button>
+              <button onClick={() => { setEditingUser(null); setSelectedRole(UserRole.TECHNICIAN); setIsUserModalOpen(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg shadow-blue-600/20 active:scale-95 transition-all">+ Novo Acesso</button>
             </div>
             <div className="divide-y divide-slate-100">
               {data.users.map((u: UserType) => (
@@ -149,7 +147,6 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void; deleteD
           </div>
         </div>
 
-        {/* GitHub Cloud Backup */}
         <div className="space-y-8">
           <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden">
             <div className="absolute top-0 right-0 p-8 opacity-10 -rotate-12">
@@ -165,13 +162,6 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void; deleteD
                   <h3 className="text-xs font-black uppercase tracking-widest text-blue-400 leading-none">Backup em Nuvem</h3>
                   <p className="text-[10px] text-white/50 font-bold mt-1">Sincronização com GitHub</p>
                 </div>
-              </div>
-
-              <div className="p-4 bg-white/5 border border-white/10 rounded-2xl space-y-2">
-                 <p className="text-[9px] font-black text-blue-300 uppercase tracking-widest">Informação Técnica</p>
-                 <p className="text-[10px] text-white/60 leading-relaxed font-medium">
-                   O sistema realiza backup automático a cada 15 minutos se o token estiver configurado. Garante redundância externa total dos seus dados.
-                 </p>
               </div>
 
               <form onSubmit={handleGithubConfigSave} className="space-y-4">
@@ -202,7 +192,7 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void; deleteD
                   />
                 </div>
 
-                <button type="submit" className="w-full py-3 bg-white/10 hover:bg-white/20 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/5">
+                <button type="submit" className="w-full py-3 bg-white/10 hover:bg-white/20 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/5 active:scale-95">
                   Gravar Configurações
                 </button>
               </form>
@@ -226,7 +216,7 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void; deleteD
 
       {isUserModalOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-[2.5rem] w-full max-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b flex justify-between items-center bg-slate-50">
               <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">Perfil de Acesso</h2>
               <button onClick={() => { setIsUserModalOpen(false); setEditingUser(null); setIsSubmitting(false); }} className="p-2 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm"><X size={24} /></button>
@@ -271,9 +261,26 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void; deleteD
                 </select>
               </div>
 
+              {selectedRole !== UserRole.ADMIN && (
+                <div className="space-y-1 animate-in fade-in duration-300">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Vínculo com Condomínio</label>
+                  <select 
+                    required
+                    name="condo_id" 
+                    defaultValue={editingUser?.condo_id} 
+                    className="w-full px-5 py-4 bg-blue-50 border border-blue-100 rounded-2xl text-xs font-black text-blue-700 outline-none"
+                  >
+                    <option value="">Selecione a Unidade...</option>
+                    {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+              )}
+
               <div className="pt-6 flex gap-4">
                 <button type="button" onClick={() => { setIsUserModalOpen(false); setEditingUser(null); }} className="flex-1 py-4 border rounded-2xl font-black text-[10px] uppercase text-slate-400">Cancelar</button>
-                <button type="submit" disabled={isSubmitting} className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase shadow-xl">Gravar Acesso</button>
+                <button type="submit" disabled={isSubmitting} className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase shadow-xl active:scale-95 transition-all">
+                  {isSubmitting ? <RefreshCw className="animate-spin mx-auto" size={16} /> : 'Gravar Acesso'}
+                </button>
               </div>
             </form>
           </div>

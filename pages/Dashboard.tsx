@@ -51,14 +51,14 @@ const Dashboard: React.FC<{
   const isAdmin = user?.role === UserRole.ADMIN;
   const isAdminOrTech = user?.role === UserRole.ADMIN || user?.role === UserRole.TECHNICIAN;
   const isRonda = user?.role === UserRole.RONDA;
-  const condoId = user?.condo_id;
+  const userCondoId = user?.condo_id;
 
   // REGRAS DE NEGÓCIO: Somente Admin e Síndico/Gestão gerenciam a agenda mestre
   const canManageSchedule = isAdmin || isSindicoAdmin;
 
   const filteredOSList = useMemo(() => {
-    let list = condoId 
-      ? data.serviceOrders.filter(os => os.condo_id === condoId)
+    let list = userCondoId 
+      ? data.serviceOrders.filter(os => os.condo_id === userCondoId)
       : data.serviceOrders;
     
     if (isRonda) {
@@ -66,7 +66,7 @@ const Dashboard: React.FC<{
     }
     
     return list;
-  }, [data.serviceOrders, condoId, isRonda]);
+  }, [data.serviceOrders, userCondoId, isRonda]);
 
   const scrollToAgenda = () => {
     agendaRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -90,7 +90,6 @@ const Dashboard: React.FC<{
     const updatedAppts = [...data.appointments];
     let hasChanges = false;
 
-    // Filtramos apenas o que não está cancelado para evitar loops
     const pendingToOpen = data.appointments.filter(a => {
       if (a.status === 'Cancelada' as any) return false;
       
@@ -98,7 +97,6 @@ const Dashboard: React.FC<{
       
       let isRecurringDue = false;
       if (a.is_recurring && a.date <= todayStr) {
-        // Verifica se já existe uma OS aberta ou concluída hoje para esta rotina
         const alreadyCreatedToday = data.serviceOrders.some(os => 
           os.condo_id === a.condo_id && 
           os.problem_description.includes(`[ID:${a.id}]`) && 
@@ -107,7 +105,7 @@ const Dashboard: React.FC<{
         );
         isRecurringDue = !alreadyCreatedToday;
       }
-      return (isOneTimePending || isRecurringDue) && (!condoId || a.condo_id === condoId);
+      return (isOneTimePending || isRecurringDue) && (!userCondoId || a.condo_id === userCondoId);
     });
 
     pendingToOpen.forEach(appt => {
@@ -147,18 +145,16 @@ const Dashboard: React.FC<{
         appointments: updatedAppts
       });
     }
-  }, [data.appointments, data.serviceOrders, condoId]);
+  }, [data.appointments, data.serviceOrders, userCondoId]);
 
-  // Lista de rotinas para exibição (Agenda ou Gestão Completa)
   const allAppointments = useMemo(() => {
-    const base = condoId ? data.appointments.filter(a => a.condo_id === condoId) : data.appointments;
+    const base = userCondoId ? data.appointments.filter(a => a.condo_id === userCondoId) : data.appointments;
     return [...base].sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
-  }, [data.appointments, condoId]);
+  }, [data.appointments, userCondoId]);
 
   const activeAppointments = useMemo(() => {
     const todayStr = new Date().toISOString().split('T')[0];
     return allAppointments.filter(a => {
-      // Ignorar explicitamente canceladas na visualização de rotinas ativas
       if (a.status === 'Cancelada' as any) return false;
       
       const hasCompletedOS = data.serviceOrders.some(os => 
@@ -181,13 +177,19 @@ const Dashboard: React.FC<{
     }
   };
 
-  const handleScheduleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleScheduleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!canManageSchedule) return;
 
     const formData = new FormData(e.currentTarget);
-    const condoIdToSave = condoId || (formData.get('condo_id') as string);
+    // CORREÇÃO: Síndico usa o ID vinculado ao perfil se o campo estiver bloqueado
+    const condoIdToSave = userCondoId || (formData.get('condo_id') as string);
     
+    if (!condoIdToSave) {
+      alert("Erro: Selecione um condomínio.");
+      return;
+    }
+
     const apptData: Appointment = {
       id: editingAppt?.id || `APT-${Date.now()}`,
       condo_id: condoIdToSave,
@@ -204,7 +206,7 @@ const Dashboard: React.FC<{
       ? data.appointments.map(a => a.id === editingAppt.id ? apptData : a)
       : [apptData, ...data.appointments];
 
-    updateData({...data, appointments: newAppts});
+    await updateData({...data, appointments: newAppts});
     setIsScheduleModalOpen(false);
     setEditingAppt(null);
   };
@@ -254,8 +256,8 @@ const Dashboard: React.FC<{
         <div>
           <h1 className="text-2xl font-black text-slate-900 leading-tight">Painel de Gestão</h1>
           <p className="text-sm text-slate-500 font-medium">
-            {condoId 
-              ? `Administração: ${data.condos.find(c => c.id === condoId)?.name}` 
+            {userCondoId 
+              ? `Administração: ${data.condos.find(c => c.id === userCondoId)?.name}` 
               : "Visão consolidada da operação técnica."}
           </p>
         </div>
@@ -273,7 +275,7 @@ const Dashboard: React.FC<{
             <button 
               onClick={() => {
                 setEditingAppt(null);
-                setSelectedCondoId(condoId || '');
+                setSelectedCondoId(userCondoId || '');
                 setIsRecurring(false);
                 setIsScheduleModalOpen(true);
               }}
@@ -289,7 +291,7 @@ const Dashboard: React.FC<{
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <StatCard 
           title="Urgências" 
-          value={data.equipments.filter(e => (!condoId || e.condo_id === condoId) && e.maintenance_period).length} 
+          value={data.equipments.filter(e => (!userCondoId || e.condo_id === userCondoId) && e.maintenance_period).length} 
           icon={AlertTriangle} 
           color="bg-red-500" 
           subValue="Equipamentos" 
@@ -315,8 +317,7 @@ const Dashboard: React.FC<{
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         <div className="xl:col-span-2 space-y-6">
-           {/* Atividade Recente */}
-           <div className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm p-8">
+           <div className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm p-8 h-full flex flex-col">
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest flex items-center">
                   <Activity size={16} className="mr-2 text-blue-600" /> Atividade Recente
@@ -328,7 +329,7 @@ const Dashboard: React.FC<{
                   Ver todas
                 </button>
               </div>
-              <div className="space-y-4">
+              <div className="space-y-4 flex-1">
                  {filteredOSList.slice(0, 5).map(os => (
                    <div 
                     key={os.id} 
@@ -349,11 +350,16 @@ const Dashboard: React.FC<{
                       <ChevronRight size={16} className="text-slate-300 group-hover:text-blue-500 transition-all" />
                    </div>
                  ))}
+                 {filteredOSList.length === 0 && (
+                   <div className="flex-1 flex flex-col items-center justify-center py-10 opacity-30">
+                     <FileText size={32} className="mb-2" />
+                     <p className="text-[10px] font-black uppercase tracking-widest text-center">Nenhum registro encontrado</p>
+                   </div>
+                 )}
               </div>
            </div>
         </div>
 
-        {/* GESTÃO DE ROTINAS */}
         <div className="space-y-6" ref={agendaRef}>
           <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-xl relative overflow-hidden h-full flex flex-col min-h-[500px]">
             <div className="absolute top-0 right-0 p-8 opacity-10"><Settings size={80} /></div>
@@ -442,8 +448,8 @@ const Dashboard: React.FC<{
                   name="condo_id" 
                   value={selectedCondoId} 
                   onChange={(e) => setSelectedCondoId(e.target.value)} 
-                  disabled={!!condoId}
-                  className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none"
+                  disabled={!!userCondoId}
+                  className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none disabled:opacity-60"
                 >
                   <option value="">Selecione...</option>
                   {data.condos.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -471,7 +477,7 @@ const Dashboard: React.FC<{
                     <RefreshCw size={18} className={`text-emerald-600 ${isRecurring ? 'animate-spin-slow' : ''}`} />
                     <div>
                        <p className="text-[10px] font-black text-emerald-800 uppercase leading-none">Manutenção Recorrente</p>
-                       <p className="text-[9px] text-emerald-600 font-bold mt-1">Repetir automaticamente este chamado todos os dias.</p>
+                       <p className="text-[9px] text-emerald-600 font-bold mt-1">Repetir automaticamente todos os dias.</p>
                     </div>
                  </div>
                  <button 
@@ -485,7 +491,7 @@ const Dashboard: React.FC<{
 
               <div className="pt-4 flex gap-3">
                 <button type="button" onClick={() => { setIsScheduleModalOpen(false); setEditingAppt(null); }} className="flex-1 py-4 border rounded-2xl font-black uppercase text-[10px] text-slate-400">Cancelar</button>
-                <button type="submit" className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl flex items-center justify-center">
+                <button type="submit" className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl flex items-center justify-center active:scale-95 transition-all">
                   <Save size={16} className="mr-2" /> {editingAppt ? 'Gravar Alterações' : 'Confirmar Programação'}
                 </button>
               </div>

@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Layers, ShieldCheck, Thermometer, Zap, AlertCircle, Trash2, Edit2, X, MapPin, Camera, ImageIcon, ChevronLeft, ChevronRight, Building2, Clock, Calendar, Eye, Droplet, Wind } from 'lucide-react';
+import { Plus, Layers, ShieldCheck, Thermometer, Zap, AlertCircle, Trash2, Edit2, X, MapPin, Camera, ImageIcon, ChevronLeft, ChevronRight, Building2, Clock, Calendar, Eye, Droplet, Wind, Save } from 'lucide-react';
 import { Equipment, EquipmentType, Condo, UserRole } from '../types';
 
 const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void; deleteData?: (type: any, id: string) => void }> = ({ data, updateData, deleteData }) => {
@@ -12,7 +12,6 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void; deleteD
   const [selectedTypeId, setSelectedTypeId] = useState('');
 
   const user = data.currentUser;
-  // Permissão expandida: Admin, Técnico ou Síndico/Gestor
   const canManage = user?.role === UserRole.ADMIN || user?.role === UserRole.TECHNICIAN || user?.role === UserRole.SINDICO_ADMIN;
   const isCondo = user?.role === UserRole.SINDICO_ADMIN;
   const userCondoId = user?.condo_id;
@@ -48,27 +47,34 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void; deleteD
     }
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    const condoId = (isCondo || userCondoId) ? userCondoId : (formData.get('condoId') as string);
-    const typeId = formData.get('typeId') as string;
+    
+    // CORREÇÃO: Captura o ID do condomínio mesmo que o campo esteja disabled no form
+    const condoId = userCondoId || (formData.get('condoId') as string);
+    const typeId = selectedTypeId;
+
+    if (!condoId) {
+      alert("Erro: Condomínio não identificado.");
+      return;
+    }
 
     const eqData: Equipment = {
       id: editingEq?.id || `eq-${Date.now()}`,
-      condo_id: condoId || '',
+      condo_id: condoId,
       type_id: typeId,
       manufacturer: formData.get('manufacturer') as string,
       model: formData.get('model') as string,
       power: formData.get('power') as string,
       voltage: formData.get('voltage') as string,
-      nominal_current: Number(formData.get('nominalCurrent')),
-      measured_current: Number(formData.get('measuredCurrent')),
-      temperature: Number(formData.get('temperature')),
-      noise: formData.get('noise') as any,
-      electrical_state: formData.get('electricalState') as any,
-      location: formData.get('location') as string,
-      observations: formData.get('observations') as string,
+      nominal_current: Number(formData.get('nominalCurrent')) || 0,
+      measured_current: Number(formData.get('measuredCurrent')) || 0,
+      temperature: Number(formData.get('temperature')) || 0,
+      noise: formData.get('noise') as any || 'Normal',
+      electrical_state: formData.get('electricalState') as any || 'Bom',
+      location: formData.get('location') as string || '',
+      observations: formData.get('observations') as string || '',
       photos: photos,
       last_maintenance: formData.get('last_maintenance') as string || new Date().toISOString(),
       maintenance_period: Number(formData.get('maintenance_period')) || 30,
@@ -77,14 +83,15 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void; deleteD
         capacity_btu: formData.get('capacity_btu') as string,
         compressor_model: formData.get('compressor_model') as string,
         gas_charge: formData.get('gas_charge') as string,
-      } : undefined
+      } : undefined,
+      updated_at: new Date().toISOString()
     };
 
     const newEquipments = editingEq
       ? data.equipments.map((e: Equipment) => e.id === editingEq.id ? eqData : e)
-      : [...data.equipments, eqData];
+      : [eqData, ...data.equipments];
 
-    updateData({ ...data, equipments: newEquipments });
+    await updateData({ ...data, equipments: newEquipments });
     setIsModalOpen(false);
     setEditingEq(null);
     setPhotos([]);
@@ -111,7 +118,7 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void; deleteD
           <p className="text-sm text-slate-500 font-medium italic">Inventário técnico e preventivas.</p>
         </div>
         {canManage && (
-          <button onClick={() => openModal(null)} className="w-full md:w-auto bg-slate-900 text-white px-6 py-3 rounded-2xl flex items-center justify-center space-x-2 font-black uppercase text-[10px] tracking-widest shadow-xl">
+          <button onClick={() => openModal(null)} className="w-full md:w-auto bg-slate-900 text-white px-6 py-3 rounded-2xl flex items-center justify-center space-x-2 font-black uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">
             <Plus size={18} />
             <span>Novo Equipamento</span>
           </button>
@@ -166,19 +173,6 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void; deleteD
                   <Building2 size={12} className="mr-1.5" /> {condo?.name || 'Geral'}
                 </p>
 
-                {eq.type_id === '8' && eq.refrigeration_specs && (
-                   <div className="mb-4 grid grid-cols-2 gap-2">
-                      <div className="px-3 py-2 bg-blue-50 rounded-xl border border-blue-100 flex items-center">
-                         <Wind size={14} className="text-blue-500 mr-2" />
-                         <span className="text-[9px] font-black text-blue-700 uppercase">{eq.refrigeration_specs.refrigerant_type || 'Gás'}</span>
-                      </div>
-                      <div className="px-3 py-2 bg-blue-50 rounded-xl border border-blue-100 flex items-center">
-                         <Zap size={14} className="text-blue-500 mr-2" />
-                         <span className="text-[9px] font-black text-blue-700 uppercase">{eq.refrigeration_specs.capacity_btu || 'Capacidade'}</span>
-                      </div>
-                   </div>
-                )}
-
                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-6 mt-auto">
                    <div className="flex justify-between items-center mb-2">
                       <span className="text-[9px] font-black text-slate-400 uppercase">Manutenção</span>
@@ -221,17 +215,59 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void; deleteD
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Condomínio</label>
-                  <select required name="condoId" defaultValue={editingEq?.condo_id} disabled={isCondo} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none disabled:opacity-60">
+                  <select required name="condoId" defaultValue={editingEq?.condo_id} disabled={!!userCondoId} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none disabled:opacity-60">
                     <option value="">Selecione...</option>
                     {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Tipo de Equipamento</label>
-                  <select required name="typeId" value={selectedTypeId} onChange={(e) => setSelectedTypeId(e.target.value)} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none">
+                  <select required value={selectedTypeId} onChange={(e) => setSelectedTypeId(e.target.value)} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none">
                     {data.equipmentTypes.map((t: EquipmentType) => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Fabricante</label>
+                  <input required name="manufacturer" defaultValue={editingEq?.manufacturer} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Modelo</label>
+                  <input required name="model" defaultValue={editingEq?.model} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Localização (Setor)</label>
+                  <input required name="location" defaultValue={editingEq?.location} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs" placeholder="Ex: Casa de Máquinas Subsolo" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Potência/Capacidade</label>
+                  <input name="power" defaultValue={editingEq?.power} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs" placeholder="Ex: 2.0 CV / 36k BTU" />
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 space-y-4">
+                 <h4 className="text-[10px] font-black text-slate-900 uppercase tracking-widest flex items-center">
+                   <Zap size={16} className="mr-2 text-blue-600" /> Parâmetros Técnicos Atuais
+                 </h4>
+                 <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Corrente Nom. (A)</label>
+                      <input type="number" step="0.1" name="nominalCurrent" defaultValue={editingEq?.nominal_current} className="w-full px-4 py-3 bg-white border rounded-xl font-black text-xs" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Corrente Med. (A)</label>
+                      <input type="number" step="0.1" name="measuredCurrent" defaultValue={editingEq?.measured_current} className="w-full px-4 py-3 bg-white border rounded-xl font-black text-xs" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Temp. (°C)</label>
+                      <input type="number" step="1" name="temperature" defaultValue={editingEq?.temperature} className="w-full px-4 py-3 bg-white border rounded-xl font-black text-xs" />
+                    </div>
+                 </div>
               </div>
 
               {selectedTypeId === '8' && (
@@ -247,14 +283,6 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void; deleteD
                       <div className="space-y-1">
                         <label className="text-[9px] font-black text-blue-500 uppercase tracking-widest ml-1">Capacidade</label>
                         <input name="capacity_btu" defaultValue={editingEq?.refrigeration_specs?.capacity_btu} placeholder="Ex: 36.000 BTU" className="w-full px-4 py-3 bg-white border border-blue-100 rounded-xl font-bold text-xs" />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[9px] font-black text-blue-500 uppercase tracking-widest ml-1">Modelo Compressor</label>
-                        <input name="compressor_model" defaultValue={editingEq?.refrigeration_specs?.compressor_model} className="w-full px-4 py-3 bg-white border border-blue-100 rounded-xl font-bold text-xs" />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[9px] font-black text-blue-500 uppercase tracking-widest ml-1">Carga de Gás (kg)</label>
-                        <input name="gas_charge" defaultValue={editingEq?.refrigeration_specs?.gas_charge} className="w-full px-4 py-3 bg-white border border-blue-100 rounded-xl font-bold text-xs" />
                       </div>
                    </div>
                 </div>
@@ -276,15 +304,9 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void; deleteD
                  </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Fabricante</label>
-                  <input required name="manufacturer" defaultValue={editingEq?.manufacturer} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Modelo</label>
-                  <input required name="model" defaultValue={editingEq?.model} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs" />
-                </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Observações Técnicas</label>
+                <textarea name="observations" defaultValue={editingEq?.observations} rows={3} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none resize-none" placeholder="Estado geral, pontos de atenção..." />
               </div>
 
               <div className="space-y-1">
@@ -299,8 +321,11 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void; deleteD
               </div>
 
               <div className="pt-6 flex gap-3">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 border rounded-2xl font-black uppercase text-[10px] text-slate-400">Cancelar</button>
-                <button type="submit" className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl">Salvar Cadastro</button>
+                <button type="button" onClick={() => { setIsModalOpen(false); setEditingEq(null); }} className="flex-1 py-4 border rounded-2xl font-black uppercase text-[10px] text-slate-400">Cancelar</button>
+                <button type="submit" className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl flex items-center justify-center">
+                  <Save size={16} className="mr-2" />
+                  Salvar Cadastro
+                </button>
               </div>
             </form>
           </div>

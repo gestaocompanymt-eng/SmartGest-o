@@ -12,7 +12,6 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void; deleteDat
   const [selectedTypeId, setSelectedTypeId] = useState('1');
 
   const user = data.currentUser;
-  // Permissão expandida: Admin, Técnico ou Síndico/Gestor
   const canManage = user?.role === UserRole.ADMIN || user?.role === UserRole.TECHNICIAN || user?.role === UserRole.SINDICO_ADMIN;
   const isCondo = user?.role === UserRole.SINDICO_ADMIN;
   const userCondoId = user?.condo_id;
@@ -47,13 +46,20 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void; deleteDat
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    const condoId = isCondo ? userCondoId : (formData.get('condoId') as string);
+    
+    // CORREÇÃO: Síndico usa o ID vinculado ao perfil se o campo estiver bloqueado
+    const condoId = userCondoId || (formData.get('condoId') as string);
+
+    if (!condoId) {
+      alert("Erro: Condomínio não identificado.");
+      return;
+    }
 
     const sysData: System = {
       id: editingSys?.id || `sys-${Date.now()}`,
-      condo_id: condoId || '',
+      condo_id: condoId,
       type_id: selectedTypeId,
-      name: (formData.get('name') as string).trim(),
+      name: (formData.get('name') as string || '').trim(),
       location: (formData.get('location') as string || '').trim(),
       equipment_ids: editingSys?.equipment_ids || [], 
       monitoring_points: points,
@@ -82,7 +88,7 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void; deleteDat
           <p className="text-sm text-slate-500 font-medium">Cronogramas de manutenção e telemetria IOT.</p>
         </div>
         {canManage && (
-          <button onClick={() => openModal(null)} className="bg-slate-900 text-white px-6 py-3 rounded-2xl flex items-center space-x-2 font-black uppercase text-[10px] tracking-widest shadow-xl">
+          <button onClick={() => openModal(null)} className="bg-slate-900 text-white px-6 py-3 rounded-2xl flex items-center space-x-2 font-black uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">
             <Plus size={18} />
             <span>Novo Sistema</span>
           </button>
@@ -146,17 +152,17 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void; deleteDat
 
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
             <div className="p-6 border-b flex justify-between items-center bg-slate-50">
               <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">Configurar Sistema</h2>
               <button onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm"><X size={20} /></button>
             </div>
             
-            <form onSubmit={handleSubmit} className="p-8 space-y-6 max-h-[85vh] overflow-y-auto">
+            <form onSubmit={handleSubmit} className="p-8 space-y-6 overflow-y-auto custom-scrollbar">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                  <div className="space-y-1">
                     <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Condomínio</label>
-                    <select required name="condoId" defaultValue={editingSys?.condo_id} disabled={isCondo} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none disabled:opacity-60">
+                    <select required name="condoId" defaultValue={editingSys?.condo_id} disabled={!!userCondoId} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none disabled:opacity-60">
                        <option value="">Selecione...</option>
                        {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
@@ -168,6 +174,16 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void; deleteDat
                        <option value="7">Monitoramento de Nível IOT</option>
                     </select>
                  </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Nome do Sistema / Identificação</label>
+                <input required name="name" defaultValue={editingSys?.name} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-black text-xs" placeholder="Ex: Central de Água Quente Torre A" />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Localização (Setor)</label>
+                <input name="location" defaultValue={editingSys?.location} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-black text-xs" placeholder="Ex: Telhado / Ático" />
               </div>
 
               <div className="bg-indigo-50 p-6 rounded-[2rem] border border-indigo-100 grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -182,8 +198,8 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void; deleteDat
               </div>
 
               <div className="space-y-1">
-                <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Nome do Sistema / Identificação</label>
-                <input required name="name" defaultValue={editingSys?.name} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-black text-xs" />
+                <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Parâmetros de Operação</label>
+                <textarea name="parameters" defaultValue={editingSys?.parameters} rows={2} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none resize-none" placeholder="Ex: Temperatura ideal 55°C, Pressão 3 bar" />
               </div>
 
               {selectedTypeId === '7' && (
@@ -200,6 +216,11 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void; deleteDat
                   ))}
                 </div>
               )}
+
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Observações Adicionais</label>
+                <textarea name="observations" defaultValue={editingSys?.observations} rows={2} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none resize-none" />
+              </div>
 
               <div className="pt-6 flex gap-3">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 border rounded-2xl font-black text-[10px] uppercase text-slate-400">Cancelar</button>
