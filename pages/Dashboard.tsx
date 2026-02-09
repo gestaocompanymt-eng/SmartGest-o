@@ -39,6 +39,7 @@ const Dashboard: React.FC<{
 }> = ({ data, updateData, deleteData, onSync }) => {
   const navigate = useNavigate();
   const agendaRef = useRef<HTMLDivElement>(null);
+  const isProcessingRef = useRef(false); // Trava anti-loop
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [editingAppt, setEditingAppt] = useState<Appointment | null>(null);
   const [selectedCondoId, setSelectedCondoId] = useState('');
@@ -52,7 +53,6 @@ const Dashboard: React.FC<{
   const isRonda = user?.role === UserRole.RONDA;
   const userCondoId = user?.condo_id;
 
-  // REGRAS DE ACESSO: Síndico e Admin gerenciam a agenda
   const canManageSchedule = isAdmin || isSindicoAdmin;
 
   const filteredOSList = useMemo(() => {
@@ -79,45 +79,47 @@ const Dashboard: React.FC<{
     }
   };
 
-  // MOTOR DE AUTOMAÇÃO: Gera OS baseado nas rotinas
-  // CORREÇÃO: Removido data.serviceOrders das dependências para quebrar o loop infinito
+  // MOTOR DE AUTOMAÇÃO REFORÇADO
   useEffect(() => {
-    if (!data.appointments.length) return;
+    // Se já estiver processando ou não houver agendamentos, aborta
+    if (isProcessingRef.current || !data.appointments.length) return;
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayStr = today.toISOString().split('T')[0];
-    
+    const todayStr = new Date().toISOString().split('T')[0];
     const newOSs: ServiceOrder[] = [];
     const updatedAppts = [...data.appointments];
     let hasChanges = false;
 
+    // Filtra agendamentos que realmente precisam de OS hoje
     const pendingToOpen = data.appointments.filter(a => {
       if (a.status === 'Cancelada' as any || a.status === 'Realizada') return false;
-      
-      // Filtro de segurança por condomínio
       if (userCondoId && a.condo_id && a.condo_id !== userCondoId) return false;
 
-      const isOneTimePending = !a.is_recurring && a.date <= todayStr && a.status === 'Pendente' && !a.service_order_id;
+      // 1. Caso agendamento único pendente
+      if (!a.is_recurring && a.date <= todayStr && a.status === 'Pendente' && !a.service_order_id) {
+        return true;
+      }
       
-      let isRecurringDue = false;
+      // 2. Caso recorrente: verifica se JÁ existe OS hoje com o ID desta rotina
       if (a.is_recurring && a.date <= todayStr) {
-        // Verifica se já existe OS para hoje desta rotina específica
-        const alreadyCreatedToday = data.serviceOrders.some(os => 
+        const alreadyExists = data.serviceOrders.some(os => 
           os.condo_id === (a.condo_id || userCondoId) && 
           os.problem_description.includes(`[ID:${a.id}]`) && 
           os.created_at.startsWith(todayStr) &&
           os.status !== OSStatus.CANCELLED
         );
-        isRecurringDue = !alreadyCreatedToday;
+        return !alreadyExists;
       }
-      return isOneTimePending || isRecurringDue;
+      return false;
     });
 
+    // Limite de segurança: não processa mais de 10 OS por ciclo para evitar explosão de dados
     if (pendingToOpen.length === 0) return;
+    const itemsToProcess = pendingToOpen.slice(0, 10);
 
-    pendingToOpen.forEach(appt => {
-      const osId = `OS-AUTO-${Date.now()}-${appt.id}`;
+    isProcessingRef.current = true; // Ativa trava
+
+    itemsToProcess.forEach(appt => {
+      const osId = `OS-AUTO-${Date.now()}-${Math.floor(Math.random() * 1000)}-${appt.id}`;
       const isRondaRoutine = appt.description.toLowerCase().includes('ronda') || appt.description.toLowerCase().includes('vistoria');
       
       newOSs.push({
@@ -153,7 +155,13 @@ const Dashboard: React.FC<{
         appointments: updatedAppts
       });
     }
-  }, [data.appointments, userCondoId]); // Dependency 'data.serviceOrders' removida para evitar o loop
+
+    // Libera trava após um pequeno delay para estabilidade
+    setTimeout(() => {
+      isProcessingRef.current = false;
+    }, 500);
+
+  }, [data.appointments, userCondoId, data.serviceOrders.length]); 
 
   const allAppointments = useMemo(() => {
     const base = userCondoId 
@@ -166,7 +174,6 @@ const Dashboard: React.FC<{
     const todayStr = new Date().toISOString().split('T')[0];
     return allAppointments.filter(a => {
       if (a.status === 'Cancelada' as any) return false;
-      
       const hasCompletedOS = data.serviceOrders.some(os => 
         os.status === OSStatus.COMPLETED && 
         (os.id === a.service_order_id || (a.is_recurring && os.problem_description.includes(`[ID:${a.id}]`) && os.created_at.startsWith(todayStr)))
@@ -180,24 +187,16 @@ const Dashboard: React.FC<{
     const linkedOS = data.serviceOrders.find(os => 
       os.id === appt.service_order_id || (appt.is_recurring && os.problem_description.includes(`[ID:${appt.id}]`) && os.created_at.startsWith(todayStr))
     );
-    if (linkedOS) {
-      navigate(`/os?id=${linkedOS.id}`);
-    } else {
-      navigate(`/os?condoId=${appt.condo_id || userCondoId}`);
-    }
+    if (linkedOS) navigate(`/os?id=${linkedOS.id}`);
+    else navigate(`/os?condoId=${appt.condo_id || userCondoId}`);
   };
 
   const handleScheduleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!canManageSchedule) return;
-
     const formData = new FormData(e.currentTarget);
     const condoIdToSave = userCondoId || (formData.get('condo_id') as string);
-    
-    if (!condoIdToSave) {
-      alert("Erro: Selecione um condomínio.");
-      return;
-    }
+    if (!condoIdToSave) return alert("Selecione um condomínio.");
 
     const apptData: Appointment = {
       id: editingAppt?.id || `APT-${Date.now()}`,
@@ -210,11 +209,9 @@ const Dashboard: React.FC<{
       is_recurring: isRecurring,
       updated_at: new Date().toISOString()
     };
-
     const newAppts = editingAppt 
       ? data.appointments.map(a => a.id === editingAppt.id ? apptData : a)
       : [apptData, ...data.appointments];
-
     await updateData({...data, appointments: newAppts});
     setIsScheduleModalOpen(false);
     setEditingAppt(null);
@@ -222,12 +219,9 @@ const Dashboard: React.FC<{
 
   const handleDeleteAppointment = async (id: string) => {
     if (!canManageSchedule) return;
-    if (window.confirm('Excluir esta rotina definitivamente? As ordens automáticas não serão mais geradas.')) {
-      if (deleteData) {
-        await deleteData('appointments', id);
-      } else {
-        updateData({...data, appointments: data.appointments.filter(a => a.id !== id)});
-      }
+    if (window.confirm('Excluir esta rotina?')) {
+      if (deleteData) await deleteData('appointments', id);
+      else updateData({...data, appointments: data.appointments.filter(a => a.id !== id)});
     }
   };
 
@@ -331,29 +325,18 @@ const Dashboard: React.FC<{
                 <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest flex items-center">
                   <Activity size={16} className="mr-2 text-blue-600" /> Atividade Recente
                 </h3>
-                <button 
-                  onClick={(e) => { e.preventDefault(); navigate('/os'); }} 
-                  className="text-[9px] font-black text-blue-600 uppercase hover:underline p-2"
-                >
-                  Ver todas
-                </button>
+                <button onClick={() => navigate('/os')} className="text-[9px] font-black text-blue-600 uppercase hover:underline p-2">Ver todas</button>
               </div>
               <div className="space-y-4 flex-1">
                  {filteredOSList.slice(0, 5).map(os => (
-                   <div 
-                    key={os.id} 
-                    className="w-full flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:bg-white transition-all cursor-pointer group"
-                    onClick={() => navigate(`/os?id=${os.id}`)}
-                   >
+                   <div key={os.id} className="w-full flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:bg-white transition-all cursor-pointer group" onClick={() => navigate(`/os?id=${os.id}`)}>
                       <div className="flex items-center space-x-4">
                         <div className={`p-2 rounded-lg ${os.status === OSStatus.COMPLETED ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}>
                           <ClipboardCheck size={18} />
                         </div>
                         <div className="min-w-0">
                           <p className="text-xs font-black text-slate-800 truncate">{os.type}: {os.problem_description.substring(0, 50)}...</p>
-                          <p className="text-[9px] font-bold text-slate-400 uppercase">
-                            {new Date(os.created_at).toLocaleDateString()} • {data.condos.find(c => c.id === os.condo_id)?.name || 'Geral'}
-                          </p>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase">{new Date(os.created_at).toLocaleDateString()} • {data.condos.find(c => c.id === os.condo_id)?.name || 'Geral'}</p>
                         </div>
                       </div>
                       <ChevronRight size={16} className="text-slate-300 group-hover:text-blue-500 transition-all" />
@@ -372,40 +355,25 @@ const Dashboard: React.FC<{
         <div className="space-y-6" ref={agendaRef}>
           <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-xl relative overflow-hidden h-full flex flex-col min-h-[500px]">
             <div className="absolute top-0 right-0 p-8 opacity-10"><Settings size={80} /></div>
-            
             <div className="flex justify-between items-center mb-6 relative z-10">
                <div>
                  <h3 className="text-[10px] font-black text-blue-400 uppercase tracking-widest leading-none">Gestão de Rotinas</h3>
                  <p className="text-[9px] text-white/40 font-bold mt-1 uppercase">Controle de Automação</p>
                </div>
                {canManageSchedule && (
-                 <button 
-                   onClick={() => setViewAllRoutines(!viewAllRoutines)}
-                   className={`px-3 py-1.5 rounded-lg border text-[8px] font-black uppercase transition-all ${viewAllRoutines ? 'bg-blue-600 border-blue-600' : 'border-white/20 hover:bg-white/10'}`}
-                 >
+                 <button onClick={() => setViewAllRoutines(!viewAllRoutines)} className={`px-3 py-1.5 rounded-lg border text-[8px] font-black uppercase transition-all ${viewAllRoutines ? 'bg-blue-600 border-blue-600' : 'border-white/20 hover:bg-white/10'}`}>
                    {viewAllRoutines ? 'Ver Ativas' : 'Ver Todas'}
                  </button>
                )}
             </div>
-
             <div className="space-y-4 relative z-10 flex-1 overflow-y-auto custom-scrollbar pr-2">
               {(viewAllRoutines ? allAppointments : activeAppointments).map(appt => (
-                <div 
-                  key={appt.id} 
-                  className={`w-full text-left p-4 rounded-2xl border transition-all group ${
-                    appt.status === 'Cancelada' as any 
-                      ? 'bg-red-500/5 border-red-500/20 grayscale opacity-60' 
-                      : 'bg-white/10 border-white/10 hover:bg-white/15'
-                  }`}
-                >
+                <div key={appt.id} className={`w-full text-left p-4 rounded-2xl border transition-all group ${appt.status === 'Cancelada' as any ? 'bg-red-500/5 border-red-500/20 grayscale opacity-60' : 'bg-white/10 border-white/10 hover:bg-white/15'}`}>
                    <div className="flex justify-between items-start mb-2">
                       <div className="flex items-center space-x-2">
-                        <p className={`text-[8px] font-black uppercase ${appt.status === 'Cancelada' as any ? 'text-red-400' : 'text-blue-300'}`}>
-                          {appt.date.split('-').reverse().join('/')} - {appt.time}
-                        </p>
+                        <p className={`text-[8px] font-black uppercase ${appt.status === 'Cancelada' as any ? 'text-red-400' : 'text-blue-300'}`}>{appt.date.split('-').reverse().join('/')} - {appt.time}</p>
                         {appt.is_recurring && <RefreshCw size={10} className="text-emerald-400 animate-spin-slow" />}
                       </div>
-                      
                       {canManageSchedule && (
                         <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-all">
                           <button onClick={() => handleEditAppt(appt)} className="p-1.5 text-blue-400 hover:bg-blue-400/10 rounded-lg"><Edit2 size={12} /></button>
@@ -413,21 +381,15 @@ const Dashboard: React.FC<{
                         </div>
                       )}
                    </div>
-                   
                    <div className="cursor-pointer" onClick={() => handleAppointmentClick(appt)}>
                      <p className="text-xs font-bold leading-tight">{appt.description}</p>
                      <div className="flex items-center justify-between mt-2">
                        <span className="text-[9px] text-white/40 font-black uppercase">{data.condos.find(c => c.id === appt.condo_id)?.name || 'Geral'}</span>
-                       <span className={`text-[7px] font-black px-1.5 py-0.5 rounded uppercase ${
-                         appt.status === 'Cancelada' as any ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'
-                       }`}>
-                         {appt.status}
-                       </span>
+                       <span className={`text-[7px] font-black px-1.5 py-0.5 rounded uppercase ${appt.status === 'Cancelada' as any ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>{appt.status}</span>
                      </div>
                    </div>
                 </div>
               ))}
-              
               {(viewAllRoutines ? allAppointments : activeAppointments).length === 0 && (
                 <div className="flex flex-col items-center justify-center py-20 opacity-20">
                   <Activity size={48} className="mb-2" />
@@ -443,28 +405,17 @@ const Dashboard: React.FC<{
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-[2.5rem] w-full max-w-xl overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">
-                {editingAppt ? 'Editar Programação' : 'Nova Programação de Rotina'}
-              </h2>
+              <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">{editingAppt ? 'Editar Programação' : 'Nova Programação de Rotina'}</h2>
               <button onClick={() => { setIsScheduleModalOpen(false); setEditingAppt(null); }} className="p-2.5 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm"><X size={20} /></button>
             </div>
-            
             <form onSubmit={handleScheduleSubmit} className="p-8 space-y-6">
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Condomínio</label>
-                <select 
-                  required 
-                  name="condo_id" 
-                  value={selectedCondoId} 
-                  onChange={(e) => setSelectedCondoId(e.target.value)} 
-                  disabled={!!userCondoId}
-                  className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none disabled:opacity-60"
-                >
+                <select required name="condo_id" value={selectedCondoId} onChange={(e) => setSelectedCondoId(e.target.value)} disabled={!!userCondoId} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none">
                   <option value="">Selecione...</option>
                   {data.condos.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
-
               <div className="grid grid-cols-2 gap-4">
                  <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Data Início</label>
@@ -475,33 +426,26 @@ const Dashboard: React.FC<{
                     <input required type="time" name="time" defaultValue={editingAppt?.time} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs" />
                  </div>
               </div>
-
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Descrição do Atendimento</label>
                 <textarea required name="description" defaultValue={editingAppt?.description} rows={3} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none resize-none" placeholder="Ex: Ronda perimetral e verificação de dreno no subsolo." />
               </div>
-
               <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 flex items-center justify-between">
                  <div className="flex items-center space-x-3">
                     <RefreshCw size={18} className={`text-emerald-600 ${isRecurring ? 'animate-spin-slow' : ''}`} />
                     <div>
                        <p className="text-[10px] font-black text-emerald-800 uppercase leading-none">Manutenção Recorrente</p>
-                       <p className="text-[9px] text-emerald-600 font-bold mt-1">Repetir automaticamente todos os dias.</p>
+                       <p className="text-[9px] text-emerald-600 font-bold mt-1">Repetir diariamente.</p>
                     </div>
                  </div>
-                 <button 
-                  type="button" 
-                  onClick={() => setIsRecurring(!isRecurring)}
-                  className={`w-12 h-6 rounded-full relative transition-all ${isRecurring ? 'bg-emerald-500' : 'bg-slate-300'}`}
-                 >
+                 <button type="button" onClick={() => setIsRecurring(!isRecurring)} className={`w-12 h-6 rounded-full relative transition-all ${isRecurring ? 'bg-emerald-500' : 'bg-slate-300'}`}>
                     <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${isRecurring ? 'left-7' : 'left-1'}`} />
                  </button>
               </div>
-
               <div className="pt-4 flex gap-3">
                 <button type="button" onClick={() => { setIsScheduleModalOpen(false); setEditingAppt(null); }} className="flex-1 py-4 border rounded-2xl font-black uppercase text-[10px] text-slate-400">Cancelar</button>
                 <button type="submit" className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl flex items-center justify-center active:scale-95 transition-all">
-                  <Save size={16} className="mr-2" /> {editingAppt ? 'Gravar Alterações' : 'Confirmar Programação'}
+                  <Save size={16} className="mr-2" /> {editingAppt ? 'Gravar' : 'Confirmar'}
                 </button>
               </div>
             </form>
