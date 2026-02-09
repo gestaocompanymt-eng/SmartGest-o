@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { 
@@ -29,6 +28,10 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
   const [selectedSystemId, setSelectedSystemId] = useState('');
   const [osType, setOsType] = useState<OSType>(isRonda ? OSType.VISTORIA : OSType.SERVICE);
 
+  // Estados para Fotos
+  const [photosBefore, setPhotosBefore] = useState<string[]>([]);
+  const [photosAfter, setPhotosAfter] = useState<string[]>([]);
+
   // Helper para buscar nome do usuário com Cargo
   const getUserNameWithRole = (id?: string) => {
     if (!id) return 'Não atribuído';
@@ -56,6 +59,8 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
         setSelectedEquipmentId(os.equipment_id || '');
         setSelectedSystemId(os.system_id || '');
         setOsType(os.type);
+        setPhotosBefore(os.photos_before || []);
+        setPhotosAfter(os.photos_after || []);
         setIsModalOpen(true);
       }
     } else if (equipmentParam) {
@@ -77,6 +82,27 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
     if (isSindicoAdmin) return os.condo_id === userCondoId && matchStatus && matchType;
     return matchStatus && matchType;
   });
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, target: 'before' | 'after') => {
+    const files = e.target.files;
+    if (!files) return;
+    
+    // Fix: Cast to File[] to resolve 'unknown' to 'Blob' assignability error
+    (Array.from(files) as File[]).forEach(file => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result as string;
+        if (target === 'before') setPhotosBefore(prev => [...prev, base64]);
+        else setPhotosAfter(prev => [...prev, base64]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const removePhoto = (index: number, target: 'before' | 'after') => {
+    if (target === 'before') setPhotosBefore(prev => prev.filter((_, i) => i !== index));
+    else setPhotosAfter(prev => prev.filter((_, i) => i !== index));
+  };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -101,8 +127,8 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
       problem_description: (formData.get('description') as string),
       actions_performed: (formData.get('actions') as string) || editingOS?.actions_performed || '',
       parts_replaced: editingOS?.parts_replaced || [],
-      photos_before: editingOS?.photos_before || [],
-      photos_after: editingOS?.photos_after || [],
+      photos_before: photosBefore,
+      photos_after: photosAfter,
       technician_id: user?.id || editingOS?.technician_id || 'unknown', 
       created_at: editingOS?.created_at || new Date().toISOString(),
       service_value: Number(formData.get('service_value')) || 0,
@@ -130,6 +156,8 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
     setAssignmentType('general');
     setSelectedEquipmentId('');
     setSelectedSystemId('');
+    setPhotosBefore([]);
+    setPhotosAfter([]);
   };
 
   const handleDeleteOS = async (id: string) => {
@@ -201,7 +229,7 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
                 </div>
               </div>
               {isExpanded && (
-                <div className="px-5 pb-5 border-t border-slate-100 p-5 space-y-4">
+                <div className="px-5 pb-5 border-t border-slate-100 p-5 space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                      <div>
                        <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Relatório Técnico</p>
@@ -214,6 +242,31 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
                        {os.completed_at && <p className="text-[10px] font-bold text-emerald-600">Conclusão: {new Date(os.completed_at).toLocaleString()}</p>}
                      </div>
                   </div>
+
+                  {/* GALERIA DE FOTOS NA VISUALIZAÇÃO */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {os.photos_before && os.photos_before.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fotos (Antes do Serviço)</p>
+                        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                          {os.photos_before.map((p, i) => (
+                            <img key={i} src={p} className="w-24 h-24 object-cover rounded-xl shadow-sm border" alt="Antes" />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {os.photos_after && os.photos_after.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Fotos (Depois do Serviço)</p>
+                        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                          {os.photos_after.map((p, i) => (
+                            <img key={i} src={p} className="w-24 h-24 object-cover rounded-xl shadow-sm border border-emerald-100" alt="Depois" />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="flex gap-2">
                     <button onClick={() => { setEditingOS(os); setIsModalOpen(true); }} className="flex-1 bg-slate-900 text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center space-x-2">
                       <Edit2 size={14} /> <span>Atualizar</span>
@@ -265,7 +318,6 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
                 )}
               </div>
 
-              {/* SELETOR DE VÍNCULO (O QUE TINHA SUMIDO) */}
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Vincular Atendimento a:</label>
                 <div className="grid grid-cols-3 gap-2">
@@ -286,7 +338,6 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
                 </div>
               </div>
 
-              {/* RENDERIZAÇÃO CONDICIONAL DOS VÍNCULOS */}
               {assignmentType === 'equipment' && (
                 <div className="space-y-1 animate-in fade-in slide-in-from-top-2">
                   <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Selecionar Equipamento</label>
@@ -330,8 +381,28 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
                 <textarea required name="description" defaultValue={editingOS?.problem_description} rows={3} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs" />
               </div>
 
+              {/* SEÇÃO DE REGISTRO FOTOGRÁFICO - ANTES */}
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Registrar Fotos (Início do Atendimento)</label>
+                <div className="flex flex-wrap gap-3">
+                  {photosBefore.map((p, i) => (
+                    <div key={i} className="relative group">
+                      <img src={p} className="w-20 h-20 object-cover rounded-xl border border-slate-200" alt={`Before ${i}`} />
+                      <button type="button" onClick={() => removePhoto(i, 'before')} className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                  <label className="w-20 h-20 border-2 border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center text-slate-400 cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all">
+                    <Camera size={20} />
+                    <span className="text-[8px] font-black mt-1 uppercase">Abrir</span>
+                    <input type="file" accept="image/*" capture="environment" multiple className="hidden" onChange={(e) => handleFileChange(e, 'before')} />
+                  </label>
+                </div>
+              </div>
+
               {editingOS && (
-                <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100 space-y-4">
+                <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100 space-y-6">
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Status do Atendimento</label>
                     <select name="status" defaultValue={editingOS.status} className="w-full px-5 py-4 bg-white border rounded-2xl font-black text-xs">
@@ -341,6 +412,26 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Ações Realizadas (Relatório)</label>
                     <textarea name="actions" defaultValue={editingOS.actions_performed} rows={4} className="w-full px-5 py-4 bg-white border rounded-2xl font-bold text-xs" placeholder="Descreva o que foi feito..." />
+                  </div>
+
+                  {/* SEÇÃO DE REGISTRO FOTOGRÁFICO - DEPOIS */}
+                  <div className="space-y-3 pt-2">
+                    <label className="text-[10px] font-black text-emerald-600 uppercase tracking-widest ml-1">Registrar Fotos (Evidência de Conclusão)</label>
+                    <div className="flex flex-wrap gap-3">
+                      {photosAfter.map((p, i) => (
+                        <div key={i} className="relative group">
+                          <img src={p} className="w-20 h-20 object-cover rounded-xl border border-emerald-100" alt={`After ${i}`} />
+                          <button type="button" onClick={() => removePhoto(i, 'after')} className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ))}
+                      <label className="w-20 h-20 border-2 border-dashed border-emerald-200 rounded-xl flex flex-col items-center justify-center text-emerald-400 cursor-pointer hover:border-emerald-500 hover:bg-emerald-50 transition-all">
+                        <Camera size={20} />
+                        <span className="text-[8px] font-black mt-1 uppercase">Capturar</span>
+                        <input type="file" accept="image/*" capture="environment" multiple className="hidden" onChange={(e) => handleFileChange(e, 'after')} />
+                      </label>
+                    </div>
                   </div>
                 </div>
               )}
