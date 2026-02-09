@@ -57,7 +57,6 @@ const Reports: React.FC<{ data: AppData }> = ({ data }) => {
       return eq?.condo_id === condoId;
     });
 
-    // Filtro de Data (Aplicável a OS e Alertas)
     if (dateStart) {
       osList = osList.filter(os => os.created_at >= dateStart);
       alertList = alertList.filter(a => a.created_at >= dateStart);
@@ -67,7 +66,6 @@ const Reports: React.FC<{ data: AppData }> = ({ data }) => {
       alertList = alertList.filter(a => a.created_at <= dateEnd + 'T23:59:59');
     }
 
-    // Filtro de Categoria
     if (categoryFilter !== 'all') {
       if (reportType === 'os') osList = osList.filter(os => os.type === categoryFilter);
       if (reportType === 'equipment') eqList = eqList.filter(eq => eq.type_id === categoryFilter);
@@ -77,13 +75,23 @@ const Reports: React.FC<{ data: AppData }> = ({ data }) => {
     return { condo, osList, eqList, sysList, alertList };
   }, [data, selectedCondoId, userCondoId, reportType, categoryFilter, dateStart, dateEnd]);
 
+  const getUserNameWithRole = (id?: string) => {
+    if (!id) return '---';
+    if (id === 'AUTOMAÇÃO' || id === 'SISTEMA') return '🤖 SISTEMA';
+    const found = data.users.find(u => u.id === id);
+    if (!found) return 'Removido';
+    const roleLabel = found.role === UserRole.RONDA ? 'RONDA' : 
+                      found.role === UserRole.TECHNICIAN ? 'TÉCNICO' : 
+                      found.role === UserRole.ADMIN ? 'ADM' : 'GESTOR';
+    return `${found.name} (${roleLabel})`;
+  };
+
   const handlePrint = () => window.print();
 
   if (showPrintView) {
     return (
       <div className="bg-white text-slate-900 p-0 md:p-10 min-h-screen">
         <div className="max-w-5xl mx-auto space-y-8">
-          {/* Header do Relatório */}
           <div className="flex justify-between items-start border-b-4 border-slate-900 pb-6">
              <div>
                 <h1 className="text-2xl font-black uppercase tracking-tighter text-slate-900">
@@ -101,7 +109,6 @@ const Reports: React.FC<{ data: AppData }> = ({ data }) => {
              </div>
           </div>
 
-          {/* Info do Condomínio */}
           <div className="grid grid-cols-2 gap-4 bg-slate-50 p-6 rounded-2xl border border-slate-100">
              <div>
                 <h2 className="text-[9px] font-black text-blue-600 uppercase tracking-widest mb-1">Unidade Gerencial</h2>
@@ -115,12 +122,11 @@ const Reports: React.FC<{ data: AppData }> = ({ data }) => {
              </div>
           </div>
 
-          {/* Conteúdo Dinâmico conforme ReportType */}
           <div className="space-y-6">
             {reportType === 'os' && (
               <div className="space-y-4">
                 <h3 className="text-[10px] font-black uppercase tracking-widest border-b pb-2 flex items-center text-slate-400">
-                   <ClipboardList size={14} className="mr-2" /> Registros de Manutenção
+                   <ClipboardList size={14} className="mr-2" /> Registros de Manutenção e Vistorias
                 </h3>
                 <div className="overflow-hidden border border-slate-200 rounded-xl">
                   <table className="w-full text-left text-[10px] border-collapse">
@@ -128,6 +134,7 @@ const Reports: React.FC<{ data: AppData }> = ({ data }) => {
                       <tr>
                         <th className="p-3 border-b font-black uppercase text-slate-500">Data</th>
                         <th className="p-3 border-b font-black uppercase text-slate-500">Tipo</th>
+                        <th className="p-3 border-b font-black uppercase text-slate-500">Responsável (Ronda/Técnico)</th>
                         <th className="p-3 border-b font-black uppercase text-slate-500">Descrição / Ocorrência</th>
                         <th className="p-3 border-b font-black uppercase text-slate-500 text-center">Status</th>
                       </tr>
@@ -137,6 +144,7 @@ const Reports: React.FC<{ data: AppData }> = ({ data }) => {
                         <tr key={os.id} className="hover:bg-slate-50">
                           <td className="p-3 font-bold whitespace-nowrap">{new Date(os.created_at).toLocaleDateString()}</td>
                           <td className="p-3 font-black uppercase text-blue-600">{os.type}</td>
+                          <td className="p-3 font-black uppercase text-slate-800">{getUserNameWithRole(os.technician_id)}</td>
                           <td className="p-3 text-slate-600 leading-tight">
                             <p className="font-bold text-slate-900">{os.problem_description}</p>
                             {os.actions_performed && <p className="mt-1 opacity-70 italic">Ação: {os.actions_performed.substring(0, 100)}...</p>}
@@ -213,37 +221,13 @@ const Reports: React.FC<{ data: AppData }> = ({ data }) => {
                           </tr>
                         );
                       })}
-                      {reportData.alertList.length === 0 && (
-                        <tr><td colSpan={4} className="p-10 text-center italic text-slate-400">Nenhuma anomalia crítica registrada para este período.</td></tr>
-                      )}
                     </tbody>
                   </table>
                 </div>
               </div>
             )}
-
-            {reportType === 'system' && (
-               <div className="space-y-4">
-                 <h3 className="text-[10px] font-black uppercase tracking-widest border-b pb-2 flex items-center text-slate-400">
-                    <Wrench size={14} className="mr-2" /> Integridade de Sistemas Prediais
-                 </h3>
-                 <div className="grid grid-cols-2 gap-4">
-                   {reportData.sysList.map(sys => (
-                     <div key={sys.id} className="p-5 border border-slate-100 rounded-2xl bg-slate-50/50">
-                        <p className="text-[10px] font-black text-blue-600 uppercase mb-1">{sys.name}</p>
-                        <p className="text-[11px] font-medium text-slate-700 mb-3">{sys.parameters || 'Parâmetros normais de operação.'}</p>
-                        <div className="flex justify-between items-center text-[9px] font-black uppercase text-slate-400">
-                           <span>Local: {sys.location}</span>
-                           <span>Revisão: {sys.maintenance_period}d</span>
-                        </div>
-                     </div>
-                   ))}
-                 </div>
-               </div>
-            )}
           </div>
 
-          {/* Rodapé de Assinaturas */}
           <div className="pt-20 grid grid-cols-2 gap-20">
              <div className="border-t border-slate-400 pt-4 text-center">
                 <p className="text-xs font-black uppercase">{reportData.condo?.manager}</p>
@@ -278,7 +262,6 @@ const Reports: React.FC<{ data: AppData }> = ({ data }) => {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
-        {/* Sidebar de Configuração */}
         <div className="xl:col-span-1 space-y-6">
           <div className="bg-white rounded-[2.5rem] border border-slate-200 p-8 shadow-sm space-y-6">
             <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest flex items-center mb-4">
@@ -353,7 +336,6 @@ const Reports: React.FC<{ data: AppData }> = ({ data }) => {
           </div>
         </div>
 
-        {/* Preview / Resumo */}
         <div className="xl:col-span-3 space-y-6">
            <div className="bg-white rounded-[2.5rem] border border-slate-200 p-10 shadow-sm flex flex-col items-center justify-center text-center">
               <div className="bg-slate-50 p-6 rounded-[2rem] mb-6">
@@ -361,7 +343,7 @@ const Reports: React.FC<{ data: AppData }> = ({ data }) => {
               </div>
               <h4 className="text-xl font-black text-slate-900 mb-2">Editor de Documentos Ativo</h4>
               <p className="text-sm text-slate-500 font-medium max-w-md mx-auto leading-relaxed">
-                Utilize a barra lateral para filtrar os registros desejados. O relatório gerado obedece as normas de manutenção predial e está pronto para impressão ou envio digital ao síndico.
+                Utilize a barra lateral para filtrar os registros desejados. O relatório gerado obedece as normas de manutenção predial e agora inclui o nome do técnico responsável por cada execução.
               </p>
               
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full mt-12">

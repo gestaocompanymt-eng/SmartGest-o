@@ -28,7 +28,7 @@ import {
   Search,
   ListFilter
 } from 'lucide-react';
-import { AppData, OSStatus, OSType, UserRole, Appointment, ServiceOrder, Condo, Equipment, System } from '../types';
+import { AppData, OSStatus, OSType, UserRole, Appointment, ServiceOrder, Condo, Equipment, System, User } from '../types';
 import { useNavigate } from 'react-router-dom';
 
 const Dashboard: React.FC<{ 
@@ -55,6 +55,18 @@ const Dashboard: React.FC<{
   const userCondoId = user?.condo_id;
 
   const canManageSchedule = isAdmin || isSindicoAdmin;
+
+  // Helper para buscar nome do usuário com Cargo
+  const getUserNameWithRole = (id?: string) => {
+    if (!id) return '---';
+    if (id === 'AUTOMAÇÃO' || id === 'SISTEMA') return '🤖 SISTEMA';
+    const found = data.users.find(u => u.id === id);
+    if (!found) return 'Usuário Removido';
+    const roleLabel = found.role === UserRole.RONDA ? 'RONDA' : 
+                      found.role === UserRole.TECHNICIAN ? 'TÉCNICO' : 
+                      found.role === UserRole.ADMIN ? 'ADM' : 'GESTOR';
+    return `${found.name} (${roleLabel})`;
+  };
 
   const filteredOSList = useMemo(() => {
     let list = userCondoId 
@@ -93,7 +105,6 @@ const Dashboard: React.FC<{
       if (a.status === 'Cancelada' as any || a.status === 'Realizada') return false;
       if (userCondoId && a.condo_id && a.condo_id !== userCondoId) return false;
 
-      // Verificação de segurança: Já existe OS para este agendamento hoje no Supabase/Local?
       const exists = data.serviceOrders.some(os => 
         (os.problem_description.includes(`[ID:${a.id}]`) || os.id === a.service_order_id) && 
         os.created_at.startsWith(todayStr) &&
@@ -113,9 +124,7 @@ const Dashboard: React.FC<{
       isProcessingAutomation.current = true;
       
       pendingToOpen.forEach(appt => {
-        const osId = `OS-AUTO-${todayStr}-${appt.id}`; // ID previsível para evitar duplicação em múltiplos dispositivos
-        
-        // Verifica se o ID já está na lista local antes de adicionar (prevenção extra)
+        const osId = `OS-AUTO-${todayStr}-${appt.id}`;
         if (data.serviceOrders.some(o => o.id === osId)) return;
 
         const isRondaRoutine = appt.description.toLowerCase().includes('ronda') || appt.description.toLowerCase().includes('vistoria');
@@ -132,7 +141,7 @@ const Dashboard: React.FC<{
           parts_replaced: [],
           photos_before: [],
           photos_after: [],
-          technician_id: 'aguardando-tecnico',
+          technician_id: 'AUTOMAÇÃO',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         });
@@ -204,7 +213,7 @@ const Dashboard: React.FC<{
     const apptData: Appointment = {
       id: editingAppt?.id || `APT-${Date.now()}`,
       condo_id: condoIdToSave,
-      technician_id: editingAppt?.technician_id || user?.id || 'admin',
+      technician_id: user?.id || 'admin', 
       date: formData.get('date') as string,
       time: formData.get('time') as string,
       description: (formData.get('description') as string) || '',
@@ -344,7 +353,10 @@ const Dashboard: React.FC<{
                         </div>
                         <div className="min-w-0">
                           <p className="text-xs font-black text-slate-800 truncate">{os.type}: {os.problem_description.substring(0, 50)}...</p>
-                          <p className="text-[9px] font-bold text-slate-400 uppercase">{new Date(os.created_at).toLocaleDateString()} • {data.condos.find(c => c.id === os.condo_id)?.name || 'Geral'}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                             <p className="text-[9px] font-bold text-slate-400 uppercase">{new Date(os.created_at).toLocaleDateString()} • {data.condos.find(c => c.id === os.condo_id)?.name || 'Geral'}</p>
+                             <span className="text-[8px] font-black text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded uppercase">Resp: {getUserNameWithRole(os.technician_id)}</span>
+                          </div>
                         </div>
                       </div>
                       <ChevronRight size={16} className="text-slate-300 group-hover:text-blue-500 transition-all" />
@@ -395,6 +407,7 @@ const Dashboard: React.FC<{
                        <span className="text-[9px] text-white/40 font-black uppercase">{data.condos.find(c => c.id === appt.condo_id)?.name || 'Geral'}</span>
                        <span className={`text-[7px] font-black px-1.5 py-0.5 rounded uppercase ${appt.status === 'Cancelada' as any ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>{appt.status}</span>
                      </div>
+                     <p className="text-[7px] font-black text-white/30 uppercase mt-2">Agendado por: {getUserNameWithRole(appt.technician_id)}</p>
                    </div>
                 </div>
               ))}

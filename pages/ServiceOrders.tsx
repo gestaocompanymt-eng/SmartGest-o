@@ -29,6 +29,18 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
   const [selectedSystemId, setSelectedSystemId] = useState('');
   const [osType, setOsType] = useState<OSType>(isRonda ? OSType.VISTORIA : OSType.SERVICE);
 
+  // Helper para buscar nome do usuário com Cargo
+  const getUserNameWithRole = (id?: string) => {
+    if (!id) return 'Não atribuído';
+    if (id === 'AUTOMAÇÃO' || id === 'SISTEMA') return '🤖 SISTEMA';
+    const found = data.users.find(u => u.id === id);
+    if (!found) return 'Usuário Removido';
+    const roleLabel = found.role === UserRole.RONDA ? 'RONDA' : 
+                      found.role === UserRole.TECHNICIAN ? 'TÉCNICO' : 
+                      found.role === UserRole.ADMIN ? 'ADM' : 'GESTOR';
+    return `${found.name} (${roleLabel})`;
+  };
+
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const osId = params.get('id');
@@ -91,7 +103,7 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
       parts_replaced: editingOS?.parts_replaced || [],
       photos_before: editingOS?.photos_before || [],
       photos_after: editingOS?.photos_after || [],
-      technician_id: user?.id || 'unknown',
+      technician_id: user?.id || editingOS?.technician_id || 'unknown', 
       created_at: editingOS?.created_at || new Date().toISOString(),
       service_value: Number(formData.get('service_value')) || 0,
       material_value: Number(formData.get('material_value')) || 0,
@@ -126,7 +138,7 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
   };
 
   const handleShare = async (os: ServiceOrder, condoName?: string) => {
-    const text = `🛠️ *SmartGestão - ${os.type}*\n\n*ID:* ${os.id}\n*Status:* ${os.status}\n\n*Relato:* ${os.problem_description}`;
+    const text = `🛠️ *SmartGestão - ${os.type}*\n\n*ID:* ${os.id}\n*Status:* ${os.status}\n*Resp:* ${getUserNameWithRole(os.technician_id)}\n\n*Relato:* ${os.problem_description}`;
     if (navigator.share) await navigator.share({ title: `${os.type}`, text: text });
     else { await navigator.clipboard.writeText(text); alert('Copiado!'); }
   };
@@ -171,9 +183,14 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
                       <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest">{os.type}</span>
                     </div>
                     <h3 className="font-bold text-slate-900 leading-tight">{os.problem_description.substring(0, 80)}...</h3>
-                    <p className="text-[10px] text-slate-500 font-bold uppercase mt-1 flex items-center">
-                      <Building2 size={12} className="mr-1" /> {condo?.name || '---'}
-                    </p>
+                    <div className="flex items-center gap-3 mt-1">
+                      <p className="text-[10px] text-slate-500 font-bold uppercase flex items-center">
+                        <Building2 size={12} className="mr-1" /> {condo?.name || '---'}
+                      </p>
+                      <p className="text-[10px] text-blue-600 font-black uppercase flex items-center">
+                        <UserIcon size={12} className="mr-1" /> {getUserNameWithRole(os.technician_id)}
+                      </p>
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center justify-between md:justify-end gap-6 border-t md:border-0 pt-3">
@@ -182,7 +199,18 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
               </div>
               {isExpanded && (
                 <div className="px-5 pb-5 border-t border-slate-100 p-5 space-y-4">
-                  <p className="text-sm text-slate-600 italic bg-slate-50 p-4 rounded-xl">{os.actions_performed || 'Sem detalhes de execução.'}</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                     <div>
+                       <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Relatório Técnico</p>
+                       <p className="text-sm text-slate-600 italic bg-slate-50 p-4 rounded-xl">{os.actions_performed || 'Sem detalhes de execução.'}</p>
+                     </div>
+                     <div className="bg-slate-50 p-4 rounded-xl">
+                       <p className="text-[9px] font-black text-slate-400 uppercase mb-2">Histórico</p>
+                       <p className="text-[10px] font-bold text-slate-700">Abertura: {new Date(os.created_at).toLocaleString()}</p>
+                       <p className="text-[10px] font-bold text-slate-700">Responsável: {getUserNameWithRole(os.technician_id)}</p>
+                       {os.completed_at && <p className="text-[10px] font-bold text-emerald-600">Conclusão: {new Date(os.completed_at).toLocaleString()}</p>}
+                     </div>
+                  </div>
                   <div className="flex gap-2">
                     <button onClick={() => { setEditingOS(os); setIsModalOpen(true); }} className="flex-1 bg-slate-900 text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center space-x-2">
                       <Edit2 size={14} /> <span>Atualizar</span>
@@ -205,6 +233,17 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
               <button onClick={closeModal} className="p-2.5 bg-white rounded-xl shadow-sm"><X size={20} /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-8 space-y-6 overflow-y-auto custom-scrollbar">
+              <div className="p-4 bg-blue-50 border border-blue-100 rounded-2xl flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <UserIcon size={18} className="text-blue-600" />
+                  <div>
+                    <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest leading-none">Responsável Logado</p>
+                    <p className="text-xs font-black text-blue-900">{user?.name} ({user?.role === UserRole.RONDA ? 'RONDA' : 'TÉCNICO'})</p>
+                  </div>
+                </div>
+                <span className="text-[8px] font-black bg-blue-600 text-white px-2 py-0.5 rounded-lg uppercase">Sessão Ativa</span>
+              </div>
+              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Condomínio</label>
