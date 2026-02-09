@@ -12,11 +12,15 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void; deleteD
   const [selectedTypeId, setSelectedTypeId] = useState('');
 
   const user = data.currentUser;
-  const canManage = user?.role === UserRole.ADMIN || user?.role === UserRole.TECHNICIAN || user?.role === UserRole.SINDICO_ADMIN;
-  const isCondo = user?.role === UserRole.SINDICO_ADMIN;
+  const isSindico = user?.role === UserRole.SINDICO_ADMIN;
+  const isAdmin = user?.role === UserRole.ADMIN;
+  const isTech = user?.role === UserRole.TECHNICIAN;
+  
+  // CORREÇÃO: Síndico tem permissão plena para gerenciar seus ativos
+  const canManage = isAdmin || isTech || isSindico;
   const userCondoId = user?.condo_id;
 
-  const filteredEquipments = isCondo || (user?.role === UserRole.TECHNICIAN && userCondoId)
+  const filteredEquipments = (isSindico || (isTech && userCondoId))
     ? data.equipments.filter((e: Equipment) => e.condo_id === userCondoId)
     : data.equipments;
 
@@ -38,7 +42,7 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void; deleteD
   };
 
   const handleDeleteEquipment = (id: string) => {
-    if (window.confirm('Deseja realmente remover este equipamento do inventário? Esta ação é definitiva.')) {
+    if (window.confirm('Deseja realmente remover este equipamento do inventário?')) {
       if (deleteData) {
         deleteData('equipments', id);
       } else {
@@ -51,7 +55,7 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void; deleteD
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     
-    // CORREÇÃO: Captura o ID do condomínio mesmo que o campo esteja disabled no form
+    // CORREÇÃO: Força o ID do condomínio do usuário logado se ele for Síndico
     const condoId = userCondoId || (formData.get('condoId') as string);
     const typeId = selectedTypeId;
 
@@ -215,7 +219,7 @@ const EquipmentPage: React.FC<{ data: any; updateData: (d: any) => void; deleteD
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Condomínio</label>
-                  <select required name="condoId" defaultValue={editingEq?.condo_id} disabled={!!userCondoId} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none disabled:opacity-60">
+                  <select required name="condoId" defaultValue={editingEq?.condo_id || userCondoId} disabled={!!userCondoId} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none disabled:opacity-60">
                     <option value="">Selecione...</option>
                     {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>

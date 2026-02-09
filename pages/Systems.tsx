@@ -12,11 +12,15 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void; deleteDat
   const [selectedTypeId, setSelectedTypeId] = useState('1');
 
   const user = data.currentUser;
-  const canManage = user?.role === UserRole.ADMIN || user?.role === UserRole.TECHNICIAN || user?.role === UserRole.SINDICO_ADMIN;
-  const isCondo = user?.role === UserRole.SINDICO_ADMIN;
+  const isSindico = user?.role === UserRole.SINDICO_ADMIN;
+  const isAdmin = user?.role === UserRole.ADMIN;
+  const isTech = user?.role === UserRole.TECHNICIAN;
+
+  // CORREÇÃO: Síndico tem permissão plena para gerenciar seus sistemas
+  const canManage = isAdmin || isTech || isSindico;
   const userCondoId = user?.condo_id;
 
-  const filteredSystems = isCondo
+  const filteredSystems = (isSindico || (isTech && userCondoId))
     ? data.systems.filter((s: System) => s.condo_id === userCondoId)
     : data.systems;
 
@@ -29,7 +33,7 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void; deleteDat
 
   const handleDeleteSystem = async (id: string) => {
     if (!canManage) return;
-    if (window.confirm('ATENÇÃO: Deseja realmente excluir este sistema? Esta ação removerá também todos os vínculos de monitoramento IOT associados. Esta ação é definitiva.')) {
+    if (window.confirm('ATENÇÃO: Deseja realmente excluir este sistema?')) {
       if (deleteData) {
         await deleteData('systems', id);
       } else {
@@ -47,7 +51,7 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void; deleteDat
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     
-    // CORREÇÃO: Síndico usa o ID vinculado ao perfil se o campo estiver bloqueado
+    // CORREÇÃO: Força o ID do condomínio do usuário logado se ele for Síndico
     const condoId = userCondoId || (formData.get('condoId') as string);
 
     if (!condoId) {
@@ -85,7 +89,7 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void; deleteDat
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-black text-slate-900 leading-tight">Sistemas Prediais</h1>
-          <p className="text-sm text-slate-500 font-medium">Cronogramas de manutenção e telemetria IOT.</p>
+          <p className="text-sm text-slate-500 font-medium italic">Cronogramas de manutenção e telemetria IOT.</p>
         </div>
         {canManage && (
           <button onClick={() => openModal(null)} className="bg-slate-900 text-white px-6 py-3 rounded-2xl flex items-center space-x-2 font-black uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">
@@ -162,7 +166,7 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void; deleteDat
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                  <div className="space-y-1">
                     <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Condomínio</label>
-                    <select required name="condoId" defaultValue={editingSys?.condo_id} disabled={!!userCondoId} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none disabled:opacity-60">
+                    <select required name="condoId" defaultValue={editingSys?.condo_id || userCondoId} disabled={!!userCondoId} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none disabled:opacity-60">
                        <option value="">Selecione...</option>
                        {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>

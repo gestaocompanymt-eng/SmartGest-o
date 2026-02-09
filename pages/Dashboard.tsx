@@ -187,6 +187,7 @@ const Dashboard: React.FC<{
     if (!canManageSchedule) return;
 
     const formData = new FormData(e.currentTarget);
+    // CORREÇÃO: Força o condo_id do usuário se ele for Síndico
     const condoIdToSave = userCondoId || (formData.get('condo_id') as string);
     
     if (!condoIdToSave) {
