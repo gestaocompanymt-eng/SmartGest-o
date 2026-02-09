@@ -80,10 +80,8 @@ const AppContent: React.FC = () => {
     return clean;
   };
 
-  // Sincronização autoritativa: Se o dado está na nuvem, ele é a verdade
   const cloudFirstUnion = (local: any[], cloud: any[] | null) => {
     if (!cloud) return local || [];
-    // Prioridade total para o Cloud para igualar dispositivos
     return cloud;
   };
 
@@ -145,7 +143,6 @@ const AppContent: React.FC = () => {
         
         const channel = supabase.channel('global-sync')
           .on('postgres_changes', { event: '*', schema: 'public' }, async () => {
-             // Quando algo muda no Supabase, força a igualdade em todos os dispositivos
              if (dataRef.current?.currentUser && !isSyncingRef.current) {
                const fresh = await fetchAllData(dataRef.current);
                setData(fresh);
@@ -225,8 +222,12 @@ const AppContent: React.FC = () => {
 
   if (!data) return null;
 
-  if (!data.currentUser && location.pathname !== '/login') {
-    return <Login onLogin={(u) => updateData({ ...data, currentUser: u })} />;
+  if (!data.currentUser) {
+    return <Login onLogin={(u) => {
+      updateData({ ...data, currentUser: u });
+      // Força a entrada pelo Dashboard após login bem sucedido
+      navigate('/', { replace: true });
+    }} />;
   }
   
   const user = data.currentUser;
@@ -347,7 +348,11 @@ const AppContent: React.FC = () => {
             <Route path="/reports" element={<Reports data={data} />} />
             <Route path="/admin" element={<AdminSettings data={data} updateData={updateData} deleteData={deleteData} />} />
             <Route path="/database" element={<DatabaseSetup />} />
-            <Route path="/login" element={<Login onLogin={(u) => updateData({ ...data, currentUser: u })} />} />
+            <Route path="/login" element={<Login onLogin={(u) => {
+              updateData({ ...data, currentUser: u });
+              navigate('/', { replace: true });
+            }} />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>
       </main>
