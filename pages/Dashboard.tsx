@@ -39,7 +39,8 @@ const Dashboard: React.FC<{
 }> = ({ data, updateData, deleteData, onSync }) => {
   const navigate = useNavigate();
   const agendaRef = useRef<HTMLDivElement>(null);
-  const isProcessingRef = useRef(false); // Trava anti-loop
+  const isProcessingAutomation = useRef(false);
+  
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [editingAppt, setEditingAppt] = useState<Appointment | null>(null);
   const [selectedCondoId, setSelectedCondoId] = useState('');
@@ -79,89 +80,84 @@ const Dashboard: React.FC<{
     }
   };
 
-  // MOTOR DE AUTOMAÇÃO REFORÇADO
+  // MOTOR DE AUTOMAÇÃO: Gera OS baseado nas rotinas (FIXED NO LOOP)
   useEffect(() => {
-    // Se já estiver processando ou não houver agendamentos, aborta
-    if (isProcessingRef.current || !data.appointments.length) return;
+    if (isProcessingAutomation.current) return;
 
     const todayStr = new Date().toISOString().split('T')[0];
     const newOSs: ServiceOrder[] = [];
     const updatedAppts = [...data.appointments];
     let hasChanges = false;
 
-    // Filtra agendamentos que realmente precisam de OS hoje
+    // Filtra agendamentos elegíveis para abertura de OS automática hoje
     const pendingToOpen = data.appointments.filter(a => {
       if (a.status === 'Cancelada' as any || a.status === 'Realizada') return false;
       if (userCondoId && a.condo_id && a.condo_id !== userCondoId) return false;
 
-      // 1. Caso agendamento único pendente
-      if (!a.is_recurring && a.date <= todayStr && a.status === 'Pendente' && !a.service_order_id) {
-        return true;
-      }
-      
-      // 2. Caso recorrente: verifica se JÁ existe OS hoje com o ID desta rotina
-      if (a.is_recurring && a.date <= todayStr) {
-        const alreadyExists = data.serviceOrders.some(os => 
-          os.condo_id === (a.condo_id || userCondoId) && 
+      // Se for recorrente ou estiver na data
+      if (a.date <= todayStr) {
+        // Verifica se JÁ EXISTE OS para este ID de agendamento hoje
+        const exists = data.serviceOrders.some(os => 
           os.problem_description.includes(`[ID:${a.id}]`) && 
           os.created_at.startsWith(todayStr) &&
           os.status !== OSStatus.CANCELLED
         );
-        return !alreadyExists;
+        
+        if (!exists) {
+          if (a.is_recurring) return true;
+          if (!a.is_recurring && a.status === 'Pendente' && !a.service_order_id) return true;
+        }
       }
       return false;
     });
 
-    // Limite de segurança: não processa mais de 10 OS por ciclo para evitar explosão de dados
-    if (pendingToOpen.length === 0) return;
-    const itemsToProcess = pendingToOpen.slice(0, 10);
-
-    isProcessingRef.current = true; // Ativa trava
-
-    itemsToProcess.forEach(appt => {
-      const osId = `OS-AUTO-${Date.now()}-${Math.floor(Math.random() * 1000)}-${appt.id}`;
-      const isRondaRoutine = appt.description.toLowerCase().includes('ronda') || appt.description.toLowerCase().includes('vistoria');
+    if (pendingToOpen.length > 0) {
+      isProcessingAutomation.current = true;
       
-      newOSs.push({
-        id: osId,
-        type: isRondaRoutine ? OSType.VISTORIA : OSType.PREVENTIVE,
-        status: OSStatus.OPEN,
-        condo_id: appt.condo_id || userCondoId || '',
-        equipment_id: appt.equipment_id,
-        system_id: appt.system_id,
-        problem_description: `[ROTINA ${appt.is_recurring ? 'RECORRENTE' : 'PROGRAMADA'}][ID:${appt.id}] ${appt.description}`,
-        actions_performed: '',
-        parts_replaced: [],
-        photos_before: [],
-        photos_after: [],
-        technician_id: 'aguardando-tecnico',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      });
-      
-      if (!appt.is_recurring) {
-        const idx = updatedAppts.findIndex(a => a.id === appt.id);
-        if (idx !== -1) {
-          updatedAppts[idx] = { ...updatedAppts[idx], service_order_id: osId, status: 'Confirmada', updated_at: new Date().toISOString() };
+      pendingToOpen.forEach(appt => {
+        const osId = `OS-AUTO-${Date.now()}-${appt.id}`;
+        const isRondaRoutine = appt.description.toLowerCase().includes('ronda') || appt.description.toLowerCase().includes('vistoria');
+        
+        newOSs.push({
+          id: osId,
+          type: isRondaRoutine ? OSType.VISTORIA : OSType.PREVENTIVE,
+          status: OSStatus.OPEN,
+          condo_id: appt.condo_id || userCondoId || '',
+          equipment_id: appt.equipment_id,
+          system_id: appt.system_id,
+          problem_description: `[ROTINA ${appt.is_recurring ? 'RECORRENTE' : 'PROGRAMADA'}][ID:${appt.id}] ${appt.description}`,
+          actions_performed: '',
+          parts_replaced: [],
+          photos_before: [],
+          photos_after: [],
+          technician_id: 'aguardando-tecnico',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+        
+        if (!appt.is_recurring) {
+          const idx = updatedAppts.findIndex(a => a.id === appt.id);
+          if (idx !== -1) {
+            updatedAppts[idx] = { ...updatedAppts[idx], service_order_id: osId, status: 'Confirmada', updated_at: new Date().toISOString() };
+          }
         }
-      }
-      hasChanges = true;
-    });
-
-    if (hasChanges) {
-      updateData({
-        ...data,
-        serviceOrders: [...newOSs, ...data.serviceOrders],
-        appointments: updatedAppts
+        hasChanges = true;
       });
+
+      if (hasChanges) {
+        updateData({
+          ...data,
+          serviceOrders: [...newOSs, ...data.serviceOrders],
+          appointments: updatedAppts
+        });
+      }
+
+      // Pequeno timeout para permitir o ciclo de renderização e evitar re-entrada imediata
+      setTimeout(() => {
+        isProcessingAutomation.current = false;
+      }, 1000);
     }
-
-    // Libera trava após um pequeno delay para estabilidade
-    setTimeout(() => {
-      isProcessingRef.current = false;
-    }, 500);
-
-  }, [data.appointments, userCondoId, data.serviceOrders.length]); 
+  }, [data.appointments, data.serviceOrders.length, userCondoId]);
 
   const allAppointments = useMemo(() => {
     const base = userCondoId 
@@ -187,8 +183,11 @@ const Dashboard: React.FC<{
     const linkedOS = data.serviceOrders.find(os => 
       os.id === appt.service_order_id || (appt.is_recurring && os.problem_description.includes(`[ID:${appt.id}]`) && os.created_at.startsWith(todayStr))
     );
-    if (linkedOS) navigate(`/os?id=${linkedOS.id}`);
-    else navigate(`/os?condoId=${appt.condo_id || userCondoId}`);
+    if (linkedOS) {
+      navigate(`/os?id=${linkedOS.id}`);
+    } else {
+      navigate(`/os?condoId=${appt.condo_id || userCondoId}`);
+    }
   };
 
   const handleScheduleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -196,7 +195,10 @@ const Dashboard: React.FC<{
     if (!canManageSchedule) return;
     const formData = new FormData(e.currentTarget);
     const condoIdToSave = userCondoId || (formData.get('condo_id') as string);
-    if (!condoIdToSave) return alert("Selecione um condomínio.");
+    if (!condoIdToSave) {
+      alert("Erro: Selecione um condomínio.");
+      return;
+    }
 
     const apptData: Appointment = {
       id: editingAppt?.id || `APT-${Date.now()}`,
@@ -209,9 +211,11 @@ const Dashboard: React.FC<{
       is_recurring: isRecurring,
       updated_at: new Date().toISOString()
     };
+
     const newAppts = editingAppt 
       ? data.appointments.map(a => a.id === editingAppt.id ? apptData : a)
       : [apptData, ...data.appointments];
+
     await updateData({...data, appointments: newAppts});
     setIsScheduleModalOpen(false);
     setEditingAppt(null);
@@ -219,9 +223,12 @@ const Dashboard: React.FC<{
 
   const handleDeleteAppointment = async (id: string) => {
     if (!canManageSchedule) return;
-    if (window.confirm('Excluir esta rotina?')) {
-      if (deleteData) await deleteData('appointments', id);
-      else updateData({...data, appointments: data.appointments.filter(a => a.id !== id)});
+    if (window.confirm('Excluir esta rotina definitivamente?')) {
+      if (deleteData) {
+        await deleteData('appointments', id);
+      } else {
+        updateData({...data, appointments: data.appointments.filter(a => a.id !== id)});
+      }
     }
   };
 

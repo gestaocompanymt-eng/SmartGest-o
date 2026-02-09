@@ -73,7 +73,10 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
     
     const formData = new FormData(e.currentTarget);
     const finalCondoId = userCondoId || selectedCondoId || formData.get('condo_id') as string;
-    if (!finalCondoId) return setSaveStatus('idle');
+    if (!finalCondoId) {
+      setSaveStatus('idle');
+      return;
+    }
 
     const osData: ServiceOrder = {
       id: editingOS?.id || `OS-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -114,35 +117,6 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
     setSaveStatus('idle');
   };
 
-  // LIMPEZA EM LOTE (DELETE ALL FILTERED)
-  const handleDeleteAllFilteredOS = async () => {
-    if (!canDelete) return;
-    const count = filteredOS.length;
-    if (count === 0) return alert("Nenhuma Ordem de Serviço para excluir.");
-    
-    if (window.confirm(`ATENÇÃO: Você está prestes a excluir ${count} Ordens de Serviço de uma vez. Esta ação é irreversível e limpará todo o histórico filtrado. Deseja prosseguir?`)) {
-      setSaveStatus('saving');
-      try {
-        const remainingOS = data.serviceOrders.filter(os => !filteredOS.some(f => f.id === os.id));
-        
-        // No Cloud (Iterativo devido às limitações do deleteData individual)
-        if (deleteData) {
-          for (const os of filteredOS) {
-            await deleteData('service_orders', os.id);
-          }
-        }
-        
-        await updateData({ ...data, serviceOrders: remainingOS });
-        setSaveStatus('success');
-        alert(`${count} ordens excluídas com sucesso.`);
-        setSaveStatus('idle');
-      } catch (error) {
-        setSaveStatus('error');
-        alert("Erro ao limpar em lote.");
-      }
-    }
-  };
-
   const handleDeleteOS = async (id: string) => {
     if (!canDelete) return;
     if (window.confirm('Excluir esta Ordem de Serviço?')) {
@@ -150,16 +124,6 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
       else updateData({ ...data, serviceOrders: data.serviceOrders.filter(o => o.id !== id) });
     }
   };
-
-  const availableEquipments = useMemo(() => 
-    data.equipments.filter((e: Equipment) => e.condo_id === selectedCondoId),
-    [data.equipments, selectedCondoId]
-  );
-
-  const availableSystems = useMemo(() => 
-    data.systems.filter((s: System) => s.condo_id === selectedCondoId),
-    [data.systems, selectedCondoId]
-  );
 
   const handleShare = async (os: ServiceOrder, condoName?: string) => {
     const text = `🛠️ *SmartGestão - ${os.type}*\n\n*ID:* ${os.id}\n*Status:* ${os.status}\n\n*Relato:* ${os.problem_description}`;
@@ -177,15 +141,6 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
           <p className="text-sm text-slate-500 font-medium">{isRonda ? 'Rondas periódicas.' : 'Gestão técnica.'}</p>
         </div>
         <div className="flex flex-wrap gap-2 w-full md:w-auto">
-          {canDelete && filteredOS.length > 5 && (
-            <button 
-              onClick={handleDeleteAllFilteredOS}
-              className="px-4 py-2 bg-red-100 text-red-600 rounded-xl text-[10px] font-black uppercase tracking-widest border border-red-200 hover:bg-red-200 transition-all flex items-center"
-            >
-              <Trash2 size={14} className="mr-1.5" /> Limpar Tudo ({filteredOS.length})
-            </button>
-          )}
-          
           <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="bg-white border rounded-xl px-4 py-2 text-xs font-bold outline-none">
             <option value="all">Todos Status</option>
             {Object.values(OSStatus).map(s => <option key={s} value={s}>{s}</option>)}
