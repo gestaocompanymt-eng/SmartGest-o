@@ -80,7 +80,10 @@ const Dashboard: React.FC<{
   };
 
   // MOTOR DE AUTOMAÇÃO: Gera OS baseado nas rotinas
+  // CORREÇÃO: Removido data.serviceOrders das dependências para quebrar o loop infinito
   useEffect(() => {
+    if (!data.appointments.length) return;
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayStr = today.toISOString().split('T')[0];
@@ -90,15 +93,16 @@ const Dashboard: React.FC<{
     let hasChanges = false;
 
     const pendingToOpen = data.appointments.filter(a => {
-      if (a.status === 'Cancelada' as any) return false;
+      if (a.status === 'Cancelada' as any || a.status === 'Realizada') return false;
       
-      // Filtro de segurança: se for síndico, só processa as dele ou as sem ID (legado)
+      // Filtro de segurança por condomínio
       if (userCondoId && a.condo_id && a.condo_id !== userCondoId) return false;
 
       const isOneTimePending = !a.is_recurring && a.date <= todayStr && a.status === 'Pendente' && !a.service_order_id;
       
       let isRecurringDue = false;
       if (a.is_recurring && a.date <= todayStr) {
+        // Verifica se já existe OS para hoje desta rotina específica
         const alreadyCreatedToday = data.serviceOrders.some(os => 
           os.condo_id === (a.condo_id || userCondoId) && 
           os.problem_description.includes(`[ID:${a.id}]`) && 
@@ -109,6 +113,8 @@ const Dashboard: React.FC<{
       }
       return isOneTimePending || isRecurringDue;
     });
+
+    if (pendingToOpen.length === 0) return;
 
     pendingToOpen.forEach(appt => {
       const osId = `OS-AUTO-${Date.now()}-${appt.id}`;
@@ -147,10 +153,9 @@ const Dashboard: React.FC<{
         appointments: updatedAppts
       });
     }
-  }, [data.appointments, data.serviceOrders, userCondoId]);
+  }, [data.appointments, userCondoId]); // Dependency 'data.serviceOrders' removida para evitar o loop
 
   const allAppointments = useMemo(() => {
-    // CORREÇÃO: Síndico vê as rotinas dele OU rotinas sem condomínio (legado)
     const base = userCondoId 
       ? data.appointments.filter(a => !a.condo_id || a.condo_id === userCondoId) 
       : data.appointments;
@@ -187,7 +192,6 @@ const Dashboard: React.FC<{
     if (!canManageSchedule) return;
 
     const formData = new FormData(e.currentTarget);
-    // CORREÇÃO: Força o condo_id do usuário se ele for Síndico
     const condoIdToSave = userCondoId || (formData.get('condo_id') as string);
     
     if (!condoIdToSave) {
