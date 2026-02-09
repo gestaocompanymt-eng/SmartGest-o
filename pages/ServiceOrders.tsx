@@ -96,8 +96,8 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
       status: (formData.get('status') as OSStatus) || editingOS?.status || OSStatus.OPEN,
       condo_id: finalCondoId,
       location: (formData.get('location') as string) || '',
-      equipment_id: assignmentType === 'equipment' ? selectedEquipmentId : (editingOS?.equipment_id || undefined),
-      system_id: assignmentType === 'system' ? selectedSystemId : (editingOS?.system_id || undefined),
+      equipment_id: assignmentType === 'equipment' ? selectedEquipmentId : undefined,
+      system_id: assignmentType === 'system' ? selectedSystemId : undefined,
       problem_description: (formData.get('description') as string),
       actions_performed: (formData.get('actions') as string) || editingOS?.actions_performed || '',
       parts_replaced: editingOS?.parts_replaced || [],
@@ -127,6 +127,9 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
     setIsModalOpen(false);
     setEditingOS(null);
     setSaveStatus('idle');
+    setAssignmentType('general');
+    setSelectedEquipmentId('');
+    setSelectedSystemId('');
   };
 
   const handleDeleteOS = async (id: string) => {
@@ -261,23 +264,92 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
                   </div>
                 )}
               </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Descrição</label>
-                <textarea required name="description" defaultValue={editingOS?.problem_description} rows={3} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs" />
+
+              {/* SELETOR DE VÍNCULO (O QUE TINHA SUMIDO) */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Vincular Atendimento a:</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['general', 'equipment', 'system'] as const).map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => setAssignmentType(type)}
+                      className={`py-3 rounded-xl text-[9px] font-black uppercase transition-all border ${
+                        assignmentType === type
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-500/20'
+                          : 'bg-white text-slate-400 border-slate-200 hover:border-blue-300'
+                      }`}
+                    >
+                      {type === 'general' ? 'Geral' : type === 'equipment' ? 'Equipamento' : 'Sistema'}
+                    </button>
+                  ))}
+                </div>
               </div>
-              {editingOS && (
-                <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100 space-y-4">
-                  <select name="status" defaultValue={editingOS.status} className="w-full px-5 py-4 bg-white border rounded-2xl font-black text-xs">
-                    {Object.values(OSStatus).map(s => <option key={s} value={s}>{s}</option>)}
+
+              {/* RENDERIZAÇÃO CONDICIONAL DOS VÍNCULOS */}
+              {assignmentType === 'equipment' && (
+                <div className="space-y-1 animate-in fade-in slide-in-from-top-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Selecionar Equipamento</label>
+                  <select
+                    required
+                    value={selectedEquipmentId}
+                    onChange={(e) => setSelectedEquipmentId(e.target.value)}
+                    className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs"
+                  >
+                    <option value="">Selecione o ativo...</option>
+                    {data.equipments
+                      .filter(e => e.condo_id === selectedCondoId)
+                      .map(e => (
+                        <option key={e.id} value={e.id}>{e.manufacturer} {e.model} ({e.location})</option>
+                      ))}
                   </select>
-                  <textarea name="actions" defaultValue={editingOS.actions_performed} rows={4} className="w-full px-5 py-4 bg-white border rounded-2xl font-bold text-xs" placeholder="Relatório técnico..." />
                 </div>
               )}
+
+              {assignmentType === 'system' && (
+                <div className="space-y-1 animate-in fade-in slide-in-from-top-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Selecionar Sistema Predial</label>
+                  <select
+                    required
+                    value={selectedSystemId}
+                    onChange={(e) => setSelectedSystemId(e.target.value)}
+                    className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs"
+                  >
+                    <option value="">Selecione o sistema...</option>
+                    {data.systems
+                      .filter(s => s.condo_id === selectedCondoId)
+                      .map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Descrição do Problema / Solicitação</label>
+                <textarea required name="description" defaultValue={editingOS?.problem_description} rows={3} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs" />
+              </div>
+
+              {editingOS && (
+                <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100 space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Status do Atendimento</label>
+                    <select name="status" defaultValue={editingOS.status} className="w-full px-5 py-4 bg-white border rounded-2xl font-black text-xs">
+                      {Object.values(OSStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Ações Realizadas (Relatório)</label>
+                    <textarea name="actions" defaultValue={editingOS.actions_performed} rows={4} className="w-full px-5 py-4 bg-white border rounded-2xl font-bold text-xs" placeholder="Descreva o que foi feito..." />
+                  </div>
+                </div>
+              )}
+
               <div className="pt-6 flex gap-3">
                 <button type="button" onClick={closeModal} className="flex-1 py-4 border rounded-2xl font-black text-[10px] uppercase text-slate-400">Cancelar</button>
                 <button type="submit" disabled={saveStatus === 'saving'} className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl flex items-center justify-center">
                   {saveStatus === 'saving' ? <RefreshCw className="animate-spin" /> : <Save className="mr-2" />}
-                  <span>{saveStatus === 'saving' ? 'Salvando...' : 'Confirmar'}</span>
+                  <span>{saveStatus === 'saving' ? 'Salvando...' : 'Confirmar OS'}</span>
                 </button>
               </div>
             </form>
