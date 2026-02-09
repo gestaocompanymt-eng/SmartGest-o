@@ -63,7 +63,9 @@ const AppContent: React.FC = () => {
       systems: ['id', 'condo_id', 'type_id', 'name', 'location', 'equipment_ids', 'monitoring_points', 'parameters', 'observations', 'last_maintenance', 'maintenance_period', 'updated_at'],
       service_orders: ['id', 'type', 'status', 'condo_id', 'location', 'equipment_id', 'system_id', 'problem_description', 'actions_performed', 'parts_replaced', 'photos_before', 'photos_after', 'refrigeration_readings', 'technician_id', 'service_value', 'material_value', 'created_at', 'completed_at', 'updated_at'],
       appointments: ['id', 'condo_id', 'technician_id', 'equipment_id', 'system_id', 'date', 'time', 'description', 'status', 'is_recurring', 'service_order_id', 'updated_at'],
-      monitoring_alerts: ['id', 'equipment_id', 'message', 'value', 'is_resolved', 'created_at', 'updated_at']
+      monitoring_alerts: ['id', 'equipment_id', 'message', 'value', 'is_resolved', 'created_at', 'updated_at'],
+      equipment_types: ['id', 'name'],
+      system_types: ['id', 'name']
     };
 
     const allowedColumns = schema[tableName] || [];
@@ -76,12 +78,12 @@ const AppContent: React.FC = () => {
       }
     });
 
-    if (!clean.updated_at) clean.updated_at = timestamp;
+    if (!clean.updated_at && tableName !== 'equipment_types' && tableName !== 'system_types') clean.updated_at = timestamp;
     return clean;
   };
 
   const cloudFirstUnion = (local: any[], cloud: any[] | null) => {
-    if (!cloud) return local || [];
+    if (!cloud || cloud.length === 0) return local || [];
     return cloud;
   };
 
@@ -102,7 +104,9 @@ const AppContent: React.FC = () => {
         supabase.from('service_orders').select('*').order('created_at', { ascending: false }),
         supabase.from('appointments').select('*'),
         supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(300),
-        supabase.from('monitoring_alerts').select('*')
+        supabase.from('monitoring_alerts').select('*'),
+        supabase.from('equipment_types').select('*'),
+        supabase.from('system_types').select('*')
       ];
 
       const responses = await Promise.all(queries);
@@ -116,7 +120,9 @@ const AppContent: React.FC = () => {
         serviceOrders: cloudFirstUnion(currentLocalData.serviceOrders, responses[4].data),
         appointments: cloudFirstUnion(currentLocalData.appointments, responses[5].data),
         waterLevels: responses[6].data || [],
-        monitoringAlerts: cloudFirstUnion(currentLocalData.monitoringAlerts, responses[7].data)
+        monitoringAlerts: cloudFirstUnion(currentLocalData.monitoringAlerts, responses[7].data),
+        equipmentTypes: cloudFirstUnion(currentLocalData.equipmentTypes, responses[8].data),
+        systemTypes: cloudFirstUnion(currentLocalData.systemTypes, responses[9].data)
       };
       
       setSyncStatus('synced');
@@ -173,7 +179,9 @@ const AppContent: React.FC = () => {
         { name: 'equipments', data: newData.equipments },
         { name: 'service_orders', data: newData.serviceOrders },
         { name: 'appointments', data: newData.appointments },
-        { name: 'monitoring_alerts', data: newData.monitoringAlerts }
+        { name: 'monitoring_alerts', data: newData.monitoringAlerts },
+        { name: 'equipment_types', data: newData.equipmentTypes },
+        { name: 'system_types', data: newData.systemTypes }
       ];
 
       try {
@@ -202,6 +210,8 @@ const AppContent: React.FC = () => {
       if (tableName === 'systems') newData.systems = prev.systems.filter(s => s.id !== id);
       if (tableName === 'users') newData.users = prev.users.filter(u => u.id !== id);
       if (tableName === 'appointments') newData.appointments = prev.appointments.filter(a => a.id !== id);
+      if (tableName === 'equipment_types') newData.equipmentTypes = prev.equipmentTypes.filter(t => t.id !== id);
+      if (tableName === 'system_types') newData.systemTypes = prev.systemTypes.filter(t => t.id !== id);
       
       saveStore(newData);
       return newData;
@@ -225,7 +235,6 @@ const AppContent: React.FC = () => {
   if (!data.currentUser) {
     return <Login onLogin={(u) => {
       updateData({ ...data, currentUser: u });
-      // Força a entrada pelo Dashboard após login bem sucedido
       navigate('/', { replace: true });
     }} />;
   }

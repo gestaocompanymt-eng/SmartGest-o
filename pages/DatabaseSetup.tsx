@@ -5,11 +5,10 @@ import { Database, Copy, CheckCircle2, AlertTriangle, Terminal, ShieldCheck, Tra
 const DatabaseSetup: React.FC = () => {
   const [copied, setCopied] = React.useState(false);
 
-  const sqlScript = `-- 🚀 SMARTGESTÃO MASTER SCRIPT V8.0 (UNIFICAÇÃO TOTAL)
--- Este script limpa conflitos e reconstrói a base exata do App.
--- Instrução: Copie tudo e cole em um NOVO SQL Query no Supabase.
+  const sqlScript = `-- 🚀 SMARTGESTÃO MASTER SCRIPT V8.1 (UNIFICAÇÃO TOTAL + DINAMISMO)
+-- Este script reconstrói a base exata com suporte a categorias dinâmicas.
 
--- 1. LIMPEZA RADICAL DE CONFLITOS (Ordem correta para evitar erros de FK)
+-- 1. LIMPEZA RADICAL
 DROP TABLE IF EXISTS monitoring_alerts CASCADE;
 DROP TABLE IF EXISTS appointments CASCADE;
 DROP TABLE IF EXISTS service_orders CASCADE;
@@ -17,6 +16,8 @@ DROP TABLE IF EXISTS systems CASCADE;
 DROP TABLE IF EXISTS equipments CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 DROP TABLE IF EXISTS condos CASCADE;
+DROP TABLE IF EXISTS equipment_types CASCADE;
+DROP TABLE IF EXISTS system_types CASCADE;
 
 -- 2. FUNÇÃO DE DATA AUTOMÁTICA
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -28,6 +29,17 @@ END;
 $$ language 'plpgsql';
 
 -- 3. RECONSTRUÇÃO DA INFRAESTRUTURA
+
+-- Tipos Dinâmicos
+CREATE TABLE equipment_types (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL
+);
+
+CREATE TABLE system_types (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL
+);
 
 -- Tabela de Condomínios
 CREATE TABLE condos (
@@ -51,7 +63,7 @@ CREATE TABLE users (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Tabela de Equipamentos (Com Refrigeração e IOT)
+-- Tabela de Equipamentos
 CREATE TABLE equipments (
   id TEXT PRIMARY KEY,
   condo_id TEXT REFERENCES condos(id) ON DELETE CASCADE,
@@ -143,7 +155,7 @@ CREATE TABLE monitoring_alerts (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 4. TELEMETRIA (Mantida a estrutura atual)
+-- 4. TELEMETRIA
 CREATE TABLE IF NOT EXISTS nivel_caixa (
   id BIGSERIAL PRIMARY KEY,
   condominio_id TEXT,
@@ -153,7 +165,7 @@ CREATE TABLE IF NOT EXISTS nivel_caixa (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 5. GATILHOS DE ATUALIZAÇÃO
+-- 5. GATILHOS
 CREATE TRIGGER tr_condos_upd BEFORE UPDATE ON condos FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER tr_users_upd BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER tr_equipments_upd BEFORE UPDATE ON equipments FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -162,7 +174,7 @@ CREATE TRIGGER tr_os_upd BEFORE UPDATE ON service_orders FOR EACH ROW EXECUTE FU
 CREATE TRIGGER tr_appts_upd BEFORE UPDATE ON appointments FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER tr_alerts_upd BEFORE UPDATE ON monitoring_alerts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- 6. PERMISSÕES GLOBAIS (Resolve erros de permissão no App)
+-- 6. PERMISSÕES GLOBAIS
 ALTER TABLE condos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE equipments ENABLE ROW LEVEL SECURITY;
@@ -171,6 +183,8 @@ ALTER TABLE service_orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE appointments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE monitoring_alerts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE nivel_caixa ENABLE ROW LEVEL SECURITY;
+ALTER TABLE equipment_types ENABLE ROW LEVEL SECURITY;
+ALTER TABLE system_types ENABLE ROW LEVEL SECURITY;
 
 DO $$
 DECLARE
@@ -198,17 +212,17 @@ END $$;
             <Rocket size={24} />
           </div>
           <div>
-            <h1 className="text-xl font-black text-slate-900 leading-none">Unificação de Banco V8.0</h1>
-            <p className="text-[10px] text-blue-600 font-black uppercase tracking-widest mt-1">Script Mestre Consolidado</p>
+            <h1 className="text-xl font-black text-slate-900 leading-none">Unificação de Banco V8.1</h1>
+            <p className="text-[10px] text-blue-600 font-black uppercase tracking-widest mt-1">Script Mestre Consolidado Dinâmico</p>
           </div>
         </div>
 
         <div className="p-5 bg-amber-50 border border-amber-100 rounded-3xl flex items-start space-x-4 mb-8">
           <AlertTriangle className="text-amber-600 shrink-0 mt-1" size={20} />
           <div className="space-y-1">
-            <p className="text-[10px] font-black text-amber-900 uppercase">Atenção Síndico / Gestor</p>
+            <p className="text-[10px] font-black text-amber-900 uppercase">Instruções de Manutenção</p>
             <p className="text-[10px] text-amber-700 font-bold leading-relaxed">
-              O script abaixo remove as tabelas antigas (exceto a de telemetria de nível) para criar uma estrutura limpa. Isso apagará dados que não foram sincronizados corretamente antes, mas garantirá que o erro de gravação suma para sempre.
+              O script abaixo agora inclui as tabelas dinâmicas de tipos de equipamentos e sistemas. Execute no SQL Editor do Supabase para que as customizações feitas pelo Admin possam ser salvas na nuvem.
             </p>
           </div>
         </div>
@@ -222,7 +236,7 @@ END $$;
               }`}
             >
               {copied ? <CheckCircle2 size={16} /> : <Copy size={16} />}
-              <span>{copied ? 'Copiado!' : 'Copiar Script Unificado'}</span>
+              <span>{copied ? 'Copiado!' : 'Copiar Script V8.1'}</span>
             </button>
           </div>
           

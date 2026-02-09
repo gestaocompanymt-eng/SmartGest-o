@@ -4,9 +4,9 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { 
   User, Trash2, Edit2, X, Save, Building2, RefreshCw, Database, CheckCircle, AlertTriangle, 
   Github, Cloud, ShieldCheck, Activity, Key, Globe, ExternalLink, ArrowRight, Code, Eye, EyeOff,
-  Server
+  Server, Layers, Wrench, Plus, Tag
 } from 'lucide-react';
-import { UserRole, User as UserType, Condo, GithubConfig } from '../types';
+import { UserRole, User as UserType, Condo, GithubConfig, EquipmentType, SystemType } from '../types';
 import { syncDataToGithub } from '../githubService';
 
 const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void; deleteData?: (type: any, id: string) => void }> = ({ data, updateData, deleteData }) => {
@@ -23,6 +23,10 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void; deleteD
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
+  // Estados para Gestão de Tipos
+  const [newEqTypeName, setNewEqTypeName] = useState('');
+  const [newSysTypeName, setNewSysTypeName] = useState('');
+
   const [syncLoading, setSyncLoading] = useState(false);
   const [syncStatus, setSyncStatus] = useState<{ type: 'success' | 'error' | null, msg: string }>({ type: null, msg: '' });
 
@@ -34,6 +38,38 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void; deleteD
         const newUsers = data.users.filter((u: UserType) => u.id !== id);
         updateData({ ...data, users: newUsers });
       }
+    }
+  };
+
+  const handleAddEquipmentType = () => {
+    if (!newEqTypeName.trim()) return;
+    const newType: EquipmentType = {
+      id: `ET-${Date.now()}`,
+      name: newEqTypeName.trim()
+    };
+    updateData({ ...data, equipmentTypes: [...data.equipmentTypes, newType] });
+    setNewEqTypeName('');
+  };
+
+  const handleDeleteEquipmentType = (id: string) => {
+    if (window.confirm('Excluir esta categoria de equipamento? Isso pode afetar filtros existentes.')) {
+      updateData({ ...data, equipmentTypes: data.equipmentTypes.filter((t: EquipmentType) => t.id !== id) });
+    }
+  };
+
+  const handleAddSystemType = () => {
+    if (!newSysTypeName.trim()) return;
+    const newType: SystemType = {
+      id: `ST-${Date.now()}`,
+      name: newSysTypeName.trim()
+    };
+    updateData({ ...data, systemTypes: [...data.systemTypes, newType] });
+    setNewSysTypeName('');
+  };
+
+  const handleDeleteSystemType = (id: string) => {
+    if (window.confirm('Excluir esta categoria de sistema?')) {
+      updateData({ ...data, systemTypes: data.systemTypes.filter((t: SystemType) => t.id !== id) });
     }
   };
 
@@ -102,8 +138,8 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void; deleteD
     <div className="space-y-8 pb-12">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 leading-tight">Administração</h1>
-          <p className="text-sm text-slate-500 font-medium italic">Infraestrutura e segurança global.</p>
+          <h1 className="text-2xl font-black text-slate-900 leading-tight">Configurações Master</h1>
+          <p className="text-sm text-slate-500 font-medium italic">Infraestrutura, Catálogos e Segurança.</p>
         </div>
         <button 
           onClick={() => navigate('/database')}
@@ -116,6 +152,7 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void; deleteD
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
+          {/* Gestão de Usuários */}
           <div className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm">
             <div className="p-6 border-b flex justify-between items-center bg-slate-50/50">
               <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-[10px]">
@@ -144,6 +181,70 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void; deleteD
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Gestão de Tipos de Equipamento */}
+          <div className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm">
+             <div className="p-6 border-b flex justify-between items-center bg-slate-50/50">
+               <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-[10px]">
+                 <Layers size={18} className="mr-2 text-blue-600" /> Catálogo de Equipamentos
+               </h3>
+               <div className="flex gap-2">
+                 <input 
+                   type="text" 
+                   value={newEqTypeName}
+                   onChange={(e) => setNewEqTypeName(e.target.value)}
+                   placeholder="Ex: Elevadores" 
+                   className="px-3 py-1.5 bg-white border rounded-lg text-xs font-bold outline-none focus:border-blue-500"
+                 />
+                 <button onClick={handleAddEquipmentType} className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all"><Plus size={16} /></button>
+               </div>
+             </div>
+             <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-3">
+               {data.equipmentTypes.map((t: EquipmentType) => (
+                 <div key={t.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100 group">
+                   <div className="flex items-center gap-2">
+                     <Tag size={12} className="text-blue-500" />
+                     <span className="text-[10px] font-black text-slate-700 uppercase">{t.name}</span>
+                   </div>
+                   <button onClick={() => handleDeleteEquipmentType(t.id)} className="p-1 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+                     <Trash2 size={12} />
+                   </button>
+                 </div>
+               ))}
+             </div>
+          </div>
+
+          {/* Gestão de Tipos de Sistema */}
+          <div className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm">
+             <div className="p-6 border-b flex justify-between items-center bg-slate-50/50">
+               <h3 className="font-black text-slate-800 flex items-center uppercase tracking-widest text-[10px]">
+                 <Wrench size={18} className="mr-2 text-blue-600" /> Catálogo de Sistemas
+               </h3>
+               <div className="flex gap-2">
+                 <input 
+                   type="text" 
+                   value={newSysTypeName}
+                   onChange={(e) => setNewSysTypeName(e.target.value)}
+                   placeholder="Ex: Sistema Solar" 
+                   className="px-3 py-1.5 bg-white border rounded-lg text-xs font-bold outline-none focus:border-blue-500"
+                 />
+                 <button onClick={handleAddSystemType} className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all"><Plus size={16} /></button>
+               </div>
+             </div>
+             <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-3">
+               {data.systemTypes.map((t: SystemType) => (
+                 <div key={t.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100 group">
+                   <div className="flex items-center gap-2">
+                     <Activity size={12} className="text-blue-500" />
+                     <span className="text-[10px] font-black text-slate-700 uppercase">{t.name}</span>
+                   </div>
+                   <button onClick={() => handleDeleteSystemType(t.id)} className="p-1 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+                     <Trash2 size={12} />
+                   </button>
+                 </div>
+               ))}
+             </div>
           </div>
         </div>
 
@@ -216,7 +317,7 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void; deleteD
 
       {isUserModalOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-[2.5rem] w-full max-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b flex justify-between items-center bg-slate-50">
               <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">Perfil de Acesso</h2>
               <button onClick={() => { setIsUserModalOpen(false); setEditingUser(null); setIsSubmitting(false); }} className="p-2 text-slate-400 hover:text-slate-600 bg-white rounded-xl shadow-sm"><X size={24} /></button>
