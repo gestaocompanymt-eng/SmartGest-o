@@ -155,6 +155,7 @@ export interface ServiceOrder {
   material_value?: number;
   updated_at?: string;
   refrigeration_readings?: RefrigerationReadings;
+  sync_status?: 'pending' | 'synced'; // Novo campo para controle offline
 }
 
 export interface Appointment {

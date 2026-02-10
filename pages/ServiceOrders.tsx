@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { 
-  Plus, FileText, ChevronDown, ChevronUp, X, DollarSign, Edit2, Share2, Wrench, MapPin, Camera, Trash2, Image as ImageIcon, CheckCircle2, Save, Layers, Settings, Building2, RefreshCw, Play, Eye, Thermometer, Droplet, Wind, User as UserIcon, Activity
+  Plus, FileText, ChevronDown, ChevronUp, X, DollarSign, Edit2, Share2, Wrench, MapPin, Camera, Trash2, Image as ImageIcon, CheckCircle2, Save, Layers, Settings, Building2, RefreshCw, Play, Eye, Thermometer, Droplet, Wind, User as UserIcon, Activity, CloudOff, Cloud
 } from 'lucide-react';
 import { OSType, OSStatus, ServiceOrder, Condo, System, UserRole, AppData, Equipment, Appointment } from '../types';
 
@@ -87,7 +88,6 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
     const files = e.target.files;
     if (!files) return;
     
-    // Fix: Cast to File[] to resolve 'unknown' to 'Blob' assignability error
     (Array.from(files) as File[]).forEach(file => {
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -134,7 +134,8 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
       service_value: Number(formData.get('service_value')) || 0,
       material_value: Number(formData.get('material_value')) || 0,
       completed_at: (formData.get('status') === OSStatus.COMPLETED) ? new Date().toISOString() : editingOS?.completed_at,
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
+      sync_status: navigator.onLine ? 'synced' : 'pending' // Define status inicial de sincronia
     };
 
     try {
@@ -200,8 +201,10 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
         {filteredOS.map((os) => {
           const condo = data.condos.find(c => c.id === os.condo_id);
           const isExpanded = expandedOS === os.id;
+          const isPending = os.sync_status === 'pending';
+
           return (
-            <div key={os.id} className={`bg-white rounded-2xl border transition-all overflow-hidden ${isExpanded ? 'border-blue-400 shadow-md' : 'border-slate-200 shadow-sm'}`}>
+            <div key={os.id} className={`bg-white rounded-2xl border transition-all overflow-hidden ${isExpanded ? 'border-blue-400 shadow-md' : 'border-slate-200 shadow-sm'} ${isPending ? 'border-amber-200 bg-amber-50/10' : ''}`}>
               <div className="p-5 flex flex-col md:flex-row md:items-center justify-between cursor-pointer gap-4" onClick={() => setExpandedOS(isExpanded ? null : os.id)}>
                 <div className="flex items-start space-x-4">
                   <div className={`p-3 rounded-xl ${os.status === OSStatus.COMPLETED ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>
@@ -212,6 +215,11 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
                       <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">{os.id}</span>
                       <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${os.status === OSStatus.COMPLETED ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>{os.status}</span>
                       <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest">{os.type}</span>
+                      {isPending && (
+                        <span className="flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-[8px] font-black uppercase">
+                          <CloudOff size={10} /> Sincronia Pendente
+                        </span>
+                      )}
                     </div>
                     <h3 className="font-bold text-slate-900 leading-tight">{os.problem_description.substring(0, 80)}...</h3>
                     <div className="flex items-center gap-3 mt-1">
@@ -240,6 +248,7 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
                        <p className="text-[10px] font-bold text-slate-700">Abertura: {new Date(os.created_at).toLocaleString()}</p>
                        <p className="text-[10px] font-bold text-slate-700">Responsável: {getUserNameWithRole(os.technician_id)}</p>
                        {os.completed_at && <p className="text-[10px] font-bold text-emerald-600">Conclusão: {new Date(os.completed_at).toLocaleString()}</p>}
+                       {isPending && <p className="text-[9px] font-black text-amber-600 uppercase mt-2 flex items-center gap-1"><CloudOff size={12}/> Armazenado Localmente</p>}
                      </div>
                   </div>
 
@@ -297,7 +306,10 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
                     <p className="text-xs font-black text-blue-900">{user?.name} ({user?.role === UserRole.RONDA ? 'RONDA' : 'TÉCNICO'})</p>
                   </div>
                 </div>
-                <span className="text-[8px] font-black bg-blue-600 text-white px-2 py-0.5 rounded-lg uppercase">Sessão Ativa</span>
+                <div className="flex flex-col items-end">
+                   <span className="text-[8px] font-black bg-blue-600 text-white px-2 py-0.5 rounded-lg uppercase">Sessão Ativa</span>
+                   {!navigator.onLine && <span className="text-[8px] font-black text-amber-600 uppercase mt-1">Trabalhando Offline</span>}
+                </div>
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -440,7 +452,9 @@ const ServiceOrders: React.FC<{ data: AppData; updateData: (d: AppData) => void;
                 <button type="button" onClick={closeModal} className="flex-1 py-4 border rounded-2xl font-black text-[10px] uppercase text-slate-400">Cancelar</button>
                 <button type="submit" disabled={saveStatus === 'saving'} className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl flex items-center justify-center">
                   {saveStatus === 'saving' ? <RefreshCw className="animate-spin" /> : <Save className="mr-2" />}
-                  <span>{saveStatus === 'saving' ? 'Salvando...' : 'Confirmar OS'}</span>
+                  <span>
+                    {saveStatus === 'saving' ? 'Salvando...' : (navigator.onLine ? 'Confirmar OS' : 'Salvar Local (Offline)')}
+                  </span>
                 </button>
               </div>
             </form>

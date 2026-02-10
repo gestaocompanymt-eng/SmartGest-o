@@ -9,6 +9,7 @@ import {
 import { getStore, saveStore } from './store';
 import { UserRole, AppData, WaterLevel as WaterLevelType, ServiceOrder } from './types';
 import { supabase, isSupabaseActive } from './supabase';
+import { getPendingOS, removePendingOS, savePendingOS } from './offlineService';
 
 import Dashboard from './pages/Dashboard';
 import Condos from './pages/Condos';
@@ -136,6 +137,40 @@ const AppContent: React.FC = () => {
     }
   }, []);
 
+  // MOTOR DE SINCRONIZAÇÃO OFFLINE (NOVO)
+  const syncOfflineData = useCallback(async () => {
+    if (!navigator.onLine || !isSupabaseActive) return;
+    
+    const pending = await getPendingOS();
+    if (pending.length === 0) return;
+
+    console.log(`SmartGestão: Sincronizando ${pending.length} Ordens de Serviço offline...`);
+    setSyncStatus('syncing');
+
+    try {
+      for (const os of pending) {
+        const clean = sanitizeForSupabase(os, 'service_orders');
+        const { error } = await supabase.from('service_orders').upsert(clean, { onConflict: 'id' });
+        if (!error) {
+          await removePendingOS(os.id);
+        } else {
+          console.error(`Erro ao sincronizar OS ${os.id}:`, error.message);
+        }
+      }
+      
+      // Atualizar estado global após sincronia
+      if (dataRef.current) {
+        const fresh = await fetchAllData(dataRef.current, true);
+        setData(fresh);
+        saveStore(fresh);
+      }
+      setSyncStatus('synced');
+    } catch (err) {
+      console.error("Falha no motor de sincronização offline:", err);
+      setSyncStatus('offline');
+    }
+  }, [fetchAllData]);
+
   useEffect(() => {
     const init = async () => {
       const local = getStore();
@@ -147,6 +182,9 @@ const AppContent: React.FC = () => {
         setData(updated);
         saveStore(updated);
         
+        // Listener de volta à conexão
+        window.addEventListener('online', syncOfflineData);
+
         const channel = supabase.channel('global-sync')
           .on('postgres_changes', { event: '*', schema: 'public' }, async () => {
              if (dataRef.current?.currentUser && !isSyncingRef.current) {
@@ -157,20 +195,24 @@ const AppContent: React.FC = () => {
           })
           .subscribe();
 
+        // Tentar sincronia inicial se houver pendências
+        syncOfflineData();
+
         return () => {
           supabase.removeChannel(channel);
+          window.removeEventListener('online', syncOfflineData);
         };
       }
     };
     init();
-  }, [fetchAllData]);
+  }, [fetchAllData, syncOfflineData]);
 
   const updateData = async (newData: AppData) => {
     setData(newData);
     saveStore(newData);
 
-    if (navigator.onLine && isSupabaseActive) {
-      setSyncStatus('syncing');
+    if (isSupabaseActive) {
+      setSyncStatus(navigator.onLine ? 'syncing' : 'offline');
       
       const tableConfigs = [
         { name: 'condos', data: newData.condos },
@@ -185,6 +227,22 @@ const AppContent: React.FC = () => {
       ];
 
       try {
+        if (!navigator.onLine) {
+          // Se estiver offline, salvar OSs novas/editadas no IndexedDB
+          const currentOS = newData.serviceOrders;
+          // Identificar qual OS foi alterada (pode ser otimizado, aqui garantimos resiliência)
+          // Na prática, como salvamos tudo no state, apenas garantimos que a fila offline seja atualizada
+          // Mas para ser eficiente conforme solicitado, as OSs marcadas como 'pending' no handleSubmit 
+          // já estariam prontas.
+          // Vamos varrer as ordens de serviço e se alguma for 'pending', garantimos persistência
+          for(const os of currentOS) {
+            if (os.sync_status === 'pending') {
+              await savePendingOS(os);
+            }
+          }
+          return;
+        }
+
         for (const config of tableConfigs) {
           if (config.data && config.data.length > 0) {
             const cleanBatch = config.data.map(item => sanitizeForSupabase(item, config.name));

@@ -1,17 +1,18 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { 
   User, Trash2, Edit2, X, Save, Building2, RefreshCw, Database, CheckCircle, AlertTriangle, 
   Github, Cloud, ShieldCheck, Activity, Key, Globe, ExternalLink, ArrowRight, Code, Eye, EyeOff,
-  Server, Layers, Wrench, Plus, Tag
+  Server, Layers, Wrench, Plus, Tag, Download, Upload, FileJson, DatabaseBackup
 } from 'lucide-react';
-import { UserRole, User as UserType, Condo, GithubConfig, EquipmentType, SystemType } from '../types';
+import { UserRole, User as UserType, Condo, GithubConfig, EquipmentType, SystemType, AppData } from '../types';
 import { syncDataToGithub } from '../githubService';
 
-const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void; deleteData?: (type: any, id: string) => void }> = ({ data, updateData, deleteData }) => {
+const AdminSettings: React.FC<{ data: AppData; updateData: (d: any) => void; deleteData?: (type: any, id: string) => void }> = ({ data, updateData, deleteData }) => {
   const user = data.currentUser;
   const navigate = useNavigate();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   if (!user || user.role !== UserRole.ADMIN) {
     return <Navigate to="/" />;
@@ -23,12 +24,49 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void; deleteD
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // Estados para Gestão de Tipos
   const [newEqTypeName, setNewEqTypeName] = useState('');
   const [newSysTypeName, setNewSysTypeName] = useState('');
 
   const [syncLoading, setSyncLoading] = useState(false);
   const [syncStatus, setSyncStatus] = useState<{ type: 'success' | 'error' | null, msg: string }>({ type: null, msg: '' });
+
+  // Funções de Restauração
+  const handleExportBackup = () => {
+    const backupData = {
+      ...data,
+      currentUser: null // Não exportamos a sessão ativa por segurança
+    };
+    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `smartgestao_snapshot_${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportBackup = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const importedData = JSON.parse(e.target?.result as string);
+        if (window.confirm('ATENÇÃO: Isso irá sobrescrever todos os dados locais com o arquivo de backup. Deseja continuar?')) {
+          updateData({
+            ...importedData,
+            currentUser: data.currentUser // Mantemos o usuário logado
+          });
+          alert('Sistema restaurado com sucesso!');
+        }
+      } catch (err) {
+        alert('Erro ao ler o arquivo de restauração. Certifique-se de que é um JSON válido do SmartGestão.');
+      }
+    };
+    reader.readAsText(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   const handleDeleteUser = (id: string) => {
     if (window.confirm('Deseja realmente remover este acesso? Esta ação é definitiva.')) {
@@ -152,6 +190,60 @@ const AdminSettings: React.FC<{ data: any; updateData: (d: any) => void; deleteD
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
+          
+          {/* Snapshots & Restauração (PONTO DE RESTAURAÇÃO PEDIDO) */}
+          <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-8 opacity-5 -rotate-12">
+              <DatabaseBackup size={120} />
+            </div>
+            <div className="relative z-10">
+              <div className="flex items-center space-x-3 mb-6">
+                <div className="bg-blue-600 p-3 rounded-2xl">
+                  <FileJson size={24} className="text-white" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-widest text-blue-400 leading-none">Snapshots & Recuperação</h3>
+                  <p className="text-[10px] text-white/50 font-bold mt-1">Backup local do estado completo do sistema</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <button 
+                  onClick={handleExportBackup}
+                  className="flex items-center justify-center space-x-3 p-5 bg-white/10 hover:bg-white/20 border border-white/5 rounded-2xl transition-all group"
+                >
+                  <Download size={20} className="text-blue-400 group-hover:scale-110 transition-transform" />
+                  <div className="text-left">
+                    <p className="text-[10px] font-black uppercase tracking-widest">Criar Snapshot</p>
+                    <p className="text-[9px] text-white/40 font-bold">Baixar arquivo JSON</p>
+                  </div>
+                </button>
+
+                <label className="flex items-center justify-center space-x-3 p-5 bg-white/10 hover:bg-white/20 border border-white/5 rounded-2xl transition-all group cursor-pointer">
+                  <Upload size={20} className="text-emerald-400 group-hover:scale-110 transition-transform" />
+                  <div className="text-left">
+                    <p className="text-[10px] font-black uppercase tracking-widest">Restaurar Ponto</p>
+                    <p className="text-[9px] text-white/40 font-bold">Carregar arquivo JSON</p>
+                  </div>
+                  <input 
+                    type="file" 
+                    accept=".json" 
+                    className="hidden" 
+                    ref={fileInputRef}
+                    onChange={handleImportBackup}
+                  />
+                </label>
+              </div>
+
+              <div className="mt-6 flex items-start space-x-3 p-4 bg-blue-500/10 rounded-2xl border border-blue-500/20">
+                <AlertTriangle size={16} className="text-blue-400 shrink-0 mt-0.5" />
+                <p className="text-[9px] text-blue-200 font-bold leading-relaxed">
+                  Utilize esta ferramenta antes de realizar grandes alterações. O snapshot contém condomínios, equipamentos, ordens de serviço e usuários.
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* Gestão de Usuários */}
           <div className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm">
             <div className="p-6 border-b flex justify-between items-center bg-slate-50/50">
