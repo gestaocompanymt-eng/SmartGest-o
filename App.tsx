@@ -179,13 +179,18 @@ const AppContent: React.FC = () => {
         
         window.addEventListener('online', syncOfflineData);
 
-        // OUVINTE EM TEMPO REAL (OTIMIZADO PARA VELOCIDADE MÁXIMA)
-        const channel = supabase.channel('global-sync')
-          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'nivel_caixa' }, (payload) => {
-             // Quando o Arduino inserir, injetamos imediatamente no estado
+        // OUVINTE DE ALTA PRIORIDADE PARA TELEMETRIA
+        const channel = supabase.channel('telemetry-feed')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'nivel_caixa' }, (payload) => {
              const newReading = payload.new as WaterLevelType;
+             if (!newReading || !newReading.condominio_id) return;
+
              setData(prev => {
                 if (!prev) return prev;
+                // Evita duplicatas se o fetch global ocorrer ao mesmo tempo
+                const exists = prev.waterLevels.some(l => l.id === newReading.id);
+                if (exists) return prev;
+
                 const updatedLevels = [newReading, ...prev.waterLevels].slice(0, 500);
                 const newData = { ...prev, waterLevels: updatedLevels };
                 saveStore(newData);
@@ -193,8 +198,7 @@ const AppContent: React.FC = () => {
              });
           })
           .on('postgres_changes', { event: '*', schema: 'public' }, async (payload) => {
-             // Outras tabelas continuam com o comportamento padrão de fetch
-             if (payload.table === 'nivel_caixa') return; // Já tratado acima
+             if (payload.table === 'nivel_caixa') return; // Já tratado acima de forma performática
 
              if (dataRef.current?.currentUser && !isSyncingRef.current) {
                const fresh = await fetchAllData(dataRef.current);
@@ -202,7 +206,9 @@ const AppContent: React.FC = () => {
                saveStore(fresh);
              }
           })
-          .subscribe();
+          .subscribe((status) => {
+            if (status === 'SUBSCRIBED') console.log("Canal Realtime Ativado");
+          });
 
         syncOfflineData();
 

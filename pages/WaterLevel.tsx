@@ -28,7 +28,6 @@ import { analyzeWaterLevelHistory } from '../geminiService';
 const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; onRefresh?: () => Promise<void> }> = ({ data, onRefresh }) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [iaAnalysis, setIaAnalysis] = useState<Record<string, {text: string, loading: boolean}>>({});
-  const [showStatusHint, setShowStatusHint] = useState(true);
   
   const user = data.currentUser;
   const isCondoUser = user?.role === UserRole.SINDICO_ADMIN || user?.role === UserRole.RONDA;
@@ -61,29 +60,25 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
 
   const getPointsHistory = (deviceId: string) => {
     if (!deviceId) return [];
-    // Normalização agressiva para garantir match entre Arduino e App
-    const searchId = deviceId.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    // Normalização agressiva: remove espaços e força caixa alta
+    const cleanSearchId = deviceId.trim().toUpperCase();
     
     return data.waterLevels
       .filter(l => {
-        const entryId = String(l.condominio_id || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-        return entryId === searchId;
+        const cleanEntryId = String(l.condominio_id || '').trim().toUpperCase();
+        return cleanEntryId === cleanSearchId;
       })
-      // Garantimos que o array retornado esteja ordenado por data crescente
-      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-      .slice(-50)
-      .map(l => ({
-        time: new Date(l.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        level: Number(l.percentual) || 0,
-        rawDate: l.created_at
-      }));
+      // Ordenação garantida por data decrescente para pegar o mais novo primeiro
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 50)
+      .reverse(); // Inverte para o gráfico exibir cronologicamente da esquerda para a direita
   };
 
   const handleIaAnalysis = async (deviceId: string) => {
     setIaAnalysis(prev => ({ ...prev, [deviceId]: { text: '', loading: true } }));
-    const searchId = deviceId.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const cleanId = deviceId.trim().toUpperCase();
     const history = data.waterLevels
-      .filter(l => String(l.condominio_id || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === searchId)
+      .filter(l => String(l.condominio_id || '').trim().toUpperCase() === cleanId)
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     const result = await analyzeWaterLevelHistory(history);
     setIaAnalysis(prev => ({ ...prev, [deviceId]: { text: result || 'Análise concluída.', loading: false } }));
@@ -118,7 +113,7 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
            <div className="w-2.5 h-2.5 rounded-full bg-slate-900"></div>
            <div className="flex-1 h-10 rounded-xl bg-slate-900 flex items-center px-4 justify-between">
               <span className="text-[9px] font-black uppercase tracking-widest text-white">Referência (GND)</span>
-              <span className="text-[9px] font-black text-slate-400">Pino Fundo</span>
+              <span className="text-[9px] font-black text-slate-400">Comum</span>
            </div>
         </div>
       </div>
@@ -130,18 +125,25 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-900 leading-tight">Monitoramento IOT</h1>
-          <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-1">Telemetria de Reservatórios</p>
+          <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-1">Status Direto do Reservatório</p>
         </div>
         <button 
           onClick={handleManualRefresh} 
           className="flex items-center space-x-2 px-6 py-3 bg-white border-2 border-slate-100 rounded-2xl shadow-sm hover:border-blue-300 transition-all group"
         >
           <RefreshCw size={18} className={`${isRefreshing ? 'animate-spin' : 'group-hover:rotate-180'} text-blue-600 transition-transform duration-500`} />
-          <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Atualizar Sensores</span>
+          <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Forçar Sincronismo</span>
         </button>
       </div>
 
       <div className="space-y-12">
+        {monitoringData.length === 0 && (
+          <div className="py-20 text-center bg-white rounded-3xl border border-dashed border-slate-200">
+            <Droplets size={48} className="mx-auto text-slate-200 mb-4" />
+            <p className="text-xs font-black uppercase text-slate-400">Nenhum sistema de nível configurado</p>
+          </div>
+        )}
+        
         {monitoringData.map((entry) => (
           <div key={entry.condo.id} className="space-y-6">
             <div className="flex items-center justify-between px-8 py-5 bg-white rounded-3xl border border-slate-100 shadow-sm">
@@ -151,18 +153,17 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
               </div>
               <div className="flex items-center space-x-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                 <Activity size={14} className="text-emerald-500 animate-pulse" />
-                <span>Link IOT Ativo</span>
+                <span>Escuta em Tempo Real Ativa</span>
               </div>
             </div>
             
             <div className="grid grid-cols-1 gap-8">
               {entry.points.map((point: any) => {
                 const history = getPointsHistory(point.device_id);
-                // Pegamos SEMPRE o último elemento do array ordenado para o visual principal
+                // O último registro no array revertido é o mais recente
                 const latest = history.length > 0 ? history[history.length - 1] : null;
                 const percent = latest ? latest.level : 0;
                 const analysis = iaAnalysis[point.device_id];
-                const isAnomaly = analysis?.text.toUpperCase().includes('ANOMALIA');
 
                 return (
                   <div key={point.id} className="bg-white rounded-[3rem] border-4 border-white shadow-xl overflow-hidden p-8 flex flex-col hover:shadow-2xl transition-all relative">
@@ -170,7 +171,7 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
                       
                       <div className="xl:w-1/3 space-y-6">
                         <div>
-                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Ponto de Monitoramento</p>
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">ID do Dispositivo: {point.device_id}</p>
                           <h3 className="text-2xl font-black text-slate-900 leading-tight mb-4">{point.name}</h3>
                           <div className={`inline-flex items-center space-x-3 px-6 py-4 rounded-3xl ${percent === 0 ? 'bg-red-600' : 'bg-slate-900'} text-white shadow-xl transition-colors duration-500`}>
                              <Droplets size={24} className={percent > 0 ? 'animate-bounce' : ''} />
@@ -184,12 +185,14 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
 
                         <div className="space-y-3">
                           <div className="flex items-center space-x-2">
-                             <div className="flex h-2 w-2 rounded-full bg-emerald-500 animate-ping"></div>
-                             <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Sinal Online</span>
+                             <div className={`flex h-2 w-2 rounded-full ${latest ? 'bg-emerald-500 animate-ping' : 'bg-slate-300'}`}></div>
+                             <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">
+                               {latest ? 'Sinal Conectado' : 'Aguardando Arduino...'}
+                             </span>
                           </div>
                           <div className="flex items-center space-x-2 text-slate-400">
                              <Clock size={12} />
-                             <span className="text-[9px] font-bold uppercase tracking-tight">Variação: {latest ? latest.time : 'Aguardando pino...'}</span>
+                             <span className="text-[9px] font-bold uppercase tracking-tight">Última leitura: {latest ? latest.time : '---'}</span>
                           </div>
                         </div>
 
@@ -207,9 +210,9 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
                         <div className="flex items-center justify-between mb-6">
                            <div className="flex items-center space-x-2">
                               <History size={16} className="text-slate-400" />
-                              <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Tempo Real x Comportamento</span>
+                              <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Gráfico de Variação</span>
                            </div>
-                           <span className="text-[9px] font-black text-blue-500 uppercase">Sincronizado com Arduino</span>
+                           <span className="text-[9px] font-black text-blue-500 uppercase">Acompanhamento Live</span>
                         </div>
                         
                         <div className="h-[300px] w-full bg-slate-50/50 rounded-[2.5rem] p-6 border border-slate-100">
@@ -227,7 +230,6 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
                                 axisLine={false} 
                                 tickLine={false} 
                                 tick={{fontSize: 10, fontWeight: 'bold', fill: '#94a3b8'}}
-                                minTickGap={30}
                               />
                               <YAxis 
                                 domain={[0, 100]} 
@@ -253,11 +255,20 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
                                 strokeWidth={3} 
                                 fillOpacity={1} 
                                 fill={`url(#colorLevel-${point.id})`} 
-                                animationDuration={1500}
+                                animationDuration={500}
                               />
                             </AreaChart>
                           </ResponsiveContainer>
                         </div>
+                        {analysis?.text && (
+                          <div className="mt-6 p-5 bg-blue-50 border border-blue-100 rounded-3xl animate-in fade-in slide-in-from-bottom-2">
+                             <div className="flex items-center space-x-2 mb-2">
+                               <BrainCircuit size={16} className="text-blue-600" />
+                               <span className="text-[9px] font-black uppercase text-blue-600">Engenheiro IA: Diagnóstico</span>
+                             </div>
+                             <p className="text-xs text-blue-800 font-bold leading-relaxed">{analysis.text}</p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
