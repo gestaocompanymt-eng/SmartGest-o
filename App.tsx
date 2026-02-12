@@ -22,31 +22,13 @@ import WaterLevel from './pages/WaterLevel';
 import Reports from './pages/Reports';
 import DatabaseSetup from './pages/DatabaseSetup';
 
-const NavItem: React.FC<{ to: string; icon: any; label: string }> = ({ to, icon: Icon, label }) => {
-  const location = useLocation();
-  const isActive = location.pathname === to;
-  return (
-    <Link 
-      to={to} 
-      className={`flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-bold text-sm ${
-        isActive ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-      }`}
-    >
-      <Icon size={20} />
-      <span>{label}</span>
-    </Link>
-  );
-};
-
 const AppContent: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [data, setData] = useState<AppData | null>(null);
-  const [isInitialSyncing, setIsInitialSyncing] = useState(true);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'offline'>('syncing');
   
   const isSyncingRef = useRef(false);
   const navigate = useNavigate();
-  const location = useLocation();
   const dataRef = useRef<AppData | null>(null);
 
   useEffect(() => {
@@ -55,8 +37,6 @@ const AppContent: React.FC = () => {
 
   const sanitizeForSupabase = (item: any, tableName: string) => {
     const clean: any = {};
-    const timestamp = new Date().toISOString();
-    
     const schema: Record<string, string[]> = {
       users: ['id', 'name', 'email', 'password', 'role', 'condo_id', 'updated_at'],
       condos: ['id', 'name', 'address', 'manager', 'contract_type', 'start_date', 'updated_at'],
@@ -68,32 +48,19 @@ const AppContent: React.FC = () => {
       equipment_types: ['id', 'name'],
       system_types: ['id', 'name']
     };
-
     const allowedColumns = schema[tableName] || [];
     allowedColumns.forEach(col => {
-      const val = item[col];
-      if (val === undefined || val === '') {
-        clean[col] = null;
-      } else {
-        clean[col] = val;
-      }
+      clean[col] = (item[col] === undefined || item[col] === '') ? null : item[col];
     });
-
-    if (!clean.updated_at && tableName !== 'equipment_types' && tableName !== 'system_types') clean.updated_at = timestamp;
+    if (!clean.updated_at && !['equipment_types', 'system_types'].includes(tableName)) clean.updated_at = new Date().toISOString();
     return clean;
   };
 
-  const cloudFirstUnion = (local: any[], cloud: any[] | null) => {
-    if (!cloud || cloud.length === 0) return local || [];
-    return cloud;
-  };
-
-  const fetchAllData = useCallback(async (currentLocalData: AppData, forceCloud: boolean = false) => {
+  const fetchAllData = useCallback(async (currentLocalData: AppData) => {
     if (!navigator.onLine || !isSupabaseActive || isSyncingRef.current || !currentLocalData.currentUser) {
       setSyncStatus(navigator.onLine ? 'synced' : 'offline');
       return currentLocalData;
     }
-    
     setSyncStatus('syncing');
     isSyncingRef.current = true;
     try {
@@ -104,32 +71,28 @@ const AppContent: React.FC = () => {
         supabase.from('systems').select('*'),
         supabase.from('service_orders').select('*').order('created_at', { ascending: false }),
         supabase.from('appointments').select('*'),
-        supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(300),
+        supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(200),
         supabase.from('monitoring_alerts').select('*'),
         supabase.from('equipment_types').select('*'),
         supabase.from('system_types').select('*')
       ];
-
-      const responses = await Promise.all(queries);
-
+      const res = await Promise.all(queries);
       const updated = {
         ...currentLocalData,
-        users: cloudFirstUnion(currentLocalData.users, responses[0].data),
-        condos: cloudFirstUnion(currentLocalData.condos, responses[1].data),
-        equipments: cloudFirstUnion(currentLocalData.equipments, responses[2].data),
-        systems: cloudFirstUnion(currentLocalData.systems, responses[3].data),
-        serviceOrders: cloudFirstUnion(currentLocalData.serviceOrders, responses[4].data),
-        appointments: cloudFirstUnion(currentLocalData.appointments, responses[5].data),
-        waterLevels: responses[6].data || [],
-        monitoringAlerts: cloudFirstUnion(currentLocalData.monitoringAlerts, responses[7].data),
-        equipmentTypes: cloudFirstUnion(currentLocalData.equipmentTypes, responses[8].data),
-        systemTypes: cloudFirstUnion(currentLocalData.systemTypes, responses[9].data)
+        users: res[0].data || [],
+        condos: res[1].data || [],
+        equipments: res[2].data || [],
+        systems: res[3].data || [],
+        serviceOrders: res[4].data || [],
+        appointments: res[5].data || [],
+        waterLevels: res[6].data || [],
+        monitoringAlerts: res[7].data || [],
+        equipmentTypes: res[8].data || [],
+        systemTypes: res[9].data || []
       };
-      
       setSyncStatus('synced');
       return updated;
     } catch (error) {
-      console.error("Erro na sincronização de download:", error);
       setSyncStatus('offline');
       return currentLocalData;
     } finally {
@@ -137,69 +100,33 @@ const AppContent: React.FC = () => {
     }
   }, []);
 
-  const syncOfflineData = useCallback(async () => {
-    if (!navigator.onLine || !isSupabaseActive) return;
-    
-    const pending = await getPendingOS();
-    if (pending.length === 0) return;
-
-    setSyncStatus('syncing');
-
-    try {
-      for (const os of pending) {
-        const clean = sanitizeForSupabase(os, 'service_orders');
-        const { error } = await supabase.from('service_orders').upsert(clean, { onConflict: 'id' });
-        if (!error) {
-          await removePendingOS(os.id);
-        }
-      }
-      
-      if (dataRef.current) {
-        const fresh = await fetchAllData(dataRef.current, true);
-        setData(fresh);
-        saveStore(fresh);
-      }
-      setSyncStatus('synced');
-    } catch (err) {
-      console.error("Falha no motor de sincronização offline:", err);
-      setSyncStatus('offline');
-    }
-  }, [fetchAllData]);
-
   useEffect(() => {
     const init = async () => {
       const local = getStore();
       setData(local);
-      setIsInitialSyncing(false); 
-      
       if (local.currentUser) {
         const updated = await fetchAllData(local);
         setData(updated);
         saveStore(updated);
-        
-        window.addEventListener('online', syncOfflineData);
 
-        // OUVINTE DE ALTA PRIORIDADE PARA TELEMETRIA (V8.6 MASTER)
-        const channel = supabase.channel('telemetry-feed')
+        // MOTOR REALTIME V8.8 - ESCUTA TODOS OS EVENTOS (INSERT/UPDATE/DELETE)
+        const channel = supabase.channel('iot-master-v8')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'nivel_caixa' }, (payload) => {
-             const newReading = payload.new as WaterLevelType;
-             if (!newReading || !newReading.condominio_id) return;
+             const reading = (payload.new || payload.old) as WaterLevelType;
+             if (!reading) return;
              
-             console.log(`[IOT] Novo dado recebido: ${newReading.condominio_id} -> ${newReading.percentual}%`);
+             reading.percentual = Number(reading.percentual);
 
              setData(prev => {
                 if (!prev) return prev;
-                
+                // Se for um update de registro existente, atualizamos o registro, senão adicionamos no topo
                 let updatedLevels = [...prev.waterLevels];
-                const existingIdx = updatedLevels.findIndex(l => String(l.id) === String(newReading.id));
+                const existingIdx = updatedLevels.findIndex(l => String(l.id) === String(reading.id));
                 
-                // Garantir que percentual seja número
-                newReading.percentual = Number(newReading.percentual);
-
                 if (existingIdx !== -1) {
-                  updatedLevels[existingIdx] = newReading;
+                  updatedLevels[existingIdx] = reading;
                 } else {
-                  updatedLevels = [newReading, ...updatedLevels].slice(0, 500);
+                  updatedLevels = [reading, ...updatedLevels].slice(0, 500);
                 }
 
                 const newData = { ...prev, waterLevels: updatedLevels };
@@ -209,113 +136,63 @@ const AppContent: React.FC = () => {
           })
           .on('postgres_changes', { event: '*', schema: 'public' }, async (payload) => {
              if (payload.table === 'nivel_caixa') return;
-
              if (dataRef.current?.currentUser && !isSyncingRef.current) {
                const fresh = await fetchAllData(dataRef.current);
                setData(fresh);
                saveStore(fresh);
              }
           })
-          .subscribe((status) => {
-            if (status === 'SUBSCRIBED') console.log("Realtime V8.6 Master Online");
-          });
+          .subscribe();
 
-        syncOfflineData();
-
-        return () => {
-          supabase.removeChannel(channel);
-          window.removeEventListener('online', syncOfflineData);
-        };
+        return () => { supabase.removeChannel(channel); };
       }
     };
     init();
-  }, [fetchAllData, syncOfflineData]);
+  }, [fetchAllData]);
 
   const updateData = async (newData: AppData) => {
     setData(newData);
     saveStore(newData);
-
-    if (isSupabaseActive) {
-      setSyncStatus(navigator.onLine ? 'syncing' : 'offline');
-      
-      const tableConfigs = [
-        { name: 'condos', data: newData.condos },
-        { name: 'users', data: newData.users },
-        { name: 'systems', data: newData.systems },
-        { name: 'equipments', data: newData.equipments },
-        { name: 'service_orders', data: newData.serviceOrders },
-        { name: 'appointments', data: newData.appointments },
-        { name: 'monitoring_alerts', data: newData.monitoringAlerts },
-        { name: 'equipment_types', data: newData.equipmentTypes },
-        { name: 'system_types', data: newData.systemTypes }
-      ];
-
+    if (isSupabaseActive && navigator.onLine) {
+      setSyncStatus('syncing');
       try {
-        if (!navigator.onLine) {
-          const currentOS = newData.serviceOrders;
-          for(const os of currentOS) {
-            if (os.sync_status === 'pending') {
-              await savePendingOS(os);
-            }
-          }
-          return;
-        }
-
-        for (const config of tableConfigs) {
-          if (config.data && config.data.length > 0) {
-            const cleanBatch = config.data.map(item => sanitizeForSupabase(item, config.name));
-            const { error } = await supabase.from(config.name).upsert(cleanBatch, { onConflict: 'id' });
-            if (error) console.error(`Falha na tabela ${config.name}:`, error.message);
+        const tables = [
+          { n: 'condos', d: newData.condos },
+          { n: 'users', d: newData.users },
+          { n: 'systems', d: newData.systems },
+          { n: 'equipments', d: newData.equipments },
+          { n: 'service_orders', d: newData.serviceOrders },
+          { n: 'appointments', d: newData.appointments },
+          { n: 'equipment_types', d: newData.equipmentTypes },
+          { n: 'system_types', d: newData.systemTypes }
+        ];
+        for (const t of tables) {
+          if (t.d.length > 0) {
+            const clean = t.d.map(i => sanitizeForSupabase(i, t.n));
+            await supabase.from(t.n).upsert(clean, { onConflict: 'id' });
           }
         }
         setSyncStatus('synced');
-      } catch (err: any) {
-        console.error("Erro Crítico de Sincronização:", err);
-        setSyncStatus('offline');
-      }
+      } catch { setSyncStatus('offline'); }
     }
   };
 
   const deleteData = async (tableName: string, id: string) => {
     setData(prev => {
       if (!prev) return prev;
-      const newData = { ...prev };
-      if (tableName === 'service_orders') newData.serviceOrders = prev.serviceOrders.filter(o => o.id !== id);
-      if (tableName === 'condos') newData.condos = prev.condos.filter(c => c.id !== id);
-      if (tableName === 'equipments') newData.equipments = prev.equipments.filter(e => e.id !== id);
-      if (tableName === 'systems') newData.systems = prev.systems.filter(s => s.id !== id);
-      if (tableName === 'users') newData.users = prev.users.filter(u => u.id !== id);
-      if (tableName === 'appointments') newData.appointments = prev.appointments.filter(a => a.id !== id);
-      if (tableName === 'equipment_types') newData.equipmentTypes = prev.equipmentTypes.filter(t => t.id !== id);
-      if (tableName === 'system_types') newData.systemTypes = prev.systemTypes.filter(t => t.id !== id);
-      
-      saveStore(newData);
-      return newData;
+      const updated = { ...prev };
+      const key = tableName === 'service_orders' ? 'serviceOrders' : tableName === 'equipment_types' ? 'equipmentTypes' : tableName === 'system_types' ? 'systemTypes' : tableName;
+      if ((updated as any)[key]) (updated as any)[key] = (updated as any)[key].filter((i: any) => i.id !== id);
+      saveStore(updated);
+      return updated;
     });
-
     if (navigator.onLine && isSupabaseActive) {
-      setSyncStatus('syncing');
-      try {
-        const { error } = await supabase.from(tableName).delete().eq('id', id);
-        if (error) throw error;
-        setSyncStatus('synced');
-      } catch (err) {
-        console.error(`Erro ao deletar ${tableName} do cloud:`, err);
-        setSyncStatus('offline');
-      }
+      await supabase.from(tableName).delete().eq('id', id);
     }
   };
 
   if (!data) return null;
-
-  if (!data.currentUser) {
-    return <Login onLogin={(u) => {
-      updateData({ ...data, currentUser: u });
-      navigate('/', { replace: true });
-    }} />;
-  }
-  
-  const user = data.currentUser;
+  if (!data.currentUser) return <Login onLogin={(u) => { setData({...data, currentUser: u}); saveStore({...data, currentUser: u}); navigate('/'); }} />;
 
   return (
     <div className="h-screen w-full flex flex-col md:flex-row bg-slate-50 overflow-hidden">
@@ -324,126 +201,66 @@ const AppContent: React.FC = () => {
           <Wrench size={18} className="text-blue-500" />
           <span className="font-black text-lg uppercase tracking-tight">SmartGestão</span>
         </div>
-        <div className="flex items-center space-x-4">
-          {syncStatus === 'syncing' && <RefreshCcw size={18} className="text-blue-400 animate-spin" />}
-          <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-800 rounded-lg transition-colors">
-            {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
-          </button>
-        </div>
+        <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-800 rounded-lg transition-colors">
+          {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
+        </button>
       </header>
 
-      <aside className={`
-        fixed inset-y-0 left-0 z-[60] w-72 bg-slate-900 text-white transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 no-print
-        ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-      `}>
+      <aside className={`fixed inset-y-0 left-0 z-[60] w-72 bg-slate-900 text-white transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 no-print ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="h-full flex flex-col p-6">
           <div className="hidden md:flex items-center justify-between mb-10 px-2">
             <div className="flex items-center space-x-3">
-              <Wrench size={24} className="text-blue-500" />
+              <Wrench size={24} className="text-blue-600" />
               <span className="font-black text-xl tracking-tighter uppercase">SmartGestão</span>
             </div>
-            {syncStatus === 'syncing' && <RefreshCcw size={16} className="text-blue-400 animate-spin" />}
-            {syncStatus === 'synced' && <CheckCircle2 size={16} className="text-emerald-400" />}
-            {syncStatus === 'offline' && <CloudOff size={16} className="text-slate-600" />}
+            {syncStatus === 'syncing' ? <RefreshCcw size={16} className="text-blue-400 animate-spin" /> : syncStatus === 'synced' ? <CheckCircle2 size={16} className="text-emerald-400" /> : <CloudOff size={16} className="text-red-400" />}
           </div>
           <nav className="flex-1 space-y-2 overflow-y-auto pr-2 custom-scrollbar">
-            <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
-            
-            {user?.role === UserRole.RONDA ? (
-               <>
-                 <NavItem to="/reservatorios" icon={Droplets} label="Reservatórios" />
-                 <NavItem to="/os" icon={FileText} label="Minhas Vistorias" />
-               </>
-            ) : (
-              <>
-                <NavItem to="/condos" icon={Building2} label="Condomínios" />
-                <NavItem to="/reservatorios" icon={Droplets} label="Reservatórios" />
-                <NavItem to="/equipment" icon={Layers} label="Equipamentos" />
-                <NavItem to="/systems" icon={Wrench} label="Sistemas" />
-                <NavItem to="/os" icon={FileText} label="Ordens de Serviço" />
-                {(user?.role === UserRole.ADMIN || user?.role === UserRole.SINDICO_ADMIN) && (
-                  <NavItem to="/reports" icon={FileBarChart} label="Relatórios" />
-                )}
-              </>
-            )}
-
-            {user?.role === UserRole.ADMIN && (
-              <>
-                <div className="pt-4 pb-2 px-4 text-[9px] font-black text-slate-500 uppercase tracking-widest">SISTEMA</div>
-                <NavItem to="/admin" icon={Settings} label="Administração" />
-                <NavItem to="/database" icon={Database} label="Banco de Dados" />
-              </>
+            <Link to="/" className="flex items-center space-x-3 px-4 py-3 rounded-xl hover:bg-slate-800 font-bold text-sm text-slate-400">
+              <LayoutDashboard size={20} /> <span>Dashboard</span>
+            </Link>
+            <Link to="/reservatorios" className="flex items-center space-x-3 px-4 py-3 rounded-xl bg-blue-600 text-white shadow-lg font-bold text-sm">
+              <Droplets size={20} /> <span>Reservatórios</span>
+            </Link>
+            <Link to="/condos" className="flex items-center space-x-3 px-4 py-3 rounded-xl hover:bg-slate-800 font-bold text-sm text-slate-400">
+              <Building2 size={20} /> <span>Condomínios</span>
+            </Link>
+            <Link to="/os" className="flex items-center space-x-3 px-4 py-3 rounded-xl hover:bg-slate-800 font-bold text-sm text-slate-400">
+              <FileText size={20} /> <span>Ordens de Serviço</span>
+            </Link>
+            {data.currentUser.role === UserRole.ADMIN && (
+              <Link to="/database" className="flex items-center space-x-3 px-4 py-3 rounded-xl hover:bg-slate-800 font-bold text-sm text-slate-400">
+                <Database size={20} /> <span>Banco de Dados</span>
+              </Link>
             )}
           </nav>
-          
-          <div className="mt-auto pt-6 border-t border-slate-800 space-y-3">
-            <div className="px-4 py-3 bg-slate-800/50 rounded-xl flex items-center justify-between">
-               <div className="min-w-0">
-                 <p className="text-[10px] font-black text-slate-500 uppercase truncate">
-                   {user?.role === UserRole.SINDICO_ADMIN ? 'SÍNDICO / GESTOR' : user?.role}
-                 </p>
-                 <p className="text-xs font-bold text-white truncate">{user?.name}</p>
-               </div>
-               <div title={syncStatus === 'synced' ? 'Nuvem Conectada' : 'Modo Offline'}>
-                {syncStatus === 'synced' ? <Cloud size={14} className="text-emerald-400" /> : 
-                 syncStatus === 'syncing' ? <RefreshCcw size={14} className="text-blue-400 animate-spin" /> : 
-                 <CloudOff size={14} className="text-red-400" />}
-               </div>
+          <div className="mt-auto pt-6 border-t border-slate-800">
+            <div className="px-4 py-3 bg-slate-800/50 rounded-xl mb-4">
+              <p className="text-[10px] font-black text-slate-500 uppercase">{data.currentUser.role}</p>
+              <p className="text-xs font-bold text-white truncate">{data.currentUser.name}</p>
             </div>
-            
-            <button 
-              onClick={() => {
-                const newData = { ...data!, currentUser: null };
-                setData(newData);
-                saveStore(newData);
-                navigate('/login');
-              }}
-              className="w-full flex items-center space-x-3 px-4 py-3.5 rounded-xl text-slate-400 hover:bg-red-500/10 hover:text-red-500 transition-all font-bold text-sm"
-            >
-              <LogOut size={20} />
-              <span>Encerrar Sessão</span>
+            <button onClick={() => { setData({...data, currentUser: null}); saveStore({...data, currentUser: null}); navigate('/login'); }} className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-slate-400 hover:text-red-500 font-bold text-sm">
+              <LogOut size={20} /> <span>Sair</span>
             </button>
-
-            <div className="pt-4 text-center border-t border-slate-800/50">
-              <p className="text-[9px] font-black text-slate-200 uppercase tracking-[0.2em] opacity-100 transition-opacity">
-                V8.6 | POR ENG. ADRIANO PANTAROTO
-              </p>
-            </div>
           </div>
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col overflow-hidden relative">
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth custom-scrollbar print:p-0">
-          <Routes>
-            <Route path="/" element={<Dashboard data={data} updateData={updateData} deleteData={deleteData} onSync={async () => {
-              const fresh = await fetchAllData(data, true);
-              setData(fresh);
-              saveStore(fresh);
-            }} />} />
-            <Route path="/condos" element={<Condos data={data} updateData={updateData} deleteData={deleteData} />} />
-            <Route path="/reservatorios" element={<WaterLevel data={data} updateData={updateData} onRefresh={async () => {
-              const updated = await fetchAllData(data);
-              setData(updated);
-              saveStore(updated);
-            }} />} />
-            <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} deleteData={deleteData} />} />
-            <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} deleteData={deleteData} />} />
-            <Route path="/os" element={<ServiceOrders data={data} updateData={updateData} deleteData={deleteData} />} />
-            <Route path="/reports" element={<Reports data={data} />} />
-            <Route path="/admin" element={<AdminSettings data={data} updateData={updateData} deleteData={deleteData} />} />
-            <Route path="/database" element={<DatabaseSetup />} />
-            <Route path="/login" element={<Login onLogin={(u) => {
-              updateData({ ...data, currentUser: u });
-              navigate('/', { replace: true });
-            }} />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </div>
+      <main className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
+        <Routes>
+          <Route path="/" element={<Dashboard data={data} updateData={updateData} deleteData={deleteData} onSync={async () => { const fresh = await fetchAllData(data); setData(fresh); saveStore(fresh); }} />} />
+          <Route path="/reservatorios" element={<WaterLevel data={data} updateData={updateData} onRefresh={async () => { const updated = await fetchAllData(data); setData(updated); saveStore(updated); }} />} />
+          <Route path="/condos" element={<Condos data={data} updateData={updateData} deleteData={deleteData} />} />
+          <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} deleteData={deleteData} />} />
+          <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} deleteData={deleteData} />} />
+          <Route path="/os" element={<ServiceOrders data={data} updateData={updateData} deleteData={deleteData} />} />
+          <Route path="/reports" element={<Reports data={data} />} />
+          <Route path="/admin" element={<AdminSettings data={data} updateData={updateData} deleteData={deleteData} />} />
+          <Route path="/database" element={<DatabaseSetup />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </main>
-      {isSidebarOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[55] md:hidden no-print" onClick={() => setSidebarOpen(false)} />
-      )}
+      {isSidebarOpen && <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[55] md:hidden" onClick={() => setSidebarOpen(false)} />}
     </div>
   );
 };

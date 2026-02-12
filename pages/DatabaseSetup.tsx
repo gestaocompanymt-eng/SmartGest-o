@@ -5,27 +5,26 @@ import { Database, Copy, CheckCircle2, AlertTriangle, Terminal, ShieldCheck, Tra
 const DatabaseSetup: React.FC = () => {
   const [copied, setCopied] = React.useState(false);
 
-  const sqlScript = `-- 🚀 SMARTGESTÃO MASTER SCRIPT V8.6 (CONEXÃO TOTAL IOT)
--- Rode este script no Editor SQL do seu Supabase.
+  const sqlScript = `-- 🚀 SMARTGESTÃO MASTER SCRIPT V8.7 (PRECISÃO IOT TOTAL)
+-- Rode este script para garantir que 0, 25 e 100% funcionem sem erro de tipo.
 
--- 1. GARANTIR ESTRUTURA COMPATÍVEL
+-- 1. GARANTIR ESTRUTURA COM TIPOS NUMÉRICOS EXPLÍCITOS
 CREATE TABLE IF NOT EXISTS nivel_caixa (
   id BIGSERIAL PRIMARY KEY,
   condominio_id TEXT NOT NULL,
-  percentual NUMERIC DEFAULT 0,
+  percentual NUMERIC NOT NULL DEFAULT 0, -- Tipo Numérico para cálculos precisos
   nivel_cm NUMERIC DEFAULT 0,
   status TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 2. DESABILITAR RLS (ACESSO DIRETO PARA PLACAS IOT)
--- Isso permite que o Arduino insira dados usando a anon key.
+-- 2. DESABILITAR RLS PARA ACESSO IOT
 ALTER TABLE nivel_caixa DISABLE ROW LEVEL SECURITY;
 
--- 3. HABILITAR REPLICAÇÃO REALTIME (PARA O APP ATUALIZAR SOZINHO)
+-- 3. HABILITAR IDENTIDADE DE RÉPLICA PARA REALTIME V8.7
 ALTER TABLE nivel_caixa REPLICA IDENTITY FULL;
 
--- 4. CONFIGURAR CANAL DE BROADCAST REALTIME
+-- 4. CONFIGURAR CANAL DE BROADCAST REALTIME (PUBLICAÇÃO)
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -42,12 +41,12 @@ BEGIN
     END IF;
 END $$;
 
--- 5. PERMISSÕES EXPLÍCITAS PARA O ARDUINO
+-- 5. PERMISSÕES DE GRAVAÇÃO PARA A PLACA ARDUINO
 GRANT USAGE ON SCHEMA public TO anon;
 GRANT ALL ON TABLE nivel_caixa TO anon;
 GRANT ALL ON SEQUENCE nivel_caixa_id_seq TO anon;
 
--- Script concluído com sucesso.
+-- Script concluído com sucesso. V8.7 Master.
 `;
 
   const handleCopy = () => {
@@ -64,17 +63,17 @@ GRANT ALL ON SEQUENCE nivel_caixa_id_seq TO anon;
             <Rocket size={24} />
           </div>
           <div>
-            <h1 className="text-xl font-black text-slate-900 leading-none">V8.6 Connectivity Master</h1>
-            <p className="text-[10px] text-blue-600 font-black uppercase tracking-widest mt-1">Sincronismo IOT ESP32</p>
+            <h1 className="text-xl font-black text-slate-900 leading-none">V8.7 Precision Mode</h1>
+            <p className="text-[10px] text-blue-600 font-black uppercase tracking-widest mt-1">Garantia de Leitura IOT</p>
           </div>
         </div>
 
         <div className="p-5 bg-blue-50 border border-blue-100 rounded-3xl flex items-start space-x-4 mb-8">
           <AlertTriangle className="text-blue-600 shrink-0 mt-1" size={20} />
           <div className="space-y-1">
-            <p className="text-[10px] font-black text-blue-900 uppercase">Instrução de Correção</p>
+            <p className="text-[10px] font-black text-blue-900 uppercase">Atenção ao Tipo de Dado</p>
             <p className="text-[10px] text-blue-700 font-bold leading-relaxed">
-              O Arduino envia o campo <b>"percentual"</b>. Se você não vir dados, rode o script abaixo para abrir o canal Realtime e as permissões de gravação.
+              Este script garante que o campo <b>percentual</b> seja reconhecido como número. Se sua placa enviar 0, ele deve aparecer como 0 no banco e no gráfico.
             </p>
           </div>
         </div>
@@ -88,7 +87,7 @@ GRANT ALL ON SEQUENCE nivel_caixa_id_seq TO anon;
               }`}
             >
               {copied ? <CheckCircle2 size={16} /> : <Copy size={16} />}
-              <span>{copied ? 'Copiado!' : 'Copiar Script V8.6'}</span>
+              <span>{copied ? 'Copiado!' : 'Copiar Script V8.7'}</span>
             </button>
           </div>
           
