@@ -1,6 +1,6 @@
 
 import { GoogleGenAI } from "@google/genai";
-import { Equipment, WaterLevel } from "./types";
+import { Equipment, WaterLevel, MonitoringAlert } from "./types";
 
 export const analyzeEquipmentState = async (equipment: Equipment) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -23,6 +23,34 @@ export const analyzeEquipmentState = async (equipment: Equipment) => {
   }
 };
 
+export const diagnoseMonitoringAlert = async (alert: MonitoringAlert, equipment: Equipment) => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const prompt = `Aja como um Engenheiro Especialista em Manutenção Predial e IOT.
+    Diagnostique a causa raiz deste alerta de monitoramento Tuya Cloud:
+    Equipamento: ${equipment.manufacturer} ${equipment.model}
+    Tipo: ${equipment.type_id}
+    Localização: ${equipment.location}
+    Mensagem de Erro: ${alert.message}
+    Valor IOT Lido: ${alert.value}
+    
+    Forneça:
+    1. Causa Raiz Provável.
+    2. Risco para a Operação.
+    3. Recomendação Técnica Imediata.
+    
+    Seja direto e use termos de engenharia.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: prompt,
+    });
+    return response.text;
+  } catch (error) {
+    return "Erro ao processar diagnóstico inteligente.";
+  }
+};
+
 export const analyzeWaterLevelHistory = async (history: WaterLevel[]) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const dataSlice = history.slice(0, 30).map(l => ({ p: l.percentual, t: l.created_at }));
@@ -39,8 +67,7 @@ export const analyzeWaterLevelHistory = async (history: WaterLevel[]) => {
 
   try {
     const response = await ai.models.generateContent({
-      // Fix: Updated model name to 'gemini-flash-lite-latest' as per alias guidelines
-      model: 'gemini-flash-lite-latest',
+      model: 'gemini-3-flash-preview',
       contents: prompt,
     });
     return response.text;
