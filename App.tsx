@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { HashRouter, Routes, Route, Link, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { 
   LayoutDashboard, Building2, Wrench, Layers, FileText, Settings, LogOut, Menu, X,
-  Droplets, Cloud, CloudOff, RefreshCcw, CheckCircle2, FileBarChart, Database
+  Droplets, Cloud, CloudOff, RefreshCcw, CheckCircle2, FileBarChart, Database, Activity
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
@@ -20,6 +20,7 @@ import Login from './pages/Login';
 import WaterLevel from './pages/WaterLevel';
 import Reports from './pages/Reports';
 import DatabaseSetup from './pages/DatabaseSetup';
+import Monitoring from './pages/Monitoring';
 
 const AppContent: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
@@ -28,11 +29,7 @@ const AppContent: React.FC = () => {
   
   const isSyncingRef = useRef(false);
   const navigate = useNavigate();
-  const dataRef = useRef<AppData | null>(null);
-
-  useEffect(() => {
-    dataRef.current = data;
-  }, [data]);
+  const location = useLocation();
 
   const fetchAllData = useCallback(async (currentLocalData: AppData) => {
     if (!navigator.onLine || !isSupabaseActive || isSyncingRef.current || !currentLocalData.currentUser) {
@@ -49,12 +46,19 @@ const AppContent: React.FC = () => {
         supabase.from('systems').select('*'),
         supabase.from('service_orders').select('*').order('created_at', { ascending: false }),
         supabase.from('appointments').select('*'),
-        supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(200),
+        supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(300),
         supabase.from('monitoring_alerts').select('*'),
         supabase.from('equipment_types').select('*'),
         supabase.from('system_types').select('*')
       ];
       const res = await Promise.all(queries);
+      
+      // Garantia de tipos numéricos no carregamento inicial
+      const waterLevels = (res[6].data || []).map((l: any) => ({
+        ...l,
+        percentual: Number(l.percentual) || 0
+      }));
+
       const updated = {
         ...currentLocalData,
         users: res[0].data || [],
@@ -63,7 +67,7 @@ const AppContent: React.FC = () => {
         systems: res[3].data || [],
         serviceOrders: res[4].data || [],
         appointments: res[5].data || [],
-        waterLevels: res[6].data || [],
+        waterLevels: waterLevels,
         monitoringAlerts: res[7].data || [],
         equipmentTypes: res[8].data || [],
         systemTypes: res[9].data || []
@@ -87,26 +91,15 @@ const AppContent: React.FC = () => {
         setData(updated);
         saveStore(updated);
 
-        // MOTOR REALTIME V8.9 - SINCRONISMO TOTAL IOT
-        const channel = supabase.channel('iot-master-v8.9')
+        const channel = supabase.channel('iot-master-v9.0')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'nivel_caixa' }, (payload) => {
              const reading = (payload.new || payload.old) as WaterLevelType;
              if (!reading) return;
-             
-             // GARANTIA NUMÉRICA: Previne que 0 seja ignorado pelo JS
-             reading.percentual = typeof reading.percentual === 'number' ? reading.percentual : Number(reading.percentual);
+             reading.percentual = Number(reading.percentual);
              
              setData(prev => {
                 if (!prev) return prev;
-                let updatedLevels = [...prev.waterLevels];
-                const existingIdx = updatedLevels.findIndex(l => String(l.id) === String(reading.id));
-                
-                if (existingIdx !== -1) {
-                  updatedLevels[existingIdx] = reading;
-                } else {
-                  updatedLevels = [reading, ...updatedLevels].slice(0, 500);
-                }
-
+                let updatedLevels = [reading, ...prev.waterLevels.filter(l => String(l.id) !== String(reading.id))].slice(0, 500);
                 const newData = { ...prev, waterLevels: updatedLevels };
                 saveStore(newData);
                 return newData;
@@ -123,15 +116,15 @@ const AppContent: React.FC = () => {
   const updateData = async (newData: AppData) => {
     setData(newData);
     saveStore(newData);
-    // Lógica de update simplificada para brevidade, mantendo compatibilidade
   };
 
   if (!data) return null;
   if (!data.currentUser) return <Login onLogin={(u) => { setData({...data, currentUser: u}); saveStore({...data, currentUser: u}); navigate('/'); }} />;
 
+  const isActive = (path: string) => location.pathname === path;
+
   return (
     <div className="h-screen w-full flex flex-col md:flex-row bg-slate-50 overflow-hidden">
-      {/* Sidebar e Header mantidos conforme V8.8 */}
       <aside className="fixed inset-y-0 left-0 z-[60] w-72 bg-slate-900 text-white transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 no-print">
         <div className="h-full flex flex-col p-6">
           <div className="hidden md:flex items-center justify-between mb-10 px-2">
@@ -142,20 +135,29 @@ const AppContent: React.FC = () => {
             {syncStatus === 'synced' ? <CheckCircle2 size={16} className="text-emerald-400" /> : <RefreshCcw size={16} className="text-blue-400 animate-spin" />}
           </div>
           <nav className="flex-1 space-y-2 overflow-y-auto pr-2 custom-scrollbar">
-            <Link to="/" className="flex items-center space-x-3 px-4 py-3 rounded-xl hover:bg-slate-800 font-bold text-sm text-slate-400">
+            <Link to="/" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${isActive('/') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
               <LayoutDashboard size={20} /> <span>Dashboard</span>
             </Link>
-            <Link to="/reservatorios" className="flex items-center space-x-3 px-4 py-3 rounded-xl bg-blue-600 text-white shadow-lg font-bold text-sm">
+            <Link to="/reservatorios" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${isActive('/reservatorios') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
               <Droplets size={20} /> <span>Reservatórios</span>
             </Link>
-            <Link to="/condos" className="flex items-center space-x-3 px-4 py-3 rounded-xl hover:bg-slate-800 font-bold text-sm text-slate-400">
+            <Link to="/monitoring" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${isActive('/monitoring') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
+              <Activity size={20} /> <span>Monitoramento Tuya</span>
+            </Link>
+            <Link to="/condos" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${isActive('/condos') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
               <Building2 size={20} /> <span>Condomínios</span>
             </Link>
-            <Link to="/os" className="flex items-center space-x-3 px-4 py-3 rounded-xl hover:bg-slate-800 font-bold text-sm text-slate-400">
+            <Link to="/equipment" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${isActive('/equipment') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
+              <Wrench size={20} /> <span>Equipamentos</span>
+            </Link>
+            <Link to="/systems" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${isActive('/systems') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
+              <Layers size={20} /> <span>Sistemas</span>
+            </Link>
+            <Link to="/os" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${isActive('/os') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
               <FileText size={20} /> <span>Ordens de Serviço</span>
             </Link>
             {data.currentUser.role === UserRole.ADMIN && (
-              <Link to="/database" className="flex items-center space-x-3 px-4 py-3 rounded-xl hover:bg-slate-800 font-bold text-sm text-slate-400">
+              <Link to="/database" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${isActive('/database') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
                 <Database size={20} /> <span>Banco de Dados</span>
               </Link>
             )}
@@ -172,6 +174,7 @@ const AppContent: React.FC = () => {
         <Routes>
           <Route path="/" element={<Dashboard data={data} updateData={updateData} onSync={async () => { const fresh = await fetchAllData(data); setData(fresh); saveStore(fresh); }} />} />
           <Route path="/reservatorios" element={<WaterLevel data={data} updateData={updateData} onRefresh={async () => { const updated = await fetchAllData(data); setData(updated); saveStore(updated); }} />} />
+          <Route path="/monitoring" element={<Monitoring data={data} updateData={updateData} />} />
           <Route path="/condos" element={<Condos data={data} updateData={updateData} />} />
           <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} />} />
           <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} />} />
