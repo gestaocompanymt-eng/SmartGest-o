@@ -179,15 +179,15 @@ const AppContent: React.FC = () => {
         
         window.addEventListener('online', syncOfflineData);
 
-        // OUVINTE DE ALTA PRIORIDADE PARA TELEMETRIA
+        // OUVINTE DE ALTA PRIORIDADE PARA TELEMETRIA (V8.5)
         const channel = supabase.channel('telemetry-feed')
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'nivel_caixa' }, (payload) => {
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'nivel_caixa' }, (payload) => {
              const newReading = payload.new as WaterLevelType;
              if (!newReading || !newReading.condominio_id) return;
 
              setData(prev => {
                 if (!prev) return prev;
-                // Evita duplicatas se o fetch global ocorrer ao mesmo tempo
+                // Previne duplicidade se o ID já existir
                 const exists = prev.waterLevels.some(l => l.id === newReading.id);
                 if (exists) return prev;
 
@@ -198,7 +198,7 @@ const AppContent: React.FC = () => {
              });
           })
           .on('postgres_changes', { event: '*', schema: 'public' }, async (payload) => {
-             if (payload.table === 'nivel_caixa') return; // Já tratado acima de forma performática
+             if (payload.table === 'nivel_caixa') return;
 
              if (dataRef.current?.currentUser && !isSyncingRef.current) {
                const fresh = await fetchAllData(dataRef.current);
@@ -207,7 +207,7 @@ const AppContent: React.FC = () => {
              }
           })
           .subscribe((status) => {
-            if (status === 'SUBSCRIBED') console.log("Canal Realtime Ativado");
+            if (status === 'SUBSCRIBED') console.log("Realtime V8.5 Conectado");
           });
 
         syncOfflineData();
@@ -396,7 +396,7 @@ const AppContent: React.FC = () => {
 
             <div className="pt-4 text-center border-t border-slate-800/50">
               <p className="text-[9px] font-black text-slate-200 uppercase tracking-[0.2em] opacity-100 transition-opacity">
-                V8.0 | POR ENG. ADRIANO PANTAROTO
+                V8.5 | POR ENG. ADRIANO PANTAROTO
               </p>
             </div>
           </div>
