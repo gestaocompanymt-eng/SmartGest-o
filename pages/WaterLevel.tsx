@@ -60,7 +60,6 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
 
   const getPointsHistory = (deviceId: string) => {
     if (!deviceId) return [];
-    // Normalização agressiva: remove espaços e força caixa alta
     const cleanSearchId = deviceId.trim().toUpperCase();
     
     return data.waterLevels
@@ -68,10 +67,13 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
         const cleanEntryId = String(l.condominio_id || '').trim().toUpperCase();
         return cleanEntryId === cleanSearchId;
       })
-      // Ordenação garantida por data decrescente para pegar o mais novo primeiro
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       .slice(0, 50)
-      .reverse(); // Inverte para o gráfico exibir cronologicamente da esquerda para a direita
+      .map(l => ({
+        ...l,
+        time: new Date(l.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }))
+      .reverse();
   };
 
   const handleIaAnalysis = async (deviceId: string) => {
@@ -109,13 +111,6 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
              </div>
           </div>
         ))}
-        <div className="flex items-center space-x-3 pt-2 border-t border-slate-100">
-           <div className="w-2.5 h-2.5 rounded-full bg-slate-900"></div>
-           <div className="flex-1 h-10 rounded-xl bg-slate-900 flex items-center px-4 justify-between">
-              <span className="text-[9px] font-black uppercase tracking-widest text-white">Referência (GND)</span>
-              <span className="text-[9px] font-black text-slate-400">Comum</span>
-           </div>
-        </div>
       </div>
     );
   };
@@ -124,8 +119,8 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
     <div className="space-y-8 pb-12">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 leading-tight">Monitoramento IOT</h1>
-          <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-1">Status Direto do Reservatório</p>
+          <h1 className="text-2xl font-black text-slate-900 leading-tight">Telemetria em Tempo Real</h1>
+          <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-1">Conectado diretamente ao Arduino</p>
         </div>
         <button 
           onClick={handleManualRefresh} 
@@ -140,7 +135,7 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
         {monitoringData.length === 0 && (
           <div className="py-20 text-center bg-white rounded-3xl border border-dashed border-slate-200">
             <Droplets size={48} className="mx-auto text-slate-200 mb-4" />
-            <p className="text-xs font-black uppercase text-slate-400">Nenhum sistema de nível configurado</p>
+            <p className="text-xs font-black uppercase text-slate-400">Configure o ID do Arduino (Ex: {data.systems.find(s=>s.type_id==='7')?.monitoring_points?.[0]?.device_id || 'CAIXA_01'}) no sistema</p>
           </div>
         )}
         
@@ -153,16 +148,15 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
               </div>
               <div className="flex items-center space-x-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                 <Activity size={14} className="text-emerald-500 animate-pulse" />
-                <span>Escuta em Tempo Real Ativa</span>
+                <span>IOT Live Feed Ativo</span>
               </div>
             </div>
             
             <div className="grid grid-cols-1 gap-8">
               {entry.points.map((point: any) => {
                 const history = getPointsHistory(point.device_id);
-                // O último registro no array revertido é o mais recente
                 const latest = history.length > 0 ? history[history.length - 1] : null;
-                const percent = latest ? latest.level : 0;
+                const percent = latest ? Number(latest.percentual) : 0;
                 const analysis = iaAnalysis[point.device_id];
 
                 return (
@@ -171,7 +165,7 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
                       
                       <div className="xl:w-1/3 space-y-6">
                         <div>
-                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">ID do Dispositivo: {point.device_id}</p>
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Arduino ID: {point.device_id}</p>
                           <h3 className="text-2xl font-black text-slate-900 leading-tight mb-4">{point.name}</h3>
                           <div className={`inline-flex items-center space-x-3 px-6 py-4 rounded-3xl ${percent === 0 ? 'bg-red-600' : 'bg-slate-900'} text-white shadow-xl transition-colors duration-500`}>
                              <Droplets size={24} className={percent > 0 ? 'animate-bounce' : ''} />
@@ -187,12 +181,12 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
                           <div className="flex items-center space-x-2">
                              <div className={`flex h-2 w-2 rounded-full ${latest ? 'bg-emerald-500 animate-ping' : 'bg-slate-300'}`}></div>
                              <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">
-                               {latest ? 'Sinal Conectado' : 'Aguardando Arduino...'}
+                               {latest ? 'Sinal Supabase OK' : 'Sem sinal da placa...'}
                              </span>
                           </div>
                           <div className="flex items-center space-x-2 text-slate-400">
                              <Clock size={12} />
-                             <span className="text-[9px] font-bold uppercase tracking-tight">Última leitura: {latest ? latest.time : '---'}</span>
+                             <span className="text-[9px] font-bold uppercase tracking-tight">Último Post: {latest ? latest.time : '---'}</span>
                           </div>
                         </div>
 
@@ -202,19 +196,11 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
                           className="w-full py-4 bg-blue-50 text-blue-600 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center space-x-2 hover:bg-blue-600 hover:text-white transition-all shadow-sm"
                         >
                           {analysis?.loading ? <RefreshCw size={14} className="animate-spin" /> : <BrainCircuit size={14} />}
-                          <span>Diagnóstico Inteligente</span>
+                          <span>Diagnóstico IA</span>
                         </button>
                       </div>
 
                       <div className="xl:w-2/3 flex flex-col">
-                        <div className="flex items-center justify-between mb-6">
-                           <div className="flex items-center space-x-2">
-                              <History size={16} className="text-slate-400" />
-                              <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Gráfico de Variação</span>
-                           </div>
-                           <span className="text-[9px] font-black text-blue-500 uppercase">Acompanhamento Live</span>
-                        </div>
-                        
                         <div className="h-[300px] w-full bg-slate-50/50 rounded-[2.5rem] p-6 border border-slate-100">
                           <ResponsiveContainer width="100%" height="100%">
                             <AreaChart data={history}>
@@ -225,50 +211,13 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
                                 </linearGradient>
                               </defs>
                               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                              <XAxis 
-                                dataKey="time" 
-                                axisLine={false} 
-                                tickLine={false} 
-                                tick={{fontSize: 10, fontWeight: 'bold', fill: '#94a3b8'}}
-                              />
-                              <YAxis 
-                                domain={[0, 100]} 
-                                axisLine={false} 
-                                tickLine={false} 
-                                tick={{fontSize: 10, fontWeight: 'bold', fill: '#94a3b8'}}
-                                ticks={[0, 25, 50, 75, 100]}
-                              />
-                              <Tooltip 
-                                contentStyle={{ 
-                                  borderRadius: '16px', 
-                                  border: 'none', 
-                                  boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
-                                  fontSize: '10px',
-                                  fontWeight: 'bold'
-                                }}
-                                itemStyle={{ color: '#3b82f6' }}
-                              />
-                              <Area 
-                                type="stepAfter" 
-                                dataKey="level" 
-                                stroke="#3b82f6" 
-                                strokeWidth={3} 
-                                fillOpacity={1} 
-                                fill={`url(#colorLevel-${point.id})`} 
-                                animationDuration={500}
-                              />
+                              <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#94a3b8'}} />
+                              <YAxis domain={[0, 100]} axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#94a3b8'}} ticks={[0, 25, 50, 75, 100]} />
+                              <Tooltip />
+                              <Area type="stepAfter" dataKey="percentual" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill={`url(#colorLevel-${point.id})`} animationDuration={300} />
                             </AreaChart>
                           </ResponsiveContainer>
                         </div>
-                        {analysis?.text && (
-                          <div className="mt-6 p-5 bg-blue-50 border border-blue-100 rounded-3xl animate-in fade-in slide-in-from-bottom-2">
-                             <div className="flex items-center space-x-2 mb-2">
-                               <BrainCircuit size={16} className="text-blue-600" />
-                               <span className="text-[9px] font-black uppercase text-blue-600">Engenheiro IA: Diagnóstico</span>
-                             </div>
-                             <p className="text-xs text-blue-800 font-bold leading-relaxed">{analysis.text}</p>
-                          </div>
-                        )}
                       </div>
                     </div>
                   </div>

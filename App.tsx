@@ -179,19 +179,24 @@ const AppContent: React.FC = () => {
         
         window.addEventListener('online', syncOfflineData);
 
-        // OUVINTE DE ALTA PRIORIDADE PARA TELEMETRIA (V8.5)
+        // OUVINTE DE ALTA PRIORIDADE PARA TELEMETRIA (V8.5 MASTER)
         const channel = supabase.channel('telemetry-feed')
-          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'nivel_caixa' }, (payload) => {
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'nivel_caixa' }, (payload) => {
              const newReading = payload.new as WaterLevelType;
              if (!newReading || !newReading.condominio_id) return;
 
              setData(prev => {
                 if (!prev) return prev;
-                // Previne duplicidade se o ID já existir
-                const exists = prev.waterLevels.some(l => l.id === newReading.id);
-                if (exists) return prev;
+                
+                let updatedLevels = [...prev.waterLevels];
+                const existingIdx = updatedLevels.findIndex(l => l.id === newReading.id);
+                
+                if (existingIdx !== -1) {
+                  updatedLevels[existingIdx] = newReading;
+                } else {
+                  updatedLevels = [newReading, ...updatedLevels].slice(0, 500);
+                }
 
-                const updatedLevels = [newReading, ...prev.waterLevels].slice(0, 500);
                 const newData = { ...prev, waterLevels: updatedLevels };
                 saveStore(newData);
                 return newData;
@@ -207,7 +212,7 @@ const AppContent: React.FC = () => {
              }
           })
           .subscribe((status) => {
-            if (status === 'SUBSCRIBED') console.log("Realtime V8.5 Conectado");
+            if (status === 'SUBSCRIBED') console.log("Realtime V8.5 Ativo");
           });
 
         syncOfflineData();
