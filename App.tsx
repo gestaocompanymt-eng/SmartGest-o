@@ -179,18 +179,23 @@ const AppContent: React.FC = () => {
         
         window.addEventListener('online', syncOfflineData);
 
-        // OUVINTE DE ALTA PRIORIDADE PARA TELEMETRIA (V8.5 MASTER)
+        // OUVINTE DE ALTA PRIORIDADE PARA TELEMETRIA (V8.6 MASTER)
         const channel = supabase.channel('telemetry-feed')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'nivel_caixa' }, (payload) => {
              const newReading = payload.new as WaterLevelType;
              if (!newReading || !newReading.condominio_id) return;
+             
+             console.log(`[IOT] Novo dado recebido: ${newReading.condominio_id} -> ${newReading.percentual}%`);
 
              setData(prev => {
                 if (!prev) return prev;
                 
                 let updatedLevels = [...prev.waterLevels];
-                const existingIdx = updatedLevels.findIndex(l => l.id === newReading.id);
+                const existingIdx = updatedLevels.findIndex(l => String(l.id) === String(newReading.id));
                 
+                // Garantir que percentual seja número
+                newReading.percentual = Number(newReading.percentual);
+
                 if (existingIdx !== -1) {
                   updatedLevels[existingIdx] = newReading;
                 } else {
@@ -212,7 +217,7 @@ const AppContent: React.FC = () => {
              }
           })
           .subscribe((status) => {
-            if (status === 'SUBSCRIBED') console.log("Realtime V8.5 Ativo");
+            if (status === 'SUBSCRIBED') console.log("Realtime V8.6 Master Online");
           });
 
         syncOfflineData();
@@ -401,7 +406,7 @@ const AppContent: React.FC = () => {
 
             <div className="pt-4 text-center border-t border-slate-800/50">
               <p className="text-[9px] font-black text-slate-200 uppercase tracking-[0.2em] opacity-100 transition-opacity">
-                V8.5 | POR ENG. ADRIANO PANTAROTO
+                V8.6 | POR ENG. ADRIANO PANTAROTO
               </p>
             </div>
           </div>

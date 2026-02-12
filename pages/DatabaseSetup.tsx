@@ -5,14 +5,10 @@ import { Database, Copy, CheckCircle2, AlertTriangle, Terminal, ShieldCheck, Tra
 const DatabaseSetup: React.FC = () => {
   const [copied, setCopied] = React.useState(false);
 
-  const sqlScript = `-- 🚀 SMARTGESTÃO MASTER SCRIPT V8.5 (VINCULAÇÃO TOTAL IOT)
--- Execute este script para garantir que o Arduino consiga gravar dados.
+  const sqlScript = `-- 🚀 SMARTGESTÃO MASTER SCRIPT V8.6 (CONEXÃO TOTAL IOT)
+-- Rode este script no Editor SQL do seu Supabase.
 
--- 1. DESABILITAR RLS (ACESSO DIRETO PARA PLACAS IOT)
-ALTER TABLE nivel_caixa DISABLE ROW LEVEL SECURITY;
-
--- 2. GARANTIR ESTRUTURA COMPATÍVEL COM O ARDUINO
--- condominio_id deve aceitar o DEVICE_ID da placa (ex: CAIXA_01)
+-- 1. GARANTIR ESTRUTURA COMPATÍVEL
 CREATE TABLE IF NOT EXISTS nivel_caixa (
   id BIGSERIAL PRIMARY KEY,
   condominio_id TEXT NOT NULL,
@@ -22,11 +18,14 @@ CREATE TABLE IF NOT EXISTS nivel_caixa (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 3. HABILITAR IDENTIDADE DE RÉPLICA (PARA REALTIME FUNCIONAR)
+-- 2. DESABILITAR RLS (ACESSO DIRETO PARA PLACAS IOT)
+-- Isso permite que o Arduino insira dados usando a anon key.
+ALTER TABLE nivel_caixa DISABLE ROW LEVEL SECURITY;
+
+-- 3. HABILITAR REPLICAÇÃO REALTIME (PARA O APP ATUALIZAR SOZINHO)
 ALTER TABLE nivel_caixa REPLICA IDENTITY FULL;
 
 -- 4. CONFIGURAR CANAL DE BROADCAST REALTIME
--- Garante que o Supabase avise ao App toda vez que a placa enviar dados.
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -43,15 +42,12 @@ BEGIN
     END IF;
 END $$;
 
--- 5. PERMISSÕES DE ESQUEMA PARA O ARDUINO (ANON ROLE)
+-- 5. PERMISSÕES EXPLÍCITAS PARA O ARDUINO
 GRANT USAGE ON SCHEMA public TO anon;
 GRANT ALL ON TABLE nivel_caixa TO anon;
 GRANT ALL ON SEQUENCE nivel_caixa_id_seq TO anon;
 
--- 6. LIMPEZA DE DADOS DE TESTE (OPCIONAL)
--- DELETE FROM nivel_caixa WHERE condominio_id = 'test';
-
-NOTIFY pgrst, 'reload schema';
+-- Script concluído com sucesso.
 `;
 
   const handleCopy = () => {
@@ -68,17 +64,17 @@ NOTIFY pgrst, 'reload schema';
             <Rocket size={24} />
           </div>
           <div>
-            <h1 className="text-xl font-black text-slate-900 leading-none">V8.5 Total Connectivity</h1>
-            <p className="text-[10px] text-blue-600 font-black uppercase tracking-widest mt-1">Sincronismo Direto ESP32</p>
+            <h1 className="text-xl font-black text-slate-900 leading-none">V8.6 Connectivity Master</h1>
+            <p className="text-[10px] text-blue-600 font-black uppercase tracking-widest mt-1">Sincronismo IOT ESP32</p>
           </div>
         </div>
 
         <div className="p-5 bg-blue-50 border border-blue-100 rounded-3xl flex items-start space-x-4 mb-8">
           <AlertTriangle className="text-blue-600 shrink-0 mt-1" size={20} />
           <div className="space-y-1">
-            <p className="text-[10px] font-black text-blue-900 uppercase">Verificação de Sucesso</p>
+            <p className="text-[10px] font-black text-blue-900 uppercase">Instrução de Correção</p>
             <p className="text-[10px] text-blue-700 font-bold leading-relaxed">
-              O Arduino envia o campo <b>"percentual"</b>. Se o gráfico estiver vazio, rode o script abaixo no Supabase para equalizar o banco de dados.
+              O Arduino envia o campo <b>"percentual"</b>. Se você não vir dados, rode o script abaixo para abrir o canal Realtime e as permissões de gravação.
             </p>
           </div>
         </div>
@@ -92,7 +88,7 @@ NOTIFY pgrst, 'reload schema';
               }`}
             >
               {copied ? <CheckCircle2 size={16} /> : <Copy size={16} />}
-              <span>{copied ? 'Copiado!' : 'Copiar Script V8.5'}</span>
+              <span>{copied ? 'Copiado!' : 'Copiar Script V8.6'}</span>
             </button>
           </div>
           

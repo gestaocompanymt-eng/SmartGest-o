@@ -11,7 +11,9 @@ import {
   Activity,
   CheckCircle2,
   TrendingUp,
-  History
+  History,
+  AlertTriangle,
+  Info
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -71,6 +73,7 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
       .slice(0, 50)
       .map(l => ({
         ...l,
+        percentual: Number(l.percentual), // Forçar número para o Recharts
         time: new Date(l.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       }))
       .reverse();
@@ -88,10 +91,10 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
 
   const ElectrodeVisual = ({ percent }: { percent: number }) => {
     const levels = [
-      { val: 100, label: 'Eletrodo Superior' },
-      { val: 75,  label: 'Eletrodo Médio Alto' },
-      { val: 50,  label: 'Eletrodo Médio Baixo' },
-      { val: 25,  label: 'Eletrodo Inferior' }
+      { val: 100, label: 'Nível 100% (Cheio)' },
+      { val: 75,  label: 'Nível 75% (Ideal)' },
+      { val: 50,  label: 'Nível 50% (Atenção)' },
+      { val: 25,  label: 'Nível 25% (Reserva)' }
     ];
 
     return (
@@ -111,6 +114,12 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
              </div>
           </div>
         ))}
+        {percent <= 0 && (
+           <div className="mt-2 p-3 bg-red-50 border border-red-100 rounded-xl flex items-center space-x-2">
+             <AlertTriangle size={14} className="text-red-500 animate-pulse" />
+             <span className="text-[9px] font-black text-red-600 uppercase">Tanque Vazio ou Sem Sinal</span>
+           </div>
+        )}
       </div>
     );
   };
@@ -119,8 +128,8 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
     <div className="space-y-8 pb-12">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 leading-tight">Telemetria em Tempo Real</h1>
-          <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-1">Conectado diretamente ao Arduino</p>
+          <h1 className="text-2xl font-black text-slate-900 leading-tight">Telemetria Master V8.6</h1>
+          <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-1">Sincronismo Direto com Arduino ESP32</p>
         </div>
         <button 
           onClick={handleManualRefresh} 
@@ -135,7 +144,7 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
         {monitoringData.length === 0 && (
           <div className="py-20 text-center bg-white rounded-3xl border border-dashed border-slate-200">
             <Droplets size={48} className="mx-auto text-slate-200 mb-4" />
-            <p className="text-xs font-black uppercase text-slate-400">Configure o ID do Arduino (Ex: {data.systems.find(s=>s.type_id==='7')?.monitoring_points?.[0]?.device_id || 'CAIXA_01'}) no sistema</p>
+            <p className="text-xs font-black uppercase text-slate-400">Configure o ID do Arduino no cadastro de sistemas</p>
           </div>
         )}
         
@@ -164,10 +173,17 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
                     <div className="flex flex-col xl:flex-row gap-10">
                       
                       <div className="xl:w-1/3 space-y-6">
-                        <div>
-                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Arduino ID: {point.device_id}</p>
+                        <div className="relative">
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center">
+                            <Wifi size={12} className="mr-1" /> ID Placa: {point.device_id}
+                          </p>
                           <h3 className="text-2xl font-black text-slate-900 leading-tight mb-4">{point.name}</h3>
-                          <div className={`inline-flex items-center space-x-3 px-6 py-4 rounded-3xl ${percent === 0 ? 'bg-red-600' : 'bg-slate-900'} text-white shadow-xl transition-colors duration-500`}>
+                          
+                          <div className={`inline-flex items-center space-x-3 px-6 py-4 rounded-3xl transition-colors duration-500 shadow-xl ${
+                            percent === 100 ? 'bg-emerald-600' : 
+                            percent <= 25 ? 'bg-red-600 animate-pulse' : 
+                            'bg-slate-900'
+                          } text-white`}>
                              <Droplets size={24} className={percent > 0 ? 'animate-bounce' : ''} />
                              <span className="text-4xl font-black">{percent}%</span>
                           </div>
@@ -181,12 +197,12 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
                           <div className="flex items-center space-x-2">
                              <div className={`flex h-2 w-2 rounded-full ${latest ? 'bg-emerald-500 animate-ping' : 'bg-slate-300'}`}></div>
                              <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">
-                               {latest ? 'Sinal Supabase OK' : 'Sem sinal da placa...'}
+                               {latest ? 'Sinal Supabase OK' : 'Aguardando primeiro sinal...'}
                              </span>
                           </div>
                           <div className="flex items-center space-x-2 text-slate-400">
                              <Clock size={12} />
-                             <span className="text-[9px] font-bold uppercase tracking-tight">Último Post: {latest ? latest.time : '---'}</span>
+                             <span className="text-[9px] font-bold uppercase tracking-tight">Último dado: {latest ? latest.time : '---'}</span>
                           </div>
                         </div>
 
@@ -213,10 +229,28 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
                               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                               <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#94a3b8'}} />
                               <YAxis domain={[0, 100]} axisLine={false} tickLine={false} tick={{fontSize: 10, fill: '#94a3b8'}} ticks={[0, 25, 50, 75, 100]} />
-                              <Tooltip />
-                              <Area type="stepAfter" dataKey="percentual" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill={`url(#colorLevel-${point.id})`} animationDuration={300} />
+                              <Tooltip 
+                                contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                                itemStyle={{ fontWeight: 'bold', fontSize: '10px', textTransform: 'uppercase' }}
+                              />
+                              <Area 
+                                type="stepAfter" 
+                                dataKey="percentual" 
+                                stroke="#3b82f6" 
+                                strokeWidth={3} 
+                                fillOpacity={1} 
+                                fill={`url(#colorLevel-${point.id})`} 
+                                animationDuration={300} 
+                              />
                             </AreaChart>
                           </ResponsiveContainer>
+                        </div>
+                        
+                        <div className="mt-4 p-4 bg-slate-100/50 rounded-2xl flex items-center space-x-3">
+                           <Info size={16} className="text-slate-400" />
+                           <p className="text-[9px] text-slate-500 font-bold uppercase leading-relaxed">
+                             Se o gráfico estiver em 0%, verifique se o DEVICE_ID no Arduino é exatamente <b>{point.device_id}</b> e se a placa está enviando o campo "percentual".
+                           </p>
                         </div>
                       </div>
                     </div>
