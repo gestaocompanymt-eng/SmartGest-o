@@ -61,6 +61,7 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
 
   const getPointsHistory = (deviceId: string) => {
     if (!deviceId) return [];
+    // Normalização agressiva para garantir match entre Arduino e App
     const searchId = deviceId.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     
     return data.waterLevels
@@ -68,11 +69,12 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
         const entryId = String(l.condominio_id || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
         return entryId === searchId;
       })
+      // Garantimos que o array retornado esteja ordenado por data crescente
       .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-      .slice(-50) // Últimos 50 registros para o gráfico
+      .slice(-50)
       .map(l => ({
         time: new Date(l.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        level: l.percentual,
+        level: Number(l.percentual) || 0,
         rawDate: l.created_at
       }));
   };
@@ -139,23 +141,6 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
         </button>
       </div>
 
-      {showStatusHint && (
-        <div className="bg-slate-900 text-white p-6 rounded-[2rem] flex items-center justify-between shadow-xl animate-in fade-in slide-in-from-top-4">
-          <div className="flex items-center space-x-4">
-            <div className="p-3 bg-blue-600 rounded-2xl">
-              <TrendingUp size={20} className="text-white" />
-            </div>
-            <div>
-              <p className="text-xs font-black uppercase tracking-widest">Gráficos de Tendência</p>
-              <p className="text-[10px] text-slate-400 font-bold">Acompanhe a linha do tempo do consumo para identificar vazamentos ou falhas de bombas.</p>
-            </div>
-          </div>
-          <button onClick={() => setShowStatusHint(false)} className="p-2 hover:bg-slate-800 rounded-xl transition-colors">
-            <CheckCircle2 size={18} />
-          </button>
-        </div>
-      )}
-
       <div className="space-y-12">
         {monitoringData.map((entry) => (
           <div key={entry.condo.id} className="space-y-6">
@@ -173,6 +158,7 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
             <div className="grid grid-cols-1 gap-8">
               {entry.points.map((point: any) => {
                 const history = getPointsHistory(point.device_id);
+                // Pegamos SEMPRE o último elemento do array ordenado para o visual principal
                 const latest = history.length > 0 ? history[history.length - 1] : null;
                 const percent = latest ? latest.level : 0;
                 const analysis = iaAnalysis[point.device_id];
@@ -182,12 +168,11 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
                   <div key={point.id} className="bg-white rounded-[3rem] border-4 border-white shadow-xl overflow-hidden p-8 flex flex-col hover:shadow-2xl transition-all relative">
                     <div className="flex flex-col xl:flex-row gap-10">
                       
-                      {/* Lado Esquerdo: Info e Sensores */}
                       <div className="xl:w-1/3 space-y-6">
                         <div>
                           <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Ponto de Monitoramento</p>
                           <h3 className="text-2xl font-black text-slate-900 leading-tight mb-4">{point.name}</h3>
-                          <div className={`inline-flex items-center space-x-3 px-6 py-4 rounded-3xl ${percent === 0 ? 'bg-red-600' : 'bg-slate-900'} text-white shadow-xl`}>
+                          <div className={`inline-flex items-center space-x-3 px-6 py-4 rounded-3xl ${percent === 0 ? 'bg-red-600' : 'bg-slate-900'} text-white shadow-xl transition-colors duration-500`}>
                              <Droplets size={24} className={percent > 0 ? 'animate-bounce' : ''} />
                              <span className="text-4xl font-black">{percent}%</span>
                           </div>
@@ -200,11 +185,11 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
                         <div className="space-y-3">
                           <div className="flex items-center space-x-2">
                              <div className="flex h-2 w-2 rounded-full bg-emerald-500 animate-ping"></div>
-                             <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Monitoramento Ativo</span>
+                             <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Sinal Online</span>
                           </div>
                           <div className="flex items-center space-x-2 text-slate-400">
                              <Clock size={12} />
-                             <span className="text-[9px] font-bold uppercase tracking-tight">Último sinal: {latest ? latest.time : '---'}</span>
+                             <span className="text-[9px] font-bold uppercase tracking-tight">Variação: {latest ? latest.time : 'Aguardando pino...'}</span>
                           </div>
                         </div>
 
@@ -218,14 +203,13 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
                         </button>
                       </div>
 
-                      {/* Lado Direito: Gráfico de Linha do Tempo */}
                       <div className="xl:w-2/3 flex flex-col">
                         <div className="flex items-center justify-between mb-6">
                            <div className="flex items-center space-x-2">
                               <History size={16} className="text-slate-400" />
-                              <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Histórico de Nível (Tempo x %)</span>
+                              <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Tempo Real x Comportamento</span>
                            </div>
-                           <span className="text-[9px] font-black text-blue-500 uppercase">Últimos 50 eventos</span>
+                           <span className="text-[9px] font-black text-blue-500 uppercase">Sincronizado com Arduino</span>
                         </div>
                         
                         <div className="h-[300px] w-full bg-slate-50/50 rounded-[2.5rem] p-6 border border-slate-100">
@@ -274,16 +258,6 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
                             </AreaChart>
                           </ResponsiveContainer>
                         </div>
-
-                        {analysis && !analysis.loading && (
-                          <div className={`mt-6 p-5 rounded-2xl border-2 animate-in zoom-in-95 ${isAnomaly ? 'bg-red-50 border-red-200' : 'bg-blue-50 border-blue-100'}`}>
-                             <div className="flex items-center space-x-2 mb-2">
-                               <Activity size={14} className={isAnomaly ? 'text-red-600' : 'text-blue-600'} />
-                               <span className={`text-[10px] font-black uppercase ${isAnomaly ? 'text-red-700' : 'text-blue-700'}`}>Parecer do Engenheiro IA</span>
-                             </div>
-                             <p className="text-xs font-bold text-slate-700 leading-relaxed">{analysis.text}</p>
-                          </div>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -292,13 +266,6 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
             </div>
           </div>
         ))}
-
-        {monitoringData.length === 0 && (
-          <div className="py-20 flex flex-col items-center justify-center text-center">
-            <Droplets size={48} className="text-slate-200 mb-4" />
-            <p className="text-slate-400 font-bold uppercase text-xs">Nenhum reservatório monitorado encontrado.</p>
-          </div>
-        )}
       </div>
     </div>
   );

@@ -137,14 +137,12 @@ const AppContent: React.FC = () => {
     }
   }, []);
 
-  // MOTOR DE SINCRONIZAÇÃO OFFLINE (NOVO)
   const syncOfflineData = useCallback(async () => {
     if (!navigator.onLine || !isSupabaseActive) return;
     
     const pending = await getPendingOS();
     if (pending.length === 0) return;
 
-    console.log(`SmartGestão: Sincronizando ${pending.length} Ordens de Serviço offline...`);
     setSyncStatus('syncing');
 
     try {
@@ -153,12 +151,9 @@ const AppContent: React.FC = () => {
         const { error } = await supabase.from('service_orders').upsert(clean, { onConflict: 'id' });
         if (!error) {
           await removePendingOS(os.id);
-        } else {
-          console.error(`Erro ao sincronizar OS ${os.id}:`, error.message);
         }
       }
       
-      // Atualizar estado global após sincronia
       if (dataRef.current) {
         const fresh = await fetchAllData(dataRef.current, true);
         setData(fresh);
@@ -182,11 +177,19 @@ const AppContent: React.FC = () => {
         setData(updated);
         saveStore(updated);
         
-        // Listener de volta à conexão
         window.addEventListener('online', syncOfflineData);
 
+        // OUVINTE EM TEMPO REAL (CORRIGIDO PARA TELEMETRIA)
         const channel = supabase.channel('global-sync')
-          .on('postgres_changes', { event: '*', schema: 'public' }, async () => {
+          .on('postgres_changes', { event: '*', schema: 'public' }, async (payload) => {
+             // Se a mudança for na telemetria, atualizamos imediatamente sem gate de sincronização longa
+             if (payload.table === 'nivel_caixa') {
+               const freshData = await fetchAllData(dataRef.current!);
+               setData(freshData);
+               saveStore(freshData);
+               return;
+             }
+
              if (dataRef.current?.currentUser && !isSyncingRef.current) {
                const fresh = await fetchAllData(dataRef.current);
                setData(fresh);
@@ -195,7 +198,6 @@ const AppContent: React.FC = () => {
           })
           .subscribe();
 
-        // Tentar sincronia inicial se houver pendências
         syncOfflineData();
 
         return () => {
@@ -228,13 +230,7 @@ const AppContent: React.FC = () => {
 
       try {
         if (!navigator.onLine) {
-          // Se estiver offline, salvar OSs novas/editadas no IndexedDB
           const currentOS = newData.serviceOrders;
-          // Identificar qual OS foi alterada (pode ser otimizado, aqui garantimos resiliência)
-          // Na prática, como salvamos tudo no state, apenas garantimos que a fila offline seja atualizada
-          // Mas para ser eficiente conforme solicitado, as OSs marcadas como 'pending' no handleSubmit 
-          // já estariam prontas.
-          // Vamos varrer as ordens de serviço e se alguma for 'pending', garantimos persistência
           for(const os of currentOS) {
             if (os.sync_status === 'pending') {
               await savePendingOS(os);

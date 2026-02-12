@@ -5,8 +5,8 @@ import { Database, Copy, CheckCircle2, AlertTriangle, Terminal, ShieldCheck, Tra
 const DatabaseSetup: React.FC = () => {
   const [copied, setCopied] = React.useState(false);
 
-  const sqlScript = `-- 🚀 SMARTGESTÃO MASTER SCRIPT V8.1 (UNIFICAÇÃO TOTAL + DINAMISMO)
--- Este script reconstrói a base exata com suporte a categorias dinâmicas.
+  const sqlScript = `-- 🚀 SMARTGESTÃO MASTER SCRIPT V8.2 (CORREÇÃO TELEMETRIA IOT)
+-- Este script reconstrói a base e HABILITA O REAL-TIME para os reservatórios.
 
 -- 1. LIMPEZA RADICAL
 DROP TABLE IF EXISTS monitoring_alerts CASCADE;
@@ -29,19 +29,9 @@ END;
 $$ language 'plpgsql';
 
 -- 3. RECONSTRUÇÃO DA INFRAESTRUTURA
+CREATE TABLE equipment_types (id TEXT PRIMARY KEY, name TEXT NOT NULL);
+CREATE TABLE system_types (id TEXT PRIMARY KEY, name TEXT NOT NULL);
 
--- Tipos Dinâmicos
-CREATE TABLE equipment_types (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL
-);
-
-CREATE TABLE system_types (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL
-);
-
--- Tabela de Condomínios
 CREATE TABLE condos (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -52,7 +42,6 @@ CREATE TABLE condos (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Tabela de Usuários
 CREATE TABLE users (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -63,7 +52,6 @@ CREATE TABLE users (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Tabela de Equipamentos
 CREATE TABLE equipments (
   id TEXT PRIMARY KEY,
   condo_id TEXT REFERENCES condos(id) ON DELETE CASCADE,
@@ -89,7 +77,6 @@ CREATE TABLE equipments (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Tabela de Sistemas
 CREATE TABLE systems (
   id TEXT PRIMARY KEY,
   condo_id TEXT REFERENCES condos(id) ON DELETE CASCADE,
@@ -105,7 +92,6 @@ CREATE TABLE systems (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Tabela de Ordens de Serviço
 CREATE TABLE service_orders (
   id TEXT PRIMARY KEY,
   type TEXT NOT NULL,
@@ -128,7 +114,6 @@ CREATE TABLE service_orders (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Tabela de Agendamentos
 CREATE TABLE appointments (
   id TEXT PRIMARY KEY,
   condo_id TEXT REFERENCES condos(id) ON DELETE CASCADE,
@@ -144,7 +129,6 @@ CREATE TABLE appointments (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Tabela de Alertas IOT
 CREATE TABLE monitoring_alerts (
   id TEXT PRIMARY KEY,
   equipment_id TEXT REFERENCES equipments(id) ON DELETE CASCADE,
@@ -155,7 +139,7 @@ CREATE TABLE monitoring_alerts (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 4. TELEMETRIA
+-- 4. TELEMETRIA (RESERVATÓRIOS)
 CREATE TABLE IF NOT EXISTS nivel_caixa (
   id BIGSERIAL PRIMARY KEY,
   condominio_id TEXT,
@@ -165,7 +149,10 @@ CREATE TABLE IF NOT EXISTS nivel_caixa (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 5. GATILHOS
+-- 5. HABILITAR REAL-TIME PARA TABELA DE NÍVEL (CRÍTICO)
+ALTER PUBLICATION supabase_realtime ADD TABLE nivel_caixa;
+
+-- 6. GATILHOS E PERMISSÕES
 CREATE TRIGGER tr_condos_upd BEFORE UPDATE ON condos FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER tr_users_upd BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER tr_equipments_upd BEFORE UPDATE ON equipments FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -174,7 +161,6 @@ CREATE TRIGGER tr_os_upd BEFORE UPDATE ON service_orders FOR EACH ROW EXECUTE FU
 CREATE TRIGGER tr_appts_upd BEFORE UPDATE ON appointments FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER tr_alerts_upd BEFORE UPDATE ON monitoring_alerts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- 6. PERMISSÕES GLOBAIS
 ALTER TABLE condos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE equipments ENABLE ROW LEVEL SECURITY;
@@ -212,17 +198,17 @@ END $$;
             <Rocket size={24} />
           </div>
           <div>
-            <h1 className="text-xl font-black text-slate-900 leading-none">Unificação de Banco V8.1</h1>
-            <p className="text-[10px] text-blue-600 font-black uppercase tracking-widest mt-1">Script Mestre Consolidado Dinâmico</p>
+            <h1 className="text-xl font-black text-slate-900 leading-none">Configuração de Telemetria IOT</h1>
+            <p className="text-[10px] text-blue-600 font-black uppercase tracking-widest mt-1">Habilitação de Sincronismo em Tempo Real</p>
           </div>
         </div>
 
-        <div className="p-5 bg-amber-50 border border-amber-100 rounded-3xl flex items-start space-x-4 mb-8">
-          <AlertTriangle className="text-amber-600 shrink-0 mt-1" size={20} />
+        <div className="p-5 bg-blue-50 border border-blue-100 rounded-3xl flex items-start space-x-4 mb-8">
+          <AlertTriangle className="text-blue-600 shrink-0 mt-1" size={20} />
           <div className="space-y-1">
-            <p className="text-[10px] font-black text-amber-900 uppercase">Instruções de Manutenção</p>
-            <p className="text-[10px] text-amber-700 font-bold leading-relaxed">
-              O script abaixo agora inclui as tabelas dinâmicas de tipos de equipamentos e sistemas. Execute no SQL Editor do Supabase para que as customizações feitas pelo Admin possam ser salvas na nuvem.
+            <p className="text-[10px] font-black text-blue-900 uppercase">Atenção Técnico</p>
+            <p className="text-[10px] text-blue-700 font-bold leading-relaxed">
+              Para que as mudanças nos eletrodos sejam exibidas instantaneamente, você deve copiar este script e executá-lo no SQL Editor do seu Supabase. Ele ativa a replicação Real-time para a tabela de nível.
             </p>
           </div>
         </div>
@@ -236,7 +222,7 @@ END $$;
               }`}
             >
               {copied ? <CheckCircle2 size={16} /> : <Copy size={16} />}
-              <span>{copied ? 'Copiado!' : 'Copiar Script V8.1'}</span>
+              <span>{copied ? 'Copiado!' : 'Copiar Script de Reparo'}</span>
             </button>
           </div>
           
