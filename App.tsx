@@ -179,16 +179,22 @@ const AppContent: React.FC = () => {
         
         window.addEventListener('online', syncOfflineData);
 
-        // OUVINTE EM TEMPO REAL (CORRIGIDO PARA TELEMETRIA)
+        // OUVINTE EM TEMPO REAL (OTIMIZADO PARA VELOCIDADE MÁXIMA)
         const channel = supabase.channel('global-sync')
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'nivel_caixa' }, (payload) => {
+             // Quando o Arduino inserir, injetamos imediatamente no estado
+             const newReading = payload.new as WaterLevelType;
+             setData(prev => {
+                if (!prev) return prev;
+                const updatedLevels = [newReading, ...prev.waterLevels].slice(0, 500);
+                const newData = { ...prev, waterLevels: updatedLevels };
+                saveStore(newData);
+                return newData;
+             });
+          })
           .on('postgres_changes', { event: '*', schema: 'public' }, async (payload) => {
-             // Se a mudança for na telemetria, atualizamos imediatamente sem gate de sincronização longa
-             if (payload.table === 'nivel_caixa') {
-               const freshData = await fetchAllData(dataRef.current!);
-               setData(freshData);
-               saveStore(freshData);
-               return;
-             }
+             // Outras tabelas continuam com o comportamento padrão de fetch
+             if (payload.table === 'nivel_caixa') return; // Já tratado acima
 
              if (dataRef.current?.currentUser && !isSyncingRef.current) {
                const fresh = await fetchAllData(dataRef.current);
