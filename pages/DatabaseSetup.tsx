@@ -7,32 +7,15 @@ const DatabaseSetup: React.FC = () => {
   const [copiedCpp, setCopiedCpp] = useState(false);
   const [activeTab, setActiveTab] = useState<'sql' | 'esp32'>('sql');
 
-  const sqlScript = `-- 🚀 SMARTGESTÃO: SCRIPT DE INFRAESTRUTURA COMPLETA (V10)
--- Finalidade: Criar do zero todas as tabelas e políticas necessárias.
--- Local: Execute no "SQL Editor" do seu projeto Supabase.
+  const sqlScript = `-- 🚀 SMARTGESTÃO: SCRIPT DE INFRAESTRUTURA MESTRE (V11 - ANTI-ERRO)
+-- Finalidade: Reconstrução TOTAL e correção de erros de publicação Realtime.
 
 -- ==========================================
--- 1. LIMPEZA DE SEGURANÇA (OPCIONAL)
--- ==========================================
--- DROP TABLE IF EXISTS nivel_caixa, monitoring_alerts, service_orders, appointments, equipments, systems, condos, users, equipment_types, system_types CASCADE;
-
--- ==========================================
--- 2. CRIAÇÃO DAS TABELAS DE APOIO
+-- 1. CRIAÇÃO DAS TABELAS (SE NÃO EXISTIREM)
 -- ==========================================
 
-CREATE TABLE IF NOT EXISTS equipment_types (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS system_types (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL
-);
-
--- ==========================================
--- 3. TABELA DE CONDOMÍNIOS E USUÁRIOS
--- ==========================================
+CREATE TABLE IF NOT EXISTS equipment_types (id TEXT PRIMARY KEY, name TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS system_types (id TEXT PRIMARY KEY, name TEXT NOT NULL);
 
 CREATE TABLE IF NOT EXISTS condos (
     id TEXT PRIMARY KEY,
@@ -53,10 +36,6 @@ CREATE TABLE IF NOT EXISTS users (
     condo_id TEXT REFERENCES condos(id) ON DELETE SET NULL,
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-
--- ==========================================
--- 4. ATIVOS E SISTEMAS
--- ==========================================
 
 CREATE TABLE IF NOT EXISTS equipments (
     id TEXT PRIMARY KEY,
@@ -95,10 +74,6 @@ CREATE TABLE IF NOT EXISTS systems (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ==========================================
--- 5. OPERAÇÃO (OS E AGENDA)
--- ==========================================
-
 CREATE TABLE IF NOT EXISTS service_orders (
     id TEXT PRIMARY KEY,
     type TEXT NOT NULL,
@@ -135,13 +110,9 @@ CREATE TABLE IF NOT EXISTS appointments (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ==========================================
--- 6. TELEMETRIA IOT (NÍVEL E ALERTAS)
--- ==========================================
-
 CREATE TABLE IF NOT EXISTS nivel_caixa (
     id BIGSERIAL PRIMARY KEY,
-    condominio_id TEXT NOT NULL, -- Serial do ESP32
+    condominio_id TEXT NOT NULL,
     percentual NUMERIC NOT NULL,
     nivel_cm NUMERIC,
     status TEXT,
@@ -159,28 +130,47 @@ CREATE TABLE IF NOT EXISTS monitoring_alerts (
 );
 
 -- ==========================================
--- 7. CONFIGURAÇÕES DE PERFORMANCE E REALTIME
+-- 2. CONFIGURAÇÕES DE IDENTIDADE E PERFORMANCE
 -- ==========================================
 
--- Essencial para o ESP32 conseguir atualizar e o App ver a mudança de 100 para 0
 ALTER TABLE nivel_caixa REPLICA IDENTITY FULL;
 ALTER TABLE service_orders REPLICA IDENTITY FULL;
 
--- Habilitar publicação Realtime para as tabelas críticas
+-- ==========================================
+-- 3. TRATAMENTO INTELIGENTE DA PUBLICAÇÃO REALTIME
+-- ==========================================
+
 DO $$
+DECLARE
+    pub_exists BOOLEAN;
+    is_all_tables BOOLEAN;
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    -- Verifica se a publicação existe
+    SELECT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') INTO pub_exists;
+
+    IF NOT pub_exists THEN
         CREATE PUBLICATION supabase_realtime;
+    END IF;
+
+    -- Verifica se ela está configurada para "FOR ALL TABLES"
+    SELECT puballtables INTO is_all_tables FROM pg_publication WHERE pubname = 'supabase_realtime';
+
+    -- Só tentamos adicionar as tabelas se ela NÃO for global
+    IF NOT is_all_tables THEN
+        BEGIN
+            ALTER PUBLICATION supabase_realtime ADD TABLE nivel_caixa, service_orders, monitoring_alerts, appointments;
+        EXCEPTION WHEN OTHERS THEN
+            RAISE NOTICE 'Algumas tabelas já podem estar na publicação.';
+        END;
+    ELSE
+        RAISE NOTICE 'Publicação é GLOBAL (FOR ALL TABLES). Nenhuma ação necessária para adicionar tabelas.';
     END IF;
 END $$;
 
-ALTER PUBLICATION supabase_realtime ADD TABLE nivel_caixa, service_orders, monitoring_alerts, appointments;
-
 -- ==========================================
--- 8. POLÍTICAS DE ACESSO (RLS - MODO OPEN)
+-- 4. SEGURANÇA E PERMISSÕES (MODO DESENVOLVIMENTO)
 -- ==========================================
 
--- Desativa RLS para simplificar comunicação IOT/App neste estágio
 ALTER TABLE equipment_types DISABLE ROW LEVEL SECURITY;
 ALTER TABLE system_types DISABLE ROW LEVEL SECURITY;
 ALTER TABLE condos DISABLE ROW LEVEL SECURITY;
@@ -192,11 +182,10 @@ ALTER TABLE appointments DISABLE ROW LEVEL SECURITY;
 ALTER TABLE nivel_caixa DISABLE ROW LEVEL SECURITY;
 ALTER TABLE monitoring_alerts DISABLE ROW LEVEL SECURITY;
 
--- Garante permissões de leitura/escrita para a chave anônima
 GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
 
--- ✅ FIM DO SCRIPT MASTER V10
+-- ✅ FIM DO SCRIPT MASTER V11
 `;
 
   const cppScript = `// 🤖 SMARTGESTÃO IOT CLIENT V9.4 - ESP32 / ARDUINO
@@ -289,13 +278,13 @@ void loop() {
             <Database size={24} />
           </div>
           <div>
-            <h1 className="text-xl font-black text-slate-900 leading-none">Infraestrutura SmartGestão V10</h1>
-            <p className="text-[10px] text-blue-600 font-black uppercase tracking-widest mt-1">Console de Administração do Banco</p>
+            <h1 className="text-xl font-black text-slate-900 leading-none">Infraestrutura V11 (Corrigida)</h1>
+            <p className="text-[10px] text-blue-600 font-black uppercase tracking-widest mt-1">Compatível com Publicação Global</p>
           </div>
         </div>
 
         <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200">
-           <button onClick={() => setActiveTab('sql')} className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'sql' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>1. SQL Master</button>
+           <button onClick={() => setActiveTab('sql')} className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'sql' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>1. SQL Mestre</button>
            <button onClick={() => setActiveTab('esp32')} className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'esp32' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>2. Código ESP32</button>
         </div>
       </div>
@@ -305,10 +294,10 @@ void loop() {
           <div className="p-6 bg-slate-900 text-white rounded-3xl flex items-start space-x-4 mb-8">
             <Server className="text-blue-400 shrink-0 mt-1" size={24} />
             <div className="space-y-1">
-              <p className="text-[10px] font-black text-blue-400 uppercase">Script de Reconstrução Total</p>
+              <p className="text-[10px] font-black text-blue-400 uppercase">Script Anti-Erro Realtime</p>
               <p className="text-[10px] text-slate-400 font-bold leading-relaxed">
-                Este código cria todas as tabelas (Usuários, Ativos, OS, Telemetria) e configura o Realtime. 
-                Use-o para restaurar seu Supabase se você deletou as tabelas de nível.
+                Este script verifica se o seu Supabase está no modo "Global" e evita o erro 55000. 
+                Ele recria todas as tabelas e políticas necessárias do zero.
               </p>
             </div>
           </div>
@@ -316,7 +305,7 @@ void loop() {
           <div className="relative">
             <button onClick={() => handleCopy(sqlScript, setCopiedSql)} className={`absolute top-4 right-4 z-10 flex items-center space-x-2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase shadow-xl transition-all ${copiedSql ? 'bg-emerald-500 text-white' : 'bg-blue-600 text-white hover:bg-blue-500'}`}>
               {copiedSql ? <CheckCircle2 size={16} /> : <Copy size={16} />}
-              <span>Copiar Script de Reconstrução</span>
+              <span>Copiar Script Mestre V11</span>
             </button>
             <div className="bg-slate-900 rounded-[2rem] p-8 pt-20 overflow-hidden shadow-2xl border-4 border-slate-800">
               <pre className="text-[11px] font-mono text-emerald-400 overflow-x-auto custom-scrollbar leading-relaxed">{sqlScript}</pre>
@@ -330,7 +319,7 @@ void loop() {
             <div className="space-y-1">
               <p className="text-[10px] font-black text-amber-900 uppercase">Instalação de Bibliotecas</p>
               <p className="text-[10px] text-amber-700 font-bold leading-relaxed">
-                Antes de compilar, instale a biblioteca <b>ArduinoJson</b> na sua IDE do Arduino.
+                Certifique-se de ter a biblioteca <b>ArduinoJson</b> instalada no seu Arduino IDE.
               </p>
             </div>
           </div>
