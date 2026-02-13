@@ -7,35 +7,42 @@ const DatabaseSetup: React.FC = () => {
   const [copiedCpp, setCopiedCpp] = useState(false);
   const [activeTab, setActiveTab] = useState<'sql' | 'esp32'>('sql');
 
-  const sqlScript = `-- 🚀 SMARTGESTÃO REPAIR SCRIPT V9.4 (MASTER REALTIME)
+  const sqlScript = `-- 🚀 SMARTGESTÃO REPAIR SCRIPT V9.5 (MASTER COMPATIBILITY)
 -- Execute este script no EDITOR SQL do Supabase para destravar os níveis de 0% e 100%.
 
--- 1. DESATIVAR RLS (ROW LEVEL SECURITY)
--- Isso garante que o banco não bloqueie nenhum dado enviado pelo Arduino.
-ALTER TABLE IF EXISTS nivel_caixa DISABLE ROW LEVEL SECURITY;
-
--- 2. CONFIGURAR RÉPLICA FULL (ESSENCIAL PARA O APP VER MUDANÇAS)
--- Sem isso, o banco não envia o valor do nível quando ele muda de 50 para 0, por exemplo.
+-- 1. CONFIGURAR RÉPLICA FULL (ESSENCIAL PARA O APP VER MUDANÇAS)
+-- Este comando obriga o banco de dados a enviar todos os valores (incluindo 0 e 100)
+-- mesmo quando o Arduino faz apenas uma atualização (UPDATE).
 ALTER TABLE nivel_caixa REPLICA IDENTITY FULL;
 
--- 3. PERMISSÕES TOTAIS
+-- 2. DESATIVAR RLS (ROW LEVEL SECURITY)
+-- Garante que o banco não bloqueie o Arduino nem o App por falta de autenticação complexa.
+ALTER TABLE IF EXISTS nivel_caixa DISABLE ROW LEVEL SECURITY;
+
+-- 3. RESET DE PERMISSÕES
+-- Libera o acesso para a chave anônima (anon) usada no Arduino e no App.
 DROP POLICY IF EXISTS "Permitir tudo para anon" ON nivel_caixa;
 CREATE POLICY "Permitir tudo para anon" ON nivel_caixa FOR ALL USING (true) WITH CHECK (true);
 
 GRANT ALL ON TABLE nivel_caixa TO anon, authenticated, service_role;
 GRANT ALL ON SEQUENCE nivel_caixa_id_seq TO anon, authenticated, service_role;
 
--- 4. HABILITAR CANAL REALTIME
-ALTER TABLE nivel_caixa SET (realtime.enabled = true);
-
+-- 4. HABILITAR REALTIME (VIA PUBLICAÇÃO)
+-- Este bloco garante que a tabela 'nivel_caixa' seja transmitida em tempo real.
 DO $$
 BEGIN
+    -- Cria a publicação se não existir
     IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
         CREATE PUBLICATION supabase_realtime;
     END IF;
-    ALTER PUBLICATION supabase_realtime ADD TABLE nivel_caixa;
-EXCEPTION WHEN OTHERS THEN
-    RAISE NOTICE 'Publicação já existe.';
+
+    -- Tenta adicionar a tabela à publicação
+    BEGIN
+        ALTER PUBLICATION supabase_realtime ADD TABLE nivel_caixa;
+    EXCEPTION 
+        WHEN duplicate_object THEN 
+            RAISE NOTICE 'A tabela já está na publicação do Realtime.';
+    END;
 END $$;
 `;
 
@@ -148,7 +155,7 @@ void loop() {
             <Database size={24} />
           </div>
           <div>
-            <h1 className="text-xl font-black text-slate-900 leading-none">Configuração IOT V9.4</h1>
+            <h1 className="text-xl font-black text-slate-900 leading-none">Configuração IOT V9.5</h1>
             <p className="text-[10px] text-blue-600 font-black uppercase tracking-widest mt-1">Sincronismo Supabase Master</p>
           </div>
         </div>
@@ -164,9 +171,9 @@ void loop() {
           <div className="p-6 bg-red-50 border border-red-100 rounded-3xl flex items-start space-x-4 mb-8">
             <AlertTriangle className="text-red-600 shrink-0 mt-1" size={24} />
             <div className="space-y-1">
-              <p className="text-[10px] font-black text-red-900 uppercase">Atenção Crítica</p>
+              <p className="text-[10px] font-black text-red-900 uppercase">Script Corrigido V9.5</p>
               <p className="text-[10px] text-red-700 font-bold leading-relaxed">
-                Se o nível trava em 50% ou 75% no App, execute este script no <b>SQL Editor do Supabase</b>. Ele força o banco a enviar os valores 0 e 100 que o sistema pode estar ignorando.
+                Este script foi simplificado para evitar erros de compatibilidade. Ele foca no <b>REPLICA IDENTITY FULL</b>, que é o segredo para o App reconhecer quando o nível volta a ser 0% ou sobe para 100%.
               </p>
             </div>
           </div>
@@ -174,7 +181,7 @@ void loop() {
           <div className="relative">
             <button onClick={() => handleCopy(sqlScript, setCopiedSql)} className={`absolute top-4 right-4 z-10 flex items-center space-x-2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase shadow-xl transition-all ${copiedSql ? 'bg-emerald-500 text-white' : 'bg-slate-900 text-white hover:bg-blue-600'}`}>
               {copiedSql ? <CheckCircle2 size={16} /> : <Copy size={16} />}
-              <span>Copiar SQL V9.4</span>
+              <span>Copiar SQL V9.5</span>
             </button>
             <div className="bg-slate-900 rounded-[2rem] p-8 pt-20 overflow-hidden shadow-2xl border-4 border-slate-800">
               <pre className="text-[11px] font-mono text-emerald-400 overflow-x-auto custom-scrollbar leading-relaxed">{sqlScript}</pre>
@@ -183,7 +190,6 @@ void loop() {
         </div>
       ) : (
         <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-slate-200 animate-in fade-in duration-300">
-          {/* GUIA DE RESOLUÇÃO DO ERRO DE BIBLIOTECA */}
           <div className="p-6 bg-amber-50 border border-amber-200 rounded-3xl flex items-start space-x-4 mb-8">
             <Library className="text-amber-600 shrink-0 mt-1" size={24} />
             <div className="space-y-1">
