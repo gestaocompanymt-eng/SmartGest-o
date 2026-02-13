@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Droplets, 
   RefreshCw, 
@@ -9,7 +9,8 @@ import {
   AlertTriangle,
   Info,
   Terminal,
-  CheckCircle2
+  CheckCircle2,
+  Radio
 } from 'lucide-react';
 import { 
   AreaChart, 
@@ -24,8 +25,17 @@ import { AppData, UserRole } from '../types';
 
 const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; onRefresh?: () => Promise<void> }> = ({ data, onRefresh }) => {
   const [showRawData, setShowRawData] = useState(false);
+  const [lastUpdatePulse, setLastUpdatePulse] = useState(false);
+  
   const user = data.currentUser;
   const isCondoUser = user?.role === UserRole.SINDICO_ADMIN || user?.role === UserRole.RONDA;
+
+  // Efeito visual de pulso quando novos dados chegam
+  useEffect(() => {
+    setLastUpdatePulse(true);
+    const timer = setTimeout(() => setLastUpdatePulse(false), 800);
+    return () => clearTimeout(timer);
+  }, [data.waterLevels.length]);
 
   const monitoringData = useMemo(() => {
     const condosMap = new Map();
@@ -92,15 +102,15 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
           );
         })}
         
-        {/* Visual de 0% - CRÍTICO */}
-        <div className={`mt-2 p-4 rounded-2xl flex items-center justify-between transition-all duration-500 ${
+        {/* Visual de 0% - TRATAMENTO EXPLÍCITO V9.2 */}
+        <div className={`mt-2 p-4 rounded-2xl flex items-center justify-between transition-all duration-500 border-2 ${
           percent <= 0 
-            ? 'bg-red-600 shadow-2xl shadow-red-500/40 animate-pulse text-white' 
-            : 'bg-slate-100 text-slate-400 opacity-20'
+            ? 'bg-red-600 border-red-400 shadow-2xl shadow-red-500/40 animate-pulse text-white scale-[1.02]' 
+            : 'bg-slate-100 border-transparent text-slate-400 opacity-20'
         }`}>
           <div className="flex items-center space-x-3">
             <AlertTriangle size={18} />
-            <span className="text-[10px] font-black uppercase tracking-widest">Tanque Vazio (0%)</span>
+            <span className="text-[10px] font-black uppercase tracking-widest">Alerta Crítico: Tanque Vazio (0%)</span>
           </div>
           <span className="text-xs font-black">{percent <= 0 ? '0%' : '--'}</span>
         </div>
@@ -111,9 +121,15 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
   return (
     <div className="space-y-8 pb-12">
       <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-black text-slate-900 leading-tight">Telemetria Realtime V9.1</h1>
-          <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-1">Sincronismo Direto ESP32</p>
+        <div className="flex items-center space-x-4">
+          <div>
+            <h1 className="text-2xl font-black text-slate-900 leading-tight">Telemetria Realtime V9.2</h1>
+            <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-1">Sincronismo Preciso IOT</p>
+          </div>
+          <div className={`px-4 py-2 rounded-2xl flex items-center space-x-2 border transition-all duration-500 ${lastUpdatePulse ? 'bg-blue-600 border-blue-400 text-white shadow-lg' : 'bg-white border-slate-200 text-slate-400'}`}>
+            <Radio size={14} className={lastUpdatePulse ? 'animate-ping' : ''} />
+            <span className="text-[9px] font-black uppercase tracking-tighter">{lastUpdatePulse ? 'Dado Recebido!' : 'Aguardando ESP32'}</span>
+          </div>
         </div>
         <div className="flex gap-2">
           <button onClick={() => setShowRawData(!showRawData)} className={`p-3 rounded-2xl border transition-all ${showRawData ? 'bg-slate-900 border-slate-900 text-white shadow-lg' : 'bg-white border-slate-200 text-slate-500'}`}>
@@ -135,31 +151,33 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
               </div>
               <div className="flex items-center space-x-2 text-[10px] font-black text-emerald-500 uppercase tracking-widest">
                 <Activity size={14} className="animate-pulse" />
-                <span>Live Feed</span>
+                <span>IOT Ativo</span>
               </div>
             </div>
             
             <div className="grid grid-cols-1 gap-8">
               {entry.points.map((point: any) => {
                 const history = getPointsHistory(point.device_id);
-                const latest = history.length > 0 ? history[0] : null; // Pega o primeiro (ordenado desc por App.tsx) ou o último dependendo da lógica de push
+                // Ordena para pegar o dado mais recente do histórico filtrado
                 const actualHistory = [...history].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
                 const current = actualHistory.length > 0 ? actualHistory[actualHistory.length - 1] : null;
                 const percent = current ? Number(current.percentual) : 0;
                 
                 return (
-                  <div key={point.id} className="bg-white rounded-[3rem] border-4 border-white shadow-xl overflow-hidden p-8 flex flex-col hover:shadow-2xl transition-all">
+                  <div key={point.id} className="bg-white rounded-[3rem] border-4 border-white shadow-xl overflow-hidden p-8 flex flex-col hover:shadow-2xl transition-all border-slate-100">
                     <div className="flex flex-col xl:flex-row gap-10">
                       <div className="xl:w-1/3 space-y-6">
                         <div>
-                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Serial: {point.device_id}</p>
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center">
+                            <Wifi size={12} className="mr-1" /> Serial: {point.device_id}
+                          </p>
                           <h3 className="text-2xl font-black text-slate-900 mb-6">{point.name}</h3>
                           
-                          <div className={`inline-flex items-center space-x-6 px-10 py-8 rounded-[2.5rem] transition-all duration-500 shadow-2xl ${
-                            percent >= 100 ? 'bg-emerald-600' : 
-                            percent <= 0 ? 'bg-red-600' :
-                            percent <= 25 ? 'bg-amber-600' : 
-                            'bg-slate-900'
+                          <div className={`inline-flex items-center space-x-6 px-10 py-8 rounded-[2.5rem] transition-all duration-500 shadow-2xl border-4 ${
+                            percent >= 100 ? 'bg-emerald-600 border-emerald-400' : 
+                            percent <= 0 ? 'bg-red-600 border-red-400' :
+                            percent <= 25 ? 'bg-amber-600 border-amber-400' : 
+                            'bg-slate-900 border-slate-800'
                           } text-white`}>
                              <Droplets size={40} className={percent > 0 ? 'animate-bounce' : ''} />
                              <span className="text-6xl font-black tracking-tighter">{percent}%</span>
@@ -172,11 +190,11 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
 
                         {showRawData && (
                           <div className="bg-slate-900 text-emerald-400 p-5 rounded-3xl font-mono text-[9px] max-h-40 overflow-y-auto custom-scrollbar shadow-inner">
-                            <p className="border-b border-emerald-900/50 pb-2 mb-2 font-black uppercase text-blue-400">Log IOT Master:</p>
-                            {actualHistory.length === 0 ? <p className="opacity-40">Sem dados...</p> : actualHistory.slice(-10).reverse().map((h, i) => (
+                            <p className="border-b border-emerald-900/50 pb-2 mb-2 font-black uppercase text-blue-400">Log IOT Master V9.2:</p>
+                            {actualHistory.length === 0 ? <p className="opacity-40 italic">Aguardando telemetria inicial...</p> : actualHistory.slice(-10).reverse().map((h, i) => (
                               <div key={i} className="flex justify-between border-b border-emerald-900/10 py-1">
-                                <span>{h.time}</span>
-                                <span className="font-black">{h.percentual}%</span>
+                                <span>{new Date(h.created_at).toLocaleTimeString()}</span>
+                                <span className="font-black text-white">{h.percentual}%</span>
                               </div>
                             ))}
                           </div>
@@ -189,8 +207,8 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
                             <AreaChart data={actualHistory}>
                               <defs>
                                 <linearGradient id={`colorLevel-${point.id}`} x1="0" y1="0" x2="0" y2="1">
-                                  <stop offset="5%" stopColor="#2563eb" stopOpacity={0.4}/>
-                                  <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
+                                  <stop offset="5%" stopColor={percent <= 0 ? '#ef4444' : '#2563eb'} stopOpacity={0.4}/>
+                                  <stop offset="95%" stopColor={percent <= 0 ? '#ef4444' : '#2563eb'} stopOpacity={0}/>
                                 </linearGradient>
                               </defs>
                               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
@@ -203,7 +221,7 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
                               <Area 
                                 type="stepAfter" 
                                 dataKey="percentual" 
-                                stroke="#2563eb" 
+                                stroke={percent <= 0 ? '#ef4444' : '#2563eb'} 
                                 strokeWidth={5} 
                                 fillOpacity={1} 
                                 fill={`url(#colorLevel-${point.id})`} 
@@ -216,9 +234,9 @@ const WaterLevel: React.FC<{ data: AppData; updateData: (d: AppData) => void; on
                         <div className="mt-6 p-6 bg-blue-50 rounded-[2rem] border border-blue-100 flex items-start space-x-4">
                            <Info size={20} className="text-blue-500 shrink-0 mt-1" />
                            <div className="space-y-1">
-                             <p className="text-[10px] font-black text-blue-900 uppercase tracking-widest leading-none">Status de Sincronia V9.1</p>
+                             <p className="text-[10px] font-black text-blue-900 uppercase tracking-widest leading-none">Status de Sincronia V9.2</p>
                              <p className="text-[10px] text-blue-700 font-bold leading-relaxed">
-                               O gráfico utiliza o método <b>Step After</b> para representar fielmente os degraus dos eletrodos metálicos instalados no reservatório.
+                               O gráfico utiliza <b>Step After</b> para capturar mudanças instantâneas nos eletrodos. O pulso azul no topo da página confirma a recepção de cada pacote de dados.
                              </p>
                            </div>
                         </div>
