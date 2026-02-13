@@ -5,28 +5,23 @@ import { Copy, CheckCircle2, AlertTriangle, Rocket, ShieldCheck } from 'lucide-r
 const DatabaseSetup: React.FC = () => {
   const [copied, setCopied] = React.useState(false);
 
-  const sqlScript = `-- 🚀 SMARTGESTÃO MASTER SCRIPT V9.2 (SOLUÇÃO DEFINITIVA DE NÍVEL)
--- Este script limpa as políticas de segurança que impedem o Realtime de ver o valor 0.
+  const sqlScript = `-- 🚀 SMARTGESTÃO REPAIR SCRIPT V9.3 (MODO MASTER)
+-- Execute este script no EDITOR SQL do Supabase para destravar os níveis de 0% e 100%.
 
--- 1. GARANTIR ESTRUTURA E TIPAGEM
-CREATE TABLE IF NOT EXISTS nivel_caixa (
-  id BIGSERIAL PRIMARY KEY,
-  condominio_id TEXT NOT NULL,
-  percentual NUMERIC NOT NULL DEFAULT 0,
-  nivel_cm NUMERIC DEFAULT 0,
-  status TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+-- 1. DESATIVAR RLS TEMPORARIAMENTE PARA GARANTIR FLUXO
+ALTER TABLE IF EXISTS nivel_caixa DISABLE ROW LEVEL SECURITY;
 
--- 2. RESET TOTAL DE POLÍTICAS (CORREÇÃO DE "PAGINA ADMIN SUMIU" E "NÍVEL NÃO FUNCIONA")
-ALTER TABLE nivel_caixa DISABLE ROW LEVEL SECURITY;
+-- 2. RESET DE POLÍTICAS (PERMISSÃO TOTAL PARA ARDUINO E APP)
 DROP POLICY IF EXISTS "Permitir tudo para anon" ON nivel_caixa;
 CREATE POLICY "Permitir tudo para anon" ON nivel_caixa FOR ALL USING (true) WITH CHECK (true);
 
--- 3. HABILITAR IDENTIDADE DE RÉPLICA FULL (OBRIGATÓRIO PARA VER MUDANÇAS NO APP)
+-- 3. COMANDO CRÍTICO: FORÇAR ENVIO DE TODAS AS COLUNAS NO REALTIME
+-- Sem isso, o Supabase pode enviar apenas o ID nas atualizações (updates),
+-- travando o App no último valor conhecido.
 ALTER TABLE nivel_caixa REPLICA IDENTITY FULL;
 
--- 4. CONFIGURAR CANAL DE BROADCAST REALTIME
+-- 4. RE-ATIVAR PUBLICAÇÃO DE TEMPO REAL
+-- Garante que a tabela está na lista de transmissão do banco.
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
@@ -34,19 +29,18 @@ BEGIN
     END IF;
     ALTER PUBLICATION supabase_realtime ADD TABLE nivel_caixa;
 EXCEPTION WHEN OTHERS THEN
-    RAISE NOTICE 'Publicação já existe ou erro ignorado';
+    RAISE NOTICE 'A tabela já está na publicação.';
 END $$;
 
--- 5. PERMISSÕES EXPLÍCITAS PARA A ROLE ANON (ESP32)
-GRANT ALL ON TABLE nivel_caixa TO anon;
-GRANT ALL ON TABLE nivel_caixa TO authenticated;
-GRANT ALL ON TABLE nivel_caixa TO service_role;
-GRANT ALL ON SEQUENCE nivel_caixa_id_seq TO anon;
+-- 5. PERMISSÕES DE ACESSO AO SEQUENCIAL
+GRANT ALL ON TABLE nivel_caixa TO anon, authenticated, service_role;
+GRANT ALL ON SEQUENCE nivel_caixa_id_seq TO anon, authenticated, service_role;
 
--- 6. GARANTIR QUE O REALTIME ESCUTE UPDATES E INSERTS
+-- 6. HABILITAR REALTIME EXPLÍCITO
 ALTER TABLE nivel_caixa SET (realtime.enabled = true);
 
--- Script concluído V9.2. Rode no Editor SQL do Supabase.
+-- Script concluído V9.3. 
+-- APÓS EXECUTAR: Reinicie o App e verifique se o pulso azul aparece no topo da tela de Reservatórios.
 `;
 
   const handleCopy = () => {
@@ -59,34 +53,34 @@ ALTER TABLE nivel_caixa SET (realtime.enabled = true);
     <div className="space-y-6 pb-12">
       <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-slate-200">
         <div className="flex items-center space-x-4 mb-6">
-          <div className="p-3 bg-slate-900 rounded-2xl text-white shadow-lg">
+          <div className="p-3 bg-slate-900 rounded-2xl text-white shadow-lg shadow-slate-900/20">
             <ShieldCheck size={24} />
           </div>
           <div>
-            <h1 className="text-xl font-black text-slate-900 leading-none text-blue-600">Correção de Políticas V9.2</h1>
-            <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">Sincronismo Supabase Master</p>
+            <h1 className="text-xl font-black text-slate-900 leading-none">Reparo Supabase V9.3</h1>
+            <p className="text-[10px] text-blue-600 font-black uppercase tracking-widest mt-1 italic">Solução definitiva para travamento de níveis</p>
           </div>
         </div>
 
-        <div className="p-6 bg-red-50 border border-red-100 rounded-3xl flex items-start space-x-4 mb-8">
-          <AlertTriangle className="text-red-600 shrink-0 mt-1" size={24} />
+        <div className="p-6 bg-amber-50 border border-amber-100 rounded-3xl flex items-start space-x-4 mb-8">
+          <AlertTriangle className="text-amber-600 shrink-0 mt-1" size={24} />
           <div className="space-y-1">
-            <p className="text-[10px] font-black text-red-900 uppercase">Atenção Crítica</p>
-            <p className="text-[10px] text-red-700 font-bold leading-relaxed">
-              O Supabase por padrão bloqueia transmissões de Realtime se as políticas RLS não estiverem explicitamente configuradas para <b>REPLICA IDENTITY FULL</b>. Execute o script abaixo para liberar o fluxo de dados do Arduino.
+            <p className="text-[10px] font-black text-amber-900 uppercase">Por que os níveis travam?</p>
+            <p className="text-[10px] text-amber-700 font-bold leading-relaxed">
+              O Supabase usa um recurso chamado <b>Replica Identity</b>. Se estiver configurado como 'Default', ele envia apenas o ID quando o Arduino faz um UPDATE. O script abaixo muda para <b>FULL</b>, forçando o banco a enviar o percentual (0, 100, etc) em tempo real.
             </p>
           </div>
         </div>
 
         <div className="relative">
           <div className="absolute top-4 right-4 z-10">
-            <button onClick={handleCopy} className={`flex items-center space-x-2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase shadow-xl transition-all ${copied ? 'bg-emerald-500 text-white' : 'bg-slate-900 text-white hover:bg-blue-600'}`}>
+            <button onClick={handleCopy} className={`flex items-center space-x-2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase shadow-xl transition-all ${copied ? 'bg-emerald-500 text-white shadow-emerald-500/20' : 'bg-slate-900 text-white hover:bg-blue-600'}`}>
               {copied ? <CheckCircle2 size={16} /> : <Copy size={16} />}
-              <span>{copied ? 'Copiado!' : 'Copiar Script de Reparo V9.2'}</span>
+              <span>{copied ? 'Copiado!' : 'Copiar Script V9.3'}</span>
             </button>
           </div>
           <div className="bg-slate-900 rounded-[2rem] p-8 pt-20 overflow-hidden shadow-2xl border-4 border-slate-800">
-            <pre className="text-[11px] font-mono text-emerald-400 overflow-x-auto custom-scrollbar leading-relaxed">{sqlScript}</pre>
+            <pre className="text-[11px] font-mono text-emerald-400 overflow-x-auto custom-scrollbar leading-relaxed whitespace-pre-wrap">{sqlScript}</pre>
           </div>
         </div>
       </div>

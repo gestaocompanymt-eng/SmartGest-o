@@ -81,20 +81,25 @@ const AppContent: React.FC = () => {
         setData(updated);
         saveStore(updated);
 
-        const channel = supabase.channel('iot-v9.2')
-          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'nivel_caixa' }, (payload) => {
-             const reading = payload.new as WaterLevelType;
+        // V9.3 - OUVINDO TODOS OS EVENTOS (*) PARA GARANTIR CAPTURA DE UPDATES DO ARDUINO
+        const channel = supabase.channel('iot-v9.3-master')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'nivel_caixa' }, (payload) => {
+             const reading = (payload.new || payload.old) as WaterLevelType;
              if (!reading) return;
              
-             // TRATAMENTO MATEMÁTICO RÍGIDO PARA 0%
-             const rawVal = payload.new.percentual;
-             reading.percentual = typeof rawVal === 'number' ? rawVal : Number(rawVal);
+             // TRATAMENTO MATEMÁTICO RÍGIDO PARA 0, 25, 50, 75, 100
+             // Usamos Number() explícito para evitar que 0 seja tratado como false
+             const rawVal = payload.new ? payload.new.percentual : payload.old.percentual;
+             reading.percentual = (rawVal !== null && rawVal !== undefined) ? Number(rawVal) : 0;
              
              setData(prev => {
                 if (!prev) return prev;
-                // Adiciona o novo e remove duplicatas por ID se houver
+                // Remove a versão antiga daquela leitura (se houver) e adiciona a nova
                 const filtered = prev.waterLevels.filter(l => String(l.id) !== String(reading.id));
-                const updatedLevels = [reading, ...filtered].slice(0, 500);
+                const updatedLevels = [reading, ...filtered].sort((a,b) => 
+                  new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+                ).slice(0, 500);
+                
                 const newData = { ...prev, waterLevels: updatedLevels };
                 saveStore(newData);
                 return newData;
@@ -124,26 +129,40 @@ const AppContent: React.FC = () => {
         <div className="h-full flex flex-col p-6">
           <div className="flex items-center justify-between mb-8 px-2">
             <div className="flex items-center space-x-3">
-              <div className="bg-blue-600 p-2 rounded-xl"><Wrench size={20} className="text-white" /></div>
+              <div className="bg-blue-600 p-2 rounded-xl shadow-lg shadow-blue-500/20"><Wrench size={20} className="text-white" /></div>
               <span className="font-black text-lg tracking-tighter uppercase text-white">SmartGestão</span>
             </div>
           </div>
           
           <nav className="flex-1 space-y-1.5 overflow-y-auto pr-2 custom-scrollbar">
-            <Link to="/" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-xs transition-all ${isActive('/') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
-              <LayoutDashboard size={18} /> <span>PAINEL</span>
+            {/* MENU ADMINISTRATIVO PRIORITÁRIO PARA ADMIN */}
+            {data.currentUser.role === UserRole.ADMIN && (
+              <>
+                <div className="py-2 text-[10px] font-black text-amber-500 uppercase tracking-widest px-4">Painel de Controle</div>
+                <Link to="/admin" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-xs transition-all ${isActive('/admin') ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/20' : 'text-slate-400 hover:bg-slate-800'}`}>
+                  <Settings size={18} /> <span>ADMINISTRAÇÃO</span>
+                </Link>
+                <Link to="/database" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-xs transition-all ${isActive('/database') ? 'bg-slate-700 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
+                  <Database size={18} /> <span>BANCO DE DADOS</span>
+                </Link>
+                <div className="py-2"><hr className="border-slate-800" /></div>
+              </>
+            )}
+
+            <Link to="/" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-xs transition-all ${isActive('/') ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-400 hover:bg-slate-800'}`}>
+              <LayoutDashboard size={18} /> <span>DASHBOARD</span>
             </Link>
             
-            <div className="py-2 text-[10px] font-black text-slate-600 uppercase tracking-widest px-4">Monitoramento IOT</div>
+            <div className="py-2 text-[10px] font-black text-slate-600 uppercase tracking-widest px-4">Sensores IOT</div>
             
-            <Link to="/reservatorios" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-xs transition-all ${isActive('/reservatorios') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
+            <Link to="/reservatorios" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-xs transition-all ${isActive('/reservatorios') ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-400 hover:bg-slate-800'}`}>
               <Droplets size={18} /> <span>RESERVATÓRIOS</span>
             </Link>
-            <Link to="/monitoring" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-xs transition-all ${isActive('/monitoring') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
-              <Activity size={18} /> <span>TELEMETRIA TUYA</span>
+            <Link to="/monitoring" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-xs transition-all ${isActive('/monitoring') ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-400 hover:bg-slate-800'}`}>
+              <Activity size={18} /> <span>TUYA CLOUD</span>
             </Link>
 
-            <div className="py-2 text-[10px] font-black text-slate-600 uppercase tracking-widest px-4">Operacional</div>
+            <div className="py-2 text-[10px] font-black text-slate-600 uppercase tracking-widest px-4">Operação</div>
             
             <Link to="/equipment" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-xs transition-all ${isActive('/equipment') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
               <Wrench size={18} /> <span>EQUIPAMENTOS</span>
@@ -154,29 +173,17 @@ const AppContent: React.FC = () => {
             <Link to="/os" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-xs transition-all ${isActive('/os') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
               <FileText size={18} /> <span>ORDENS DE SERVIÇO</span>
             </Link>
-
-            {data.currentUser.role === UserRole.ADMIN && (
-              <>
-                <div className="py-2 text-[10px] font-black text-amber-500 uppercase tracking-widest px-4">Administração</div>
-                <Link to="/admin" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-xs transition-all ${isActive('/admin') ? 'bg-amber-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
-                  <Settings size={18} /> <span>GERENCIAR ACESSOS</span>
-                </Link>
-                <Link to="/database" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-xs transition-all ${isActive('/database') ? 'bg-slate-700 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
-                  <Database size={18} /> <span>BANCO DE DADOS SQL</span>
-                </Link>
-              </>
-            )}
           </nav>
           
           <div className="mt-auto pt-4 border-t border-slate-800">
-             <button onClick={() => { setData({...data, currentUser: null}); saveStore({...data, currentUser: null}); navigate('/login'); }} className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-slate-400 hover:text-red-500 font-bold text-xs transition-colors">
+             <button onClick={() => { setData({...data, currentUser: null}); saveStore({...data, currentUser: null}); navigate('/login'); }} className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-slate-400 hover:text-red-500 font-bold text-xs transition-all">
               <LogOut size={18} /> <span>SAIR DO SISTEMA</span>
             </button>
           </div>
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
+      <main className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar bg-slate-50">
         <Routes>
           <Route path="/" element={<Dashboard data={data} updateData={updateData} onSync={async () => { const fresh = await fetchAllData(data); setData(fresh); saveStore(fresh); }} />} />
           <Route path="/reservatorios" element={<WaterLevel data={data} updateData={updateData} onRefresh={async () => { const updated = await fetchAllData(data); setData(updated); saveStore(updated); }} />} />
