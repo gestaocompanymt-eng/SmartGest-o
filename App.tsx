@@ -34,20 +34,25 @@ const AppContent: React.FC = () => {
       setSyncStatus(navigator.onLine ? 'synced' : 'offline');
       return currentLocalData;
     }
+    
     setSyncStatus('syncing');
     isSyncingRef.current = true;
+
     try {
+      // Otimização: Buscamos apenas os 100 últimos registros de OS para evitar payload gigante
+      // Para telemetria, pegamos os 100 últimos registros globais (suficiente para dashboards)
       const queries = [
-        supabase.from('users').select('*'),
+        supabase.from('users').select('id, name, email, role, condo_id'),
         supabase.from('condos').select('*'),
         supabase.from('equipments').select('*'),
         supabase.from('systems').select('*'),
-        supabase.from('service_orders').select('*').order('created_at', { ascending: false }),
-        supabase.from('nivel_caixa').select('*').order('created_at', { ascending: false }).limit(300),
-        supabase.from('monitoring_alerts').select('*'),
+        supabase.from('service_orders').select('*').order('created_at', { ascending: false }).limit(100),
+        supabase.from('nivel_caixa').select('id, condominio_id, percentual, created_at').order('created_at', { ascending: false }).limit(100),
+        supabase.from('monitoring_alerts').select('*').eq('is_resolved', false),
         supabase.from('equipment_types').select('*'),
         supabase.from('system_types').select('*')
       ];
+
       const res = await Promise.all(queries);
       
       const updated = {
@@ -62,9 +67,11 @@ const AppContent: React.FC = () => {
         equipmentTypes: res[7].data || [],
         systemTypes: res[8].data || []
       };
+
       setSyncStatus('synced');
       return updated;
     } catch (error) {
+      console.error("Erro na sincronização:", error);
       setSyncStatus('offline');
       return currentLocalData;
     } finally {
@@ -76,30 +83,22 @@ const AppContent: React.FC = () => {
     const init = async () => {
       const local = getStore();
       setData(local);
+      
       if (local.currentUser) {
         const updated = await fetchAllData(local);
         setData(updated);
         saveStore(updated);
 
-        // V9.3 - OUVINDO TODOS OS EVENTOS (*) PARA GARANTIR CAPTURA DE UPDATES DO ARDUINO
-        const channel = supabase.channel('iot-v9.3-master')
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'nivel_caixa' }, (payload) => {
-             const reading = (payload.new || payload.old) as WaterLevelType;
+        // Realtime: Inscrição resiliente para telemetria IOT
+        const channel = supabase.channel('iot-performance-v13')
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'nivel_caixa' }, (payload) => {
+             const reading = payload.new as WaterLevelType;
              if (!reading) return;
-             
-             // TRATAMENTO MATEMÁTICO RÍGIDO PARA 0, 25, 50, 75, 100
-             // Usamos Number() explícito para evitar que 0 seja tratado como false
-             const rawVal = payload.new ? payload.new.percentual : payload.old.percentual;
-             reading.percentual = (rawVal !== null && rawVal !== undefined) ? Number(rawVal) : 0;
              
              setData(prev => {
                 if (!prev) return prev;
-                // Remove a versão antiga daquela leitura (se houver) e adiciona a nova
-                const filtered = prev.waterLevels.filter(l => String(l.id) !== String(reading.id));
-                const updatedLevels = [reading, ...filtered].sort((a,b) => 
-                  new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-                ).slice(0, 500);
-                
+                const readingVal = Number(reading.percentual);
+                const updatedLevels = [{...reading, percentual: readingVal}, ...prev.waterLevels].slice(0, 200);
                 const newData = { ...prev, waterLevels: updatedLevels };
                 saveStore(newData);
                 return newData;
@@ -132,14 +131,14 @@ const AppContent: React.FC = () => {
               <div className="bg-blue-600 p-2 rounded-xl shadow-lg shadow-blue-500/20"><Wrench size={20} className="text-white" /></div>
               <span className="font-black text-lg tracking-tighter uppercase text-white">SmartGestão</span>
             </div>
+            {syncStatus === 'syncing' && <RefreshCcw size={14} className="text-blue-400 animate-spin" />}
           </div>
           
           <nav className="flex-1 space-y-1.5 overflow-y-auto pr-2 custom-scrollbar">
-            {/* MENU ADMINISTRATIVO PRIORITÁRIO PARA ADMIN */}
             {data.currentUser.role === UserRole.ADMIN && (
               <>
                 <div className="py-2 text-[10px] font-black text-amber-500 uppercase tracking-widest px-4">Painel de Controle</div>
-                <Link to="/admin" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-xs transition-all ${isActive('/admin') ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/20' : 'text-slate-400 hover:bg-slate-800'}`}>
+                <Link to="/admin" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-xs transition-all ${isActive('/admin') ? 'bg-amber-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
                   <Settings size={18} /> <span>ADMINISTRAÇÃO</span>
                 </Link>
                 <Link to="/database" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-xs transition-all ${isActive('/database') ? 'bg-slate-700 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
@@ -155,10 +154,10 @@ const AppContent: React.FC = () => {
             
             <div className="py-2 text-[10px] font-black text-slate-600 uppercase tracking-widest px-4">Sensores IOT</div>
             
-            <Link to="/reservatorios" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-xs transition-all ${isActive('/reservatorios') ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-400 hover:bg-slate-800'}`}>
+            <Link to="/reservatorios" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-xs transition-all ${isActive('/reservatorios') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
               <Droplets size={18} /> <span>RESERVATÓRIOS</span>
             </Link>
-            <Link to="/monitoring" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-xs transition-all ${isActive('/monitoring') ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-400 hover:bg-slate-800'}`}>
+            <Link to="/monitoring" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-xs transition-all ${isActive('/monitoring') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
               <Activity size={18} /> <span>TUYA CLOUD</span>
             </Link>
 
