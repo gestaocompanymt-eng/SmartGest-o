@@ -23,10 +23,8 @@ import DatabaseSetup from './pages/DatabaseSetup';
 import Monitoring from './pages/Monitoring';
 
 const AppContent: React.FC = () => {
-  const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [data, setData] = useState<AppData | null>(null);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'offline'>('syncing');
-  
   const isSyncingRef = useRef(false);
   const navigate = useNavigate();
   const location = useLocation();
@@ -53,12 +51,6 @@ const AppContent: React.FC = () => {
       ];
       const res = await Promise.all(queries);
       
-      // Garantia de tipos numéricos no carregamento inicial
-      const waterLevels = (res[6].data || []).map((l: any) => ({
-        ...l,
-        percentual: Number(l.percentual) || 0
-      }));
-
       const updated = {
         ...currentLocalData,
         users: res[0].data || [],
@@ -67,7 +59,7 @@ const AppContent: React.FC = () => {
         systems: res[3].data || [],
         serviceOrders: res[4].data || [],
         appointments: res[5].data || [],
-        waterLevels: waterLevels,
+        waterLevels: (res[6].data || []).map((l: any) => ({ ...l, percentual: Number(l.percentual) })),
         monitoringAlerts: res[7].data || [],
         equipmentTypes: res[8].data || [],
         systemTypes: res[9].data || []
@@ -91,15 +83,19 @@ const AppContent: React.FC = () => {
         setData(updated);
         saveStore(updated);
 
-        const channel = supabase.channel('iot-master-v9.0')
+        const channel = supabase.channel('iot-master-v9.1')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'nivel_caixa' }, (payload) => {
              const reading = (payload.new || payload.old) as WaterLevelType;
              if (!reading) return;
-             reading.percentual = Number(reading.percentual);
+             
+             // TRATAMENTO CRÍTICO PARA NÍVEL 0%
+             const numericPercentual = Number(reading.percentual);
+             reading.percentual = isNaN(numericPercentual) ? 0 : numericPercentual;
              
              setData(prev => {
                 if (!prev) return prev;
-                let updatedLevels = [reading, ...prev.waterLevels.filter(l => String(l.id) !== String(reading.id))].slice(0, 500);
+                const filtered = prev.waterLevels.filter(l => String(l.id) !== String(reading.id));
+                const updatedLevels = [reading, ...filtered].slice(0, 500);
                 const newData = { ...prev, waterLevels: updatedLevels };
                 saveStore(newData);
                 return newData;
@@ -127,50 +123,66 @@ const AppContent: React.FC = () => {
     <div className="h-screen w-full flex flex-col md:flex-row bg-slate-50 overflow-hidden">
       <aside className="fixed inset-y-0 left-0 z-[60] w-72 bg-slate-900 text-white transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 no-print">
         <div className="h-full flex flex-col p-6">
-          <div className="hidden md:flex items-center justify-between mb-10 px-2">
+          <div className="flex items-center justify-between mb-8 px-2">
             <div className="flex items-center space-x-3">
               <Wrench size={24} className="text-blue-600" />
               <span className="font-black text-xl tracking-tighter uppercase">SmartGestão</span>
             </div>
             {syncStatus === 'synced' ? <CheckCircle2 size={16} className="text-emerald-400" /> : <RefreshCcw size={16} className="text-blue-400 animate-spin" />}
           </div>
+          
           <nav className="flex-1 space-y-2 overflow-y-auto pr-2 custom-scrollbar">
-            <Link to="/" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${isActive('/') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
-              <LayoutDashboard size={20} /> <span>Dashboard</span>
+            <Link to="/" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${isActive('/') ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
+              <LayoutDashboard size={20} /> <span>Painel Principal</span>
             </Link>
-            <Link to="/reservatorios" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${isActive('/reservatorios') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
-              <Droplets size={20} /> <span>Reservatórios</span>
+            
+            <div className="py-2"><hr className="border-slate-800" /></div>
+            
+            <Link to="/reservatorios" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${isActive('/reservatorios') ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
+              <Droplets size={20} /> <span>Reservatórios IOT</span>
             </Link>
-            <Link to="/monitoring" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${isActive('/monitoring') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
+            <Link to="/monitoring" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${isActive('/monitoring') ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
               <Activity size={20} /> <span>Monitoramento Tuya</span>
             </Link>
-            <Link to="/condos" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${isActive('/condos') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
-              <Building2 size={20} /> <span>Condomínios</span>
-            </Link>
-            <Link to="/equipment" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${isActive('/equipment') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
+
+            <div className="py-2"><hr className="border-slate-800" /></div>
+            
+            {/* LINKS RESTAURADOS E PRIORIZADOS */}
+            <Link to="/equipment" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${isActive('/equipment') ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
               <Wrench size={20} /> <span>Equipamentos</span>
             </Link>
-            <Link to="/systems" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${isActive('/systems') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
-              <Layers size={20} /> <span>Sistemas</span>
+            <Link to="/systems" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${isActive('/systems') ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
+              <Layers size={20} /> <span>Sistemas Prediais</span>
             </Link>
-            <Link to="/os" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${isActive('/os') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
+            <Link to="/condos" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${isActive('/condos') ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
+              <Building2 size={20} /> <span>Condomínios</span>
+            </Link>
+            <Link to="/os" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${isActive('/os') ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
               <FileText size={20} /> <span>Ordens de Serviço</span>
             </Link>
+
             {data.currentUser.role === UserRole.ADMIN && (
-              <Link to="/database" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${isActive('/database') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
-                <Database size={20} /> <span>Banco de Dados</span>
-              </Link>
+              <>
+                <div className="py-2"><hr className="border-slate-800" /></div>
+                <Link to="/admin" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${isActive('/admin') ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
+                  <Settings size={20} /> <span>Configurações</span>
+                </Link>
+                <Link to="/database" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-sm transition-all ${isActive('/database') ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
+                  <Database size={20} /> <span>Banco SQL</span>
+                </Link>
+              </>
             )}
           </nav>
+          
           <div className="mt-auto pt-6 border-t border-slate-800">
              <button onClick={() => { setData({...data, currentUser: null}); saveStore({...data, currentUser: null}); navigate('/login'); }} className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-slate-400 hover:text-red-500 font-bold text-sm">
-              <LogOut size={20} /> <span>Sair do Sistema</span>
+              <LogOut size={20} /> <span>Sair</span>
             </button>
           </div>
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar relative">
+      <main className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
         <Routes>
           <Route path="/" element={<Dashboard data={data} updateData={updateData} onSync={async () => { const fresh = await fetchAllData(data); setData(fresh); saveStore(fresh); }} />} />
           <Route path="/reservatorios" element={<WaterLevel data={data} updateData={updateData} onRefresh={async () => { const updated = await fetchAllData(data); setData(updated); saveStore(updated); }} />} />
