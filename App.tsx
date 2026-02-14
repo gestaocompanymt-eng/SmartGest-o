@@ -127,6 +127,9 @@ const AppContent: React.FC = () => {
             
             <div className="py-2 text-[10px] font-black text-slate-600 uppercase tracking-widest px-4">Operação</div>
             
+            <Link to="/condos" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-xs transition-all ${isActive('/condos') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
+              <Building2 size={18} /> <span>CONDOMÍNIOS</span>
+            </Link>
             <Link to="/equipment" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-xs transition-all ${isActive('/equipment') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
               <Wrench size={18} /> <span>EQUIPAMENTOS</span>
             </Link>

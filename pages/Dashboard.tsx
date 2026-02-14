@@ -14,13 +14,8 @@ const Dashboard: React.FC<{
   onSync?: () => Promise<void> 
 }> = ({ data, updateData, deleteData, onSync }) => {
   const navigate = useNavigate();
-  const agendaRef = useRef<HTMLDivElement>(null);
   
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
-  const [editingAppt, setEditingAppt] = useState<Appointment | null>(null);
-  const [selectedCondoId, setSelectedCondoId] = useState('');
-  const [isRecurring, setIsRecurring] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
   
   const user = data.currentUser;
   const isAdmin = user?.role === UserRole.ADMIN;
@@ -34,6 +29,12 @@ const Dashboard: React.FC<{
       ? data.serviceOrders.filter(os => os.condo_id === userCondoId)
       : data.serviceOrders;
   }, [data.serviceOrders, userCondoId]);
+
+  const filteredCondosCount = useMemo(() => {
+    return userCondoId 
+      ? data.condos.filter(c => c.id === userCondoId).length
+      : data.condos.length;
+  }, [data.condos, userCondoId]);
 
   const activeAppointments = useMemo(() => {
     return data.appointments.filter(a => a.status !== 'Cancelada' as any && a.status !== 'Realizada');
@@ -75,7 +76,8 @@ const Dashboard: React.FC<{
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <StatCard title="Condomínios" value={filteredCondosCount} icon={Building2} color="bg-slate-900" onClick={() => navigate('/condos')} />
         <StatCard title="Ativos" value={data.equipments.length} icon={Wrench} color="bg-blue-600" onClick={() => navigate('/equipment')} />
         <StatCard title="Agenda" value={activeAppointments.length} icon={Calendar} color="bg-indigo-600" onClick={() => {}} />
         <StatCard title="OS Abertas" value={filteredOSList.filter(o => o.status === OSStatus.OPEN).length} icon={PlayCircle} color="bg-emerald-500" onClick={() => navigate('/os')} />
