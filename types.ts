@@ -35,31 +35,6 @@ export interface SystemType {
   name: string;
 }
 
-export interface MonitoringPoint {
-  id: string;
-  name: string;
-  device_id: string;
-}
-
-export interface WaterLevel {
-  id: string;
-  condominio_id: string; 
-  percentual: number;
-  nivel_cm: number;
-  status?: string;
-  created_at: string;
-}
-
-export interface MonitoringAlert {
-  id: string;
-  equipment_id: string;
-  message: string;
-  value: string | number;
-  is_resolved: boolean;
-  created_at: string;
-  updated_at?: string;
-}
-
 export interface Condo {
   id: string;
   name: string;
@@ -88,6 +63,24 @@ export interface RefrigerationReadings {
   condenser_temp?: number;
 }
 
+// Interface para alertas de monitoramento Tuya/Telemetria
+export interface MonitoringAlert {
+  id: string;
+  equipment_id: string;
+  message: string;
+  value: string | number;
+  is_resolved: boolean;
+  created_at: string;
+}
+
+// Interface para leituras de nível de água (telemetria ESP32)
+export interface WaterLevelEntry {
+  id: string;
+  condominio_id: string;
+  percentual: number;
+  created_at: string;
+}
+
 export interface Equipment {
   id: string;
   condo_id: string;
@@ -107,17 +100,17 @@ export interface Equipment {
   last_maintenance: string;
   maintenance_period?: number;
   updated_at?: string;
-  device_id?: string; 
+  refrigeration_specs?: RefrigerationSpecs;
+  // Campos de monitoramento Tuya
   tuya_device_id?: string;
-  is_online?: boolean;
   monitoring_status?: 'normal' | 'atencao' | 'critico';
+  is_online?: boolean;
   last_reading?: {
     power: number;
     current: number;
     voltage: number;
     timestamp: string;
   };
-  refrigeration_specs?: RefrigerationSpecs;
 }
 
 export interface System {
@@ -127,12 +120,17 @@ export interface System {
   name: string;
   location: string;
   equipment_ids: string[];
-  monitoring_points?: MonitoringPoint[];
   parameters: string;
   observations: string;
   last_maintenance?: string;
   maintenance_period?: number;
   updated_at?: string;
+  // Pontos de monitoramento para telemetria
+  monitoring_points?: {
+    id: string;
+    device_id: string;
+    name: string;
+  }[];
 }
 
 export interface ServiceOrder {
@@ -155,7 +153,7 @@ export interface ServiceOrder {
   material_value?: number;
   updated_at?: string;
   refrigeration_readings?: RefrigerationReadings;
-  sync_status?: 'pending' | 'synced'; // Novo campo para controle offline
+  sync_status?: 'pending' | 'synced';
 }
 
 export interface Appointment {
@@ -199,7 +197,7 @@ export interface AppData {
   equipmentTypes: EquipmentType[];
   systemTypes: SystemType[];
   currentUser: User | null;
-  waterLevels: WaterLevel[];
-  monitoringAlerts: MonitoringAlert[];
   githubConfig?: GithubConfig;
+  monitoringAlerts: MonitoringAlert[];
+  waterLevels: WaterLevelEntry[];
 }

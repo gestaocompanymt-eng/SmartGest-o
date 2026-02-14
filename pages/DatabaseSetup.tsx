@@ -1,17 +1,15 @@
 
 import React, { useState } from 'react';
-import { Copy, CheckCircle2, AlertTriangle, ShieldCheck, Code, Database, Server, Info, Library, HelpCircle, Cpu, Zap, ChevronRight } from 'lucide-react';
+import { Copy, CheckCircle2, Database, Server, Info } from 'lucide-react';
 
 const DatabaseSetup: React.FC = () => {
   const [copiedSql, setCopiedSql] = useState(false);
-  const [copiedCpp, setCopiedCpp] = useState(false);
-  const [activeTab, setActiveTab] = useState<'sql' | 'esp32' | 'help'>('sql');
 
-  const sqlScript = `-- 🚀 SMARTGESTÃO: SCRIPT DE INFRAESTRUTURA V13 (OTIMIZADO)
--- Finalidade: Reconstrução com ÍNDICES DE PERFORMANCE para evitar gargalos.
+  const sqlScript = `-- 🚀 SMARTGESTÃO: SCRIPT CORE V15
+-- Finalidade: Estrutura essencial de gestão predial.
 
 -- 1. LIMPEZA TOTAL
-DROP TABLE IF EXISTS nivel_caixa, monitoring_alerts, appointments, service_orders, systems, equipments, users, condos, system_types, equipment_types CASCADE;
+DROP TABLE IF EXISTS appointments, service_orders, systems, equipments, users, condos, system_types, equipment_types CASCADE;
 
 -- 2. TABELAS BASE
 CREATE TABLE equipment_types (id TEXT PRIMARY KEY, name TEXT NOT NULL);
@@ -59,38 +57,45 @@ CREATE TABLE equipments (
     photos TEXT[] DEFAULT '{}',
     last_maintenance DATE DEFAULT CURRENT_DATE,
     maintenance_period INTEGER DEFAULT 30,
-    tuya_device_id TEXT,
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX idx_equipments_condo_id ON equipments(condo_id);
 
-CREATE TABLE nivel_caixa (
-    id BIGSERIAL PRIMARY KEY,
-    condominio_id TEXT NOT NULL,
-    percentual NUMERIC NOT NULL,
-    nivel_cm NUMERIC,
-    status TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+CREATE TABLE systems (
+    id TEXT PRIMARY KEY,
+    condo_id TEXT REFERENCES condos(id) ON DELETE CASCADE,
+    type_id TEXT REFERENCES system_types(id),
+    name TEXT NOT NULL,
+    location TEXT,
+    equipment_ids TEXT[] DEFAULT '{}',
+    parameters TEXT,
+    observations TEXT,
+    last_maintenance DATE DEFAULT CURRENT_DATE,
+    maintenance_period INTEGER DEFAULT 30,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-CREATE INDEX idx_nivel_device_id ON nivel_caixa(condominio_id);
-CREATE INDEX idx_nivel_created_at ON nivel_caixa(created_at DESC);
 
--- 4. REALTIME CONFIG
-ALTER TABLE nivel_caixa REPLICA IDENTITY FULL;
+CREATE TABLE service_orders (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'Aberta',
+    condo_id TEXT REFERENCES condos(id) ON DELETE CASCADE,
+    equipment_id TEXT REFERENCES equipments(id),
+    system_id TEXT REFERENCES systems(id),
+    problem_description TEXT,
+    actions_performed TEXT,
+    parts_replaced TEXT[] DEFAULT '{}',
+    photos_before TEXT[] DEFAULT '{}',
+    photos_after TEXT[] DEFAULT '{}',
+    technician_id TEXT,
+    service_value NUMERIC DEFAULT 0,
+    material_value NUMERIC DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
 
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
-        CREATE PUBLICATION supabase_realtime;
-    END IF;
-    BEGIN
-        ALTER PUBLICATION supabase_realtime ADD TABLE nivel_caixa;
-    EXCEPTION WHEN OTHERS THEN 
-        RAISE NOTICE 'Publicação já ativa.';
-    END;
-END $$;
-
--- 5. RLS & PERMISSÕES
+-- 4. RLS & PERMISSÕES
 DO $$
 DECLARE
     t text;
@@ -104,46 +109,18 @@ END $$;
 
 GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
-`;
 
-  const cppScript = `// 🤖 SMARTGESTÃO IOT V9.5
-#include <WiFi.h>
-#include <HTTPClient.h>
-#include <ArduinoJson.h>
+-- 5. SEED DATA
+INSERT INTO equipment_types (id, name) VALUES 
+('1', 'Bombas'), ('2', 'Exaustores'), ('3', 'SPA'), ('4', 'Aquecedores de Piscina'), 
+('5', 'Sauna'), ('6', 'Aquecimento de Água'), ('7', 'Elétrica e Automação'), ('8', 'Ar Condicionado / Refrigeração')
+ON CONFLICT (id) DO NOTHING;
 
-const char* ssid = "NOME_DO_SEU_WIFI";
-const char* password = "SENHA_DO_SEU_WIFI";
-const char* supabase_url = "https://rlldyyipyapkehtxwvqk.supabase.co/rest/v1/nivel_caixa";
-const char* supabase_key = "sb_publishable_mOmsdU6uKC0eI6_ppTiHhQ_6NJD8jYv"; 
-const char* device_id = "ESP32_TANQUE_01"; 
-
-void setup() {
-  Serial.begin(115200);
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
-  Serial.println("\\nWiFi OK!");
-}
-
-void loop() {
-  if (WiFi.status() == WL_CONNECTED) {
-    HTTPClient http;
-    http.begin(supabase_url);
-    http.addHeader("Content-Type", "application/json");
-    http.addHeader("apikey", supabase_key);
-    http.addHeader("Authorization", String("Bearer ") + supabase_key);
-
-    StaticJsonDocument<200> doc;
-    doc["condominio_id"] = device_id;
-    doc["percentual"] = 100; // Simulação de tanque cheio
-
-    String json;
-    serializeJson(doc, json);
-    int httpResponseCode = http.POST(json);
-    Serial.printf("HTTP Response code: %d\\n", httpResponseCode);
-    http.end();
-  }
-  delay(10000);
-}
+INSERT INTO system_types (id, name) VALUES 
+('1', 'Aquecimento de Água Central'), ('2', 'Aquecimento de Piscina'), ('3', 'Sistema de SPA'), 
+('4', 'Sistema de Sauna'), ('5', 'Sistema de Pressurização'), ('6', 'Sistema de Exaustão'), 
+('7', 'Sistema de Ar Condicionado / Climatização')
+ON CONFLICT (id) DO NOTHING;
 `;
 
   const handleCopy = (text: string, setFn: (v: boolean) => void) => {
@@ -160,103 +137,32 @@ void loop() {
             <Database size={24} />
           </div>
           <div>
-            <h1 className="text-xl font-black text-slate-900 leading-none">Infraestrutura V14</h1>
-            <p className="text-[10px] text-blue-600 font-black uppercase tracking-widest mt-1">Sincronismo IOT e Diagnóstico</p>
+            <h1 className="text-xl font-black text-slate-900 leading-none">Configuração V15</h1>
+            <p className="text-[10px] text-blue-600 font-black uppercase tracking-widest mt-1">Estrutura Gestão Predial</p>
           </div>
-        </div>
-        <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200 overflow-x-auto max-w-full">
-           <button onClick={() => setActiveTab('sql')} className={`whitespace-nowrap px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'sql' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>1. SQL Mestre</button>
-           <button onClick={() => setActiveTab('esp32')} className={`whitespace-nowrap px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'esp32' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>2. ESP32 Code</button>
-           <button onClick={() => setActiveTab('help')} className={`whitespace-nowrap px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${activeTab === 'help' ? 'bg-amber-600 text-white shadow-sm' : 'text-amber-600'}`}>3. Erro de Upload?</button>
         </div>
       </div>
 
-      {activeTab === 'sql' && (
-        <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-slate-200 animate-in fade-in zoom-in-95">
-          <div className="p-6 bg-slate-900 text-white rounded-3xl flex items-start space-x-4 mb-8">
-            <Server className="text-blue-400 shrink-0 mt-1" size={24} />
-            <div className="space-y-1">
-              <p className="text-[10px] font-black text-blue-400 uppercase">Script de Performance</p>
-              <p className="text-[10px] text-slate-400 font-bold leading-relaxed">Execute este script no SQL Editor do Supabase para otimizar as consultas.</p>
-            </div>
-          </div>
-          <div className="relative">
-            <button onClick={() => handleCopy(sqlScript, setCopiedSql)} className={`absolute top-4 right-4 z-10 flex items-center space-x-2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase shadow-xl transition-all ${copiedSql ? 'bg-emerald-500 text-white' : 'bg-blue-600 text-white'}`}>
-              {copiedSql ? <CheckCircle2 size={16} /> : <Database size={16} />}
-              <span>Copiar SQL</span>
-            </button>
-            <div className="bg-slate-900 rounded-[2rem] p-8 pt-20 overflow-hidden shadow-2xl border-4 border-slate-800">
-              <pre className="text-[11px] font-mono text-emerald-400 overflow-x-auto leading-relaxed">{sqlScript}</pre>
-            </div>
+      <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-slate-200 animate-in fade-in zoom-in-95">
+        <div className="p-6 bg-slate-900 text-white rounded-3xl flex items-start space-x-4 mb-8">
+          <Server className="text-blue-400 shrink-0 mt-1" size={24} />
+          <div className="space-y-1">
+            <p className="text-[10px] font-black text-blue-400 uppercase">Script de Reconstrução</p>
+            <p className="text-[10px] text-slate-400 font-bold leading-relaxed">
+              Este script remove toda a camada de telemetria e reconstrói as tabelas core de gestão.
+            </p>
           </div>
         </div>
-      )}
-
-      {activeTab === 'esp32' && (
-        <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-slate-200 animate-in fade-in zoom-in-95">
-          <div className="relative">
-            <button onClick={() => handleCopy(cppScript, setCopiedCpp)} className={`absolute top-4 right-4 z-10 flex items-center space-x-2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase shadow-xl transition-all ${copiedCpp ? 'bg-emerald-500 text-white' : 'bg-slate-900 text-white'}`}>
-              {copiedCpp ? <CheckCircle2 size={16} /> : <Code size={16} />}
-              <span>Copiar C++</span>
-            </button>
-            <div className="bg-slate-800 rounded-[2rem] p-8 pt-20 overflow-hidden shadow-2xl">
-              <pre className="text-[11px] font-mono text-blue-300 overflow-x-auto leading-relaxed">{cppScript}</pre>
-            </div>
+        <div className="relative">
+          <button onClick={() => handleCopy(sqlScript, setCopiedSql)} className={`absolute top-4 right-4 z-10 flex items-center space-x-2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase shadow-xl transition-all ${copiedSql ? 'bg-emerald-500 text-white' : 'bg-blue-600 text-white'}`}>
+            {copiedSql ? <CheckCircle2 size={16} /> : <Database size={16} />}
+            <span>Copiar SQL Core</span>
+          </button>
+          <div className="bg-slate-900 rounded-[2rem] p-8 pt-20 overflow-hidden shadow-2xl border-4 border-slate-800">
+            <pre className="text-[11px] font-mono text-emerald-400 overflow-x-auto leading-relaxed">{sqlScript}</pre>
           </div>
         </div>
-      )}
-
-      {activeTab === 'help' && (
-        <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-200 animate-in fade-in slide-in-from-bottom-4">
-          <div className="max-w-2xl mx-auto space-y-8">
-            <div className="text-center space-y-2">
-              <div className="bg-amber-100 text-amber-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Zap size={32} />
-              </div>
-              <h2 className="text-xl font-black text-slate-900 uppercase">Erro: "Failed to connect to ESP32"</h2>
-              <p className="text-xs text-slate-500 font-bold">O erro 0x13 significa que a placa não está no modo de gravação.</p>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4">
-              <div className="p-6 bg-slate-50 border border-slate-200 rounded-3xl flex items-start space-x-4">
-                <div className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-black shrink-0">1</div>
-                <div>
-                  <p className="font-black text-slate-900 uppercase text-xs mb-1">Método do Botão BOOT</p>
-                  <p className="text-[10px] text-slate-500 leading-relaxed font-bold">
-                    Ao clicar em "Upload" no Arduino IDE, espere aparecer os pontos <code className="bg-slate-200 px-1 rounded">Connecting.......</code>. 
-                    Nesse momento, **mantenha pressionado o botão BOOT** (ou IO0) da placa até que a porcentagem de gravação apareça.
-                  </p>
-                </div>
-              </div>
-
-              <div className="p-6 bg-slate-50 border border-slate-200 rounded-3xl flex items-start space-x-4">
-                <div className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-black shrink-0">2</div>
-                <div>
-                  <p className="font-black text-slate-900 uppercase text-xs mb-1">Verifique o Cabo e Porta</p>
-                  <p className="text-[10px] text-slate-500 leading-relaxed font-bold">
-                    Certifique-se que o cabo USB é de **DADOS** e não apenas de carga. Verifique em <code className="bg-slate-200 px-1 rounded">Ferramentas -> Porta</code> se a porta COM correta está selecionada.
-                  </p>
-                </div>
-              </div>
-
-              <div className="p-6 bg-amber-50 border border-amber-200 rounded-3xl flex items-start space-x-4">
-                <AlertTriangle className="text-amber-600 shrink-0 mt-1" size={24} />
-                <div>
-                  <p className="font-black text-amber-900 uppercase text-xs mb-1">Dica de Hardware (Definitiva)</p>
-                  <p className="text-[10px] text-amber-700 leading-relaxed font-bold">
-                    Se você precisa segurar o botão toda vez, solde um **capacitor eletrolítico de 10uF** entre os pinos **EN** e **GND**. Isso automatiza o reset para gravação.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <button onClick={() => setActiveTab('esp32')} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center group transition-all">
-              <ChevronRight size={16} className="mr-2 group-hover:translate-x-1 transition-transform" />
-              Tentar Novamente
-            </button>
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 };

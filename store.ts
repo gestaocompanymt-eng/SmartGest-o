@@ -2,7 +2,7 @@
 import { AppData, UserRole } from './types';
 import { INITIAL_EQUIPMENT_TYPES, INITIAL_SYSTEM_TYPES } from './constants';
 
-const STORAGE_KEY = 'smart_gestao_data_v5';
+const STORAGE_KEY = 'smart_gestao_data_v5_clean';
 
 const initialData: AppData = {
   condos: [],
@@ -17,8 +17,8 @@ const initialData: AppData = {
   equipmentTypes: INITIAL_EQUIPMENT_TYPES,
   systemTypes: INITIAL_SYSTEM_TYPES,
   currentUser: null,
-  waterLevels: [],
-  monitoringAlerts: []
+  monitoringAlerts: [],
+  waterLevels: []
 };
 
 export const getStore = (): AppData => {
@@ -27,18 +27,14 @@ export const getStore = (): AppData => {
   
   try {
     const parsedData: AppData = JSON.parse(saved);
-    
-    // Garantir integridade de arrays
     const ensureArray = (arr: any) => Array.isArray(arr) ? arr : [];
     
-    // Mesclar tipos iniciais (novos tipos adicionados no código) com tipos salvos
     const mergeTypes = (initial: any[], saved: any[]) => {
       const merged = [...ensureArray(saved)];
       initial.forEach(initItem => {
         if (!merged.find(m => m.id === initItem.id)) {
           merged.push(initItem);
         } else {
-          // Atualiza o nome se o ID já existir (ex: Refrigeração -> Ar Condicionado)
           const idx = merged.findIndex(m => m.id === initItem.id);
           merged[idx] = initItem;
         }
@@ -46,7 +42,7 @@ export const getStore = (): AppData => {
       return merged;
     };
     
-    const data: AppData = {
+    return {
       ...initialData,
       ...parsedData,
       condos: ensureArray(parsedData.condos),
@@ -55,13 +51,11 @@ export const getStore = (): AppData => {
       serviceOrders: ensureArray(parsedData.serviceOrders),
       appointments: ensureArray(parsedData.appointments),
       users: ensureArray(parsedData.users),
-      waterLevels: ensureArray(parsedData.waterLevels),
-      monitoringAlerts: ensureArray(parsedData.monitoringAlerts),
       equipmentTypes: mergeTypes(INITIAL_EQUIPMENT_TYPES, parsedData.equipmentTypes),
-      systemTypes: mergeTypes(INITIAL_SYSTEM_TYPES, parsedData.systemTypes)
+      systemTypes: mergeTypes(INITIAL_SYSTEM_TYPES, parsedData.systemTypes),
+      monitoringAlerts: ensureArray(parsedData.monitoringAlerts),
+      waterLevels: ensureArray(parsedData.waterLevels)
     };
-    
-    return data;
   } catch (e) {
     return initialData;
   }

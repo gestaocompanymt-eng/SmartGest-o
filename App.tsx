@@ -3,11 +3,11 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { HashRouter, Routes, Route, Link, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { 
   LayoutDashboard, Building2, Wrench, Layers, FileText, Settings, LogOut, Menu, X,
-  Droplets, Cloud, CloudOff, RefreshCcw, CheckCircle2, FileBarChart, Database, Activity, ShieldAlert
+  RefreshCcw, CheckCircle2, FileBarChart, Database, Activity, ShieldAlert
 } from 'lucide-react';
 
 import { getStore, saveStore } from './store';
-import { UserRole, AppData, WaterLevel as WaterLevelType } from './types';
+import { UserRole, AppData } from './types';
 import { supabase, isSupabaseActive } from './supabase';
 
 import Dashboard from './pages/Dashboard';
@@ -17,10 +17,8 @@ import SystemsPage from './pages/Systems';
 import ServiceOrders from './pages/ServiceOrders';
 import AdminSettings from './pages/AdminSettings';
 import Login from './pages/Login';
-import WaterLevel from './pages/WaterLevel';
 import Reports from './pages/Reports';
 import DatabaseSetup from './pages/DatabaseSetup';
-import Monitoring from './pages/Monitoring';
 
 const AppContent: React.FC = () => {
   const [data, setData] = useState<AppData | null>(null);
@@ -39,16 +37,12 @@ const AppContent: React.FC = () => {
     isSyncingRef.current = true;
 
     try {
-      // Otimização: Buscamos apenas os 100 últimos registros de OS para evitar payload gigante
-      // Para telemetria, pegamos os 100 últimos registros globais (suficiente para dashboards)
       const queries = [
         supabase.from('users').select('id, name, email, role, condo_id'),
         supabase.from('condos').select('*'),
         supabase.from('equipments').select('*'),
         supabase.from('systems').select('*'),
         supabase.from('service_orders').select('*').order('created_at', { ascending: false }).limit(100),
-        supabase.from('nivel_caixa').select('id, condominio_id, percentual, created_at').order('created_at', { ascending: false }).limit(100),
-        supabase.from('monitoring_alerts').select('*').eq('is_resolved', false),
         supabase.from('equipment_types').select('*'),
         supabase.from('system_types').select('*')
       ];
@@ -62,10 +56,8 @@ const AppContent: React.FC = () => {
         equipments: res[2].data || [],
         systems: res[3].data || [],
         serviceOrders: res[4].data || [],
-        waterLevels: (res[5].data || []).map((l: any) => ({ ...l, percentual: Number(l.percentual) })),
-        monitoringAlerts: res[6].data || [],
-        equipmentTypes: res[7].data || [],
-        systemTypes: res[8].data || []
+        equipmentTypes: res[5].data || [],
+        systemTypes: res[6].data || []
       };
 
       setSyncStatus('synced');
@@ -88,25 +80,6 @@ const AppContent: React.FC = () => {
         const updated = await fetchAllData(local);
         setData(updated);
         saveStore(updated);
-
-        // Realtime: Inscrição resiliente para telemetria IOT
-        const channel = supabase.channel('iot-performance-v13')
-          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'nivel_caixa' }, (payload) => {
-             const reading = payload.new as WaterLevelType;
-             if (!reading) return;
-             
-             setData(prev => {
-                if (!prev) return prev;
-                const readingVal = Number(reading.percentual);
-                const updatedLevels = [{...reading, percentual: readingVal}, ...prev.waterLevels].slice(0, 200);
-                const newData = { ...prev, waterLevels: updatedLevels };
-                saveStore(newData);
-                return newData;
-             });
-          })
-          .subscribe();
-
-        return () => { supabase.removeChannel(channel); };
       }
     };
     init();
@@ -152,15 +125,6 @@ const AppContent: React.FC = () => {
               <LayoutDashboard size={18} /> <span>DASHBOARD</span>
             </Link>
             
-            <div className="py-2 text-[10px] font-black text-slate-600 uppercase tracking-widest px-4">Sensores IOT</div>
-            
-            <Link to="/reservatorios" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-xs transition-all ${isActive('/reservatorios') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
-              <Droplets size={18} /> <span>RESERVATÓRIOS</span>
-            </Link>
-            <Link to="/monitoring" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-xs transition-all ${isActive('/monitoring') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
-              <Activity size={18} /> <span>TUYA CLOUD</span>
-            </Link>
-
             <div className="py-2 text-[10px] font-black text-slate-600 uppercase tracking-widest px-4">Operação</div>
             
             <Link to="/equipment" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-xs transition-all ${isActive('/equipment') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
@@ -171,6 +135,9 @@ const AppContent: React.FC = () => {
             </Link>
             <Link to="/os" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-xs transition-all ${isActive('/os') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
               <FileText size={18} /> <span>ORDENS DE SERVIÇO</span>
+            </Link>
+            <Link to="/reports" className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-bold text-xs transition-all ${isActive('/reports') ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
+              <FileBarChart size={18} /> <span>RELATÓRIOS</span>
             </Link>
           </nav>
           
@@ -185,8 +152,6 @@ const AppContent: React.FC = () => {
       <main className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar bg-slate-50">
         <Routes>
           <Route path="/" element={<Dashboard data={data} updateData={updateData} onSync={async () => { const fresh = await fetchAllData(data); setData(fresh); saveStore(fresh); }} />} />
-          <Route path="/reservatorios" element={<WaterLevel data={data} updateData={updateData} onRefresh={async () => { const updated = await fetchAllData(data); setData(updated); saveStore(updated); }} />} />
-          <Route path="/monitoring" element={<Monitoring data={data} updateData={updateData} />} />
           <Route path="/condos" element={<Condos data={data} updateData={updateData} />} />
           <Route path="/equipment" element={<EquipmentPage data={data} updateData={updateData} />} />
           <Route path="/systems" element={<SystemsPage data={data} updateData={updateData} />} />

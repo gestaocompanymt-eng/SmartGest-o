@@ -1,14 +1,13 @@
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Settings, Edit2, Trash2, X, MapPin, Droplets, Save, Cpu, Calendar, Clock } from 'lucide-react';
-import { System, SystemType, Condo, UserRole, MonitoringPoint } from '../types';
+import { Plus, Settings, Edit2, Trash2, X, Droplets, Save, Calendar, Clock } from 'lucide-react';
+import { System, SystemType, Condo, UserRole } from '../types';
 
 const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void; deleteData?: (type: any, id: string) => void }> = ({ data, updateData, deleteData }) => {
   const navigate = useNavigate();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSys, setEditingSys] = useState<System | null>(null);
-  const [points, setPoints] = useState<MonitoringPoint[]>([]);
   const [selectedTypeId, setSelectedTypeId] = useState('1');
 
   const user = data.currentUser;
@@ -16,7 +15,6 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void; deleteDat
   const isAdmin = user?.role === UserRole.ADMIN;
   const isTech = user?.role === UserRole.TECHNICIAN;
 
-  // CORREÇÃO: Síndico tem permissão plena para gerenciar seus sistemas
   const canManage = isAdmin || isTech || isSindico;
   const userCondoId = user?.condo_id;
 
@@ -27,31 +25,12 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void; deleteDat
   const openModal = (sys: System | null) => {
     setEditingSys(sys);
     setSelectedTypeId(sys?.type_id || '1');
-    setPoints(sys?.monitoring_points || []);
     setIsModalOpen(true);
-  };
-
-  const handleDeleteSystem = async (id: string) => {
-    if (!canManage) return;
-    if (window.confirm('ATENÇÃO: Deseja realmente excluir este sistema?')) {
-      if (deleteData) {
-        await deleteData('systems', id);
-      } else {
-        const newSystemsList = data.systems.filter((s: System) => s.id !== id);
-        await updateData({ ...data, systems: newSystemsList });
-      }
-    }
-  };
-
-  const handleAddPoint = () => {
-    setPoints([...points, { id: Math.random().toString(36).substr(2, 9), name: '', device_id: '' }]);
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    
-    // CORREÇÃO: Força o ID do condomínio do usuário logado se ele for Síndico
     const condoId = userCondoId || (formData.get('condoId') as string);
 
     if (!condoId) {
@@ -66,7 +45,6 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void; deleteDat
       name: (formData.get('name') as string || '').trim(),
       location: (formData.get('location') as string || '').trim(),
       equipment_ids: editingSys?.equipment_ids || [], 
-      monitoring_points: points,
       parameters: (formData.get('parameters') as string || '').trim(),
       observations: (formData.get('observations') as string || '').trim(),
       last_maintenance: formData.get('last_maintenance') as string || new Date().toISOString(),
@@ -81,7 +59,6 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void; deleteDat
     await updateData({ ...data, systems: newSystemsList });
     setIsModalOpen(false);
     setEditingSys(null);
-    setPoints([]);
   };
 
   return (
@@ -89,7 +66,7 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void; deleteDat
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-black text-slate-900 leading-tight">Sistemas Prediais</h1>
-          <p className="text-sm text-slate-500 font-medium italic">Cronogramas de manutenção e telemetria IOT.</p>
+          <p className="text-sm text-slate-500 font-medium italic">Cronogramas de manutenção preventiva.</p>
         </div>
         {canManage && (
           <button onClick={() => openModal(null)} className="bg-slate-900 text-white px-6 py-3 rounded-2xl flex items-center space-x-2 font-black uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">
@@ -106,11 +83,10 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void; deleteDat
           
           return (
             <div key={sys.id} className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden flex flex-col md:flex-row group hover:border-blue-400 transition-all">
-              <div className={`md:w-32 p-6 flex flex-col items-center justify-center text-white shrink-0 ${sys.type_id === '7' ? 'bg-blue-600 shadow-xl shadow-blue-500/20' : 'bg-slate-900'}`}>
-                 {sys.type_id === '7' ? <Droplets size={28} /> : <Settings size={28} />}
+              <div className={`md:w-32 p-6 flex flex-col items-center justify-center text-white shrink-0 bg-slate-900`}>
+                 <Settings size={28} />
                  {sys.maintenance_period && (
                     <div className="mt-4 text-center">
-                       <p className="text-[7px] font-black text-white/40 uppercase">A cada</p>
                        <p className="text-[10px] font-black text-white">{sys.maintenance_period}d</p>
                     </div>
                  )}
@@ -124,30 +100,12 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void; deleteDat
                    <div className="flex space-x-1 shrink-0">
                       {canManage && (
                         <>
-                          <button onClick={() => openModal(sys)} className="p-2.5 text-slate-400 hover:text-blue-600 bg-slate-50 rounded-xl transition-all" title="Editar Sistema"><Edit2 size={16} /></button>
-                          <button onClick={() => handleDeleteSystem(sys.id)} className="p-2.5 text-slate-400 hover:text-red-600 bg-slate-50 rounded-xl transition-all" title="Excluir Sistema"><Trash2 size={16} /></button>
+                          <button onClick={() => openModal(sys)} className="p-2.5 text-slate-400 hover:text-blue-600 bg-slate-50 rounded-xl transition-all"><Edit2 size={16} /></button>
+                          <button onClick={() => deleteData && deleteData('systems', sys.id)} className="p-2.5 text-slate-400 hover:text-red-600 bg-slate-50 rounded-xl transition-all"><Trash2 size={16} /></button>
                         </>
                       )}
                    </div>
                 </div>
-                
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                   <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                      <p className="text-[8px] font-black text-slate-400 uppercase leading-none mb-1">Próxima Vistoria</p>
-                      <p className="text-[10px] font-black text-slate-800">{nextDate ? nextDate.toLocaleDateString() : 'Não definido'}</p>
-                   </div>
-                   <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 text-right">
-                      <p className="text-[8px] font-black text-slate-400 uppercase leading-none mb-1">Local</p>
-                      <p className="text-[10px] font-black text-slate-800 truncate">{sys.location}</p>
-                   </div>
-                </div>
-
-                {sys.type_id === '7' && (
-                  <div className="flex items-center space-x-2">
-                     <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                     <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Sinal IOT Ativo</span>
-                  </div>
-                )}
               </div>
             </div>
           );
@@ -166,8 +124,7 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void; deleteDat
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                  <div className="space-y-1">
                     <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Condomínio</label>
-                    <select required name="condoId" defaultValue={editingSys?.condo_id || userCondoId} disabled={!!userCondoId} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none disabled:opacity-60">
-                       <option value="">Selecione...</option>
+                    <select required name="condoId" defaultValue={editingSys?.condo_id || userCondoId} disabled={!!userCondoId} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none">
                        {data.condos.map((c: Condo) => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                  </div>
@@ -175,57 +132,13 @@ const SystemsPage: React.FC<{ data: any; updateData: (d: any) => void; deleteDat
                     <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Tipo</label>
                     <select required value={selectedTypeId} onChange={(e) => setSelectedTypeId(e.target.value)} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs">
                        {data.systemTypes.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                       <option value="7">Monitoramento de Nível IOT</option>
                     </select>
                  </div>
               </div>
-
               <div className="space-y-1">
-                <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Nome do Sistema / Identificação</label>
-                <input required name="name" defaultValue={editingSys?.name} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-black text-xs" placeholder="Ex: Central de Água Quente Torre A" />
+                <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Nome do Sistema</label>
+                <input required name="name" defaultValue={editingSys?.name} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-black text-xs" />
               </div>
-
-              <div className="space-y-1">
-                <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Localização (Setor)</label>
-                <input name="location" defaultValue={editingSys?.location} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-black text-xs" placeholder="Ex: Telhado / Ático" />
-              </div>
-
-              <div className="bg-indigo-50 p-6 rounded-[2rem] border border-indigo-100 grid grid-cols-1 md:grid-cols-2 gap-4">
-                 <div className="space-y-1">
-                    <label className="text-[9px] font-black text-indigo-600 uppercase tracking-widest ml-1">Revisão a cada (Dias)</label>
-                    <input required type="number" name="maintenance_period" defaultValue={editingSys?.maintenance_period || 30} className="w-full px-5 py-4 bg-white border border-indigo-200 rounded-2xl font-black text-indigo-700 text-xs" />
-                 </div>
-                 <div className="space-y-1">
-                    <label className="text-[9px] font-black text-indigo-600 uppercase tracking-widest ml-1">Última Revisão</label>
-                    <input required type="date" name="last_maintenance" defaultValue={editingSys?.last_maintenance?.split('T')[0]} className="w-full px-5 py-4 bg-white border border-indigo-200 rounded-2xl font-black text-indigo-700 text-xs" />
-                 </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Parâmetros de Operação</label>
-                <textarea name="parameters" defaultValue={editingSys?.parameters} rows={2} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none resize-none" placeholder="Ex: Temperatura ideal 55°C, Pressão 3 bar" />
-              </div>
-
-              {selectedTypeId === '7' && (
-                <div className="space-y-3 bg-blue-50 p-5 rounded-3xl border border-blue-100">
-                  <div className="flex justify-between items-center">
-                    <h4 className="text-[9px] font-black text-blue-700 uppercase">Associação IOT (ESP32)</h4>
-                    <button type="button" onClick={handleAddPoint} className="text-[9px] font-black text-blue-600">+ Adicionar Placa</button>
-                  </div>
-                  {points.map((p) => (
-                    <div key={p.id} className="grid grid-cols-2 gap-2 bg-white p-3 rounded-2xl border border-blue-100 shadow-sm relative">
-                      <input placeholder="Ex: Tanque Norte" value={p.name} onChange={(e) => setPoints(points.map(x => x.id === p.id ? {...x, name: e.target.value} : x))} className="px-3 py-2 border rounded-xl text-[10px] font-bold" />
-                      <input placeholder="Serial ID" value={p.device_id} onChange={(e) => setPoints(points.map(x => x.id === p.id ? {...x, device_id: e.target.value} : x))} className="px-3 py-2 border rounded-xl text-[10px] font-black font-mono" />
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="space-y-1">
-                <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Observações Adicionais</label>
-                <textarea name="observations" defaultValue={editingSys?.observations} rows={2} className="w-full px-5 py-4 bg-slate-50 border rounded-2xl font-bold text-xs outline-none resize-none" />
-              </div>
-
               <div className="pt-6 flex gap-3">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 border rounded-2xl font-black text-[10px] uppercase text-slate-400">Cancelar</button>
                 <button type="submit" className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase shadow-xl flex items-center justify-center">

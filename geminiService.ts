@@ -1,7 +1,10 @@
 
 import { GoogleGenAI } from "@google/genai";
-import { Equipment, WaterLevel, MonitoringAlert } from "./types";
+import { Equipment, MonitoringAlert } from "./types";
 
+/**
+ * Analisa tecnicamente o estado do equipamento e identifique riscos de falha catastrófica.
+ */
 export const analyzeEquipmentState = async (equipment: Equipment) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const prompt = `Analise tecnicamente o estado do equipamento e identifique riscos de falha catastrófica:
@@ -23,22 +26,21 @@ export const analyzeEquipmentState = async (equipment: Equipment) => {
   }
 };
 
+/**
+ * Diagnostica um alerta de monitoramento Tuya utilizando IA generativa para identificar causas prováveis.
+ */
 export const diagnoseMonitoringAlert = async (alert: MonitoringAlert, equipment: Equipment) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const prompt = `Aja como um Engenheiro Especialista em Manutenção Predial e IOT.
-    Diagnostique a causa raiz deste alerta de monitoramento Tuya Cloud:
-    Equipamento: ${equipment.manufacturer} ${equipment.model}
-    Tipo: ${equipment.type_id}
-    Localização: ${equipment.location}
-    Mensagem de Erro: ${alert.message}
-    Valor IOT Lido: ${alert.value}
+  const prompt = `Você é um engenheiro sênior de manutenção predial e especialista em IoT industrial. 
+    Diagnostique tecnicamente este alerta de telemetria em tempo real:
     
-    Forneça:
-    1. Causa Raiz Provável.
-    2. Risco para a Operação.
-    3. Recomendação Técnica Imediata.
+    Equipamento: ${equipment.manufacturer} ${equipment.model} (Tipo ID: ${equipment.type_id})
+    Alerta Recebido: ${alert.message}
+    Valor do Gatilho: ${alert.value}
+    Contexto do Ativo: Corrente ${equipment.measured_current}A, Temp ${equipment.temperature}°C, Status ${equipment.monitoring_status}
+    Últimas Leituras: ${JSON.stringify(equipment.last_reading)}
     
-    Seja direto e use termos de engenharia.`;
+    Explique de forma extremamente concisa a causa provável e sugira a ação técnica corretiva imediata.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -47,31 +49,7 @@ export const diagnoseMonitoringAlert = async (alert: MonitoringAlert, equipment:
     });
     return response.text;
   } catch (error) {
-    return "Erro ao processar diagnóstico inteligente.";
-  }
-};
-
-export const analyzeWaterLevelHistory = async (history: WaterLevel[]) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const dataSlice = history.slice(0, 30).map(l => ({ p: l.percentual, t: l.created_at }));
-  
-  const prompt = `Aja como um Engenheiro de Hidráulica. Analise a telemetria do reservatório:
-    Dados: ${JSON.stringify(dataSlice)}
-    
-    Verifique:
-    1. Quedas bruscas (vazamentos).
-    2. Tempo de reposição (falha em bomba).
-    3. Oscilações incoerentes (erro de sensor).
-    
-    Comece com "NORMAL" ou "ANOMALIA" em letras maiúsculas.`;
-
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-    });
-    return response.text;
-  } catch (error) {
-    return "Erro ao processar diagnóstico IOT.";
+    console.error("Erro no diagnóstico IA:", error);
+    return "Ocorreu um erro ao processar o diagnóstico inteligente.";
   }
 };
